@@ -6,9 +6,9 @@ import * as wsStore from '../../../stores/workspaceStore';
 import { t } from '../../../i18n';
 import { inboxService, type InboxItem, type InboxTarget } from '@1agents/core/services/inboxService';
 import { InboxList } from './InboxList';
-import { InboxDetail } from './InboxDetail';
+import { InboxDetail, InboxDetailEmpty } from './InboxDetail';
 
-// Workspace Inbox (#210): list + side drawer detail.
+// Workspace Inbox (#210): left list + right body (Markdown).
 // Human triage: accept → requirement (toast, stay) | send_mail forward | archive.
 // PMO cross-project dispatch removed from this UI.
 export function InboxPane(props: { workspaceId?: string } = {}) {
@@ -196,29 +196,36 @@ export function InboxPane(props: { workspaceId?: string } = {}) {
 
             {error && <div class="inbox-error">{error}</div>}
 
-            <InboxList
-                items={items}
-                loading={loading}
-                showArchived={showArchived}
-                selectedId={selectedId}
-                language={language}
-                onSelect={item => setSelectedId(item.id)}
-            />
-
-            {selectedItem && (
-                <InboxDetail
-                    item={selectedItem}
-                    language={language}
-                    accepting={accepting}
-                    forwarding={forwarding}
-                    workspaceId={workspaceId}
-                    onClose={() => setSelectedId(null)}
-                    onAccept={accept}
-                    onAct={act}
-                    onForward={forward}
-                    loadTargets={loadTargets}
-                />
-            )}
+            <div class="inbox-split">
+                <div class="inbox-split-list">
+                    <InboxList
+                        items={items}
+                        loading={loading}
+                        showArchived={showArchived}
+                        selectedId={selectedId}
+                        language={language}
+                        onSelect={item => setSelectedId(item.id)}
+                    />
+                </div>
+                <div class="inbox-split-detail">
+                    {selectedItem ? (
+                        <InboxDetail
+                            item={selectedItem}
+                            language={language}
+                            accepting={accepting}
+                            forwarding={forwarding}
+                            workspaceId={workspaceId}
+                            onClose={() => setSelectedId(null)}
+                            onAccept={accept}
+                            onAct={act}
+                            onForward={forward}
+                            loadTargets={loadTargets}
+                        />
+                    ) : (
+                        <InboxDetailEmpty language={language} />
+                    )}
+                </div>
+            </div>
         </div>
     );
 }

@@ -3941,13 +3941,46 @@ body {
     border-radius: var(--bento-radius-sm, 8px);
   }
 
+  // Left list | right body (body gets the larger share of width).
+  .inbox-split {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: row;
+    border: 1px solid var(--border-color);
+    border-radius: var(--bento-radius, 10px);
+    background: var(--bg-card);
+    overflow: hidden;
+  }
+
+  .inbox-split-list {
+    flex: 0 0 clamp(260px, 32%, 380px);
+    min-width: 240px;
+    max-width: 420px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border-right: 1px solid var(--border-color);
+    background: var(--bg-panel);
+  }
+
+  .inbox-split-detail {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-card);
+  }
+
   .inbox-list {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: var(--bento-gap, 8px);
+    gap: 2px;
+    padding: 8px;
   }
 
   .inbox-empty {
@@ -3957,32 +3990,31 @@ body {
     color: var(--text-muted);
   }
 
-  // List row: full-width button, hairline card, one-line summary.
+  // List row: compact scan row (not a full card stack).
   .inbox-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: 10px;
     width: 100%;
     margin: 0;
-    padding: 12px 14px;
+    padding: 10px 12px;
     text-align: left;
     font: inherit;
     color: inherit;
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    border-radius: var(--bento-radius, 10px);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--bento-radius-sm, 8px);
     cursor: pointer;
-    transition: border-color var(--bento-transition, 0.15s ease);
+    transition: border-color var(--bento-transition, 0.15s ease),
+      background var(--bento-transition, 0.15s ease);
 
     &:hover {
-      border-color: var(--text-main);
+      border-color: var(--border-color);
+      background: var(--bg-card);
     }
 
     &.is-unread {
-      border-left: 3px solid var(--accent-emphasis);
-      padding-left: 12px;
-
       .inbox-item-summary {
         font-weight: 600;
         color: var(--text-main);
@@ -3990,7 +4022,8 @@ body {
     }
 
     &.is-selected {
-      border-color: var(--accent-emphasis);
+      border-color: var(--text-main);
+      background: var(--bg-card);
     }
 
     &.is-archived {
@@ -4081,28 +4114,25 @@ body {
     }
   }
 
-  // Side detail drawer (#211) — overlay within pane; Esc / × / backdrop close.
-  .inbox-detail-backdrop {
-    position: absolute;
-    inset: 0;
-    background: rgba(15, 23, 42, 0.28);
-    z-index: 20;
-    animation: fadeIn 0.15s ease-out;
-  }
-
-  .inbox-detail-drawer {
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: min(420px, 100%);
-    z-index: 21;
+  // Right-hand body panel (docked, not overlay).
+  .inbox-detail-panel {
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    background: var(--bg-card);
-    border-left: 1px solid var(--border-color);
-    box-shadow: var(--shadow-lg);
-    animation: inboxDetailSlideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .inbox-detail-panel-empty {
+    align-items: center;
+    justify-content: center;
+  }
+
+  .inbox-detail-empty-hint,
+  .inbox-detail-empty-body {
+    padding: 32px 24px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-muted);
   }
 
   .inbox-detail-head {
@@ -4111,7 +4141,7 @@ body {
     align-items: flex-start;
     justify-content: space-between;
     gap: 12px;
-    padding: 16px 18px 12px;
+    padding: 16px 20px 12px;
     border-bottom: 1px solid var(--border-color);
   }
 
@@ -4152,7 +4182,7 @@ body {
 
   .inbox-detail-title {
     margin: 0;
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 700;
     color: var(--text-main);
     line-height: 1.4;
@@ -4179,19 +4209,29 @@ body {
     }
   }
 
-  .inbox-detail-body {
+  .inbox-detail-scroll {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 12px 18px 16px;
+    padding: 16px 22px 20px;
   }
 
   .inbox-detail-section {
-    padding: 10px 0;
+    padding: 12px 0;
     border-bottom: 1px solid var(--border-color);
 
     &:last-child {
       border-bottom: none;
+    }
+
+    // Body gets more breathing room for long Markdown.
+    &.inbox-detail-section-body {
+      padding-bottom: 20px;
+    }
+
+    &.inbox-detail-section-meta {
+      margin-top: 8px;
+      opacity: 0.95;
     }
   }
 
@@ -4203,16 +4243,70 @@ body {
     margin-bottom: 8px;
   }
 
-  .inbox-detail-text {
-    font-size: 13px;
-    line-height: 1.6;
-    color: var(--text-secondary);
-    word-break: break-word;
-    white-space: pre-wrap;
-  }
-
-  .inbox-detail-content {
+  // Markdown body: reuse global .markdown-body typography; ensure line breaks.
+  .inbox-detail-md {
+    font-size: 14px;
+    line-height: 1.65;
     color: var(--text-main);
+    word-break: break-word;
+
+    // GFM breaks:true → <br>; also keep paragraph spacing readable.
+    p {
+      margin: 0 0 0.75em;
+
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+
+    pre,
+    code {
+      font-family: var(--font-mono);
+    }
+
+    pre {
+      overflow-x: auto;
+      padding: 10px 12px;
+      border-radius: var(--bento-radius-sm, 8px);
+      border: 1px solid var(--border-color);
+      background: var(--bg-panel);
+    }
+
+    ul,
+    ol {
+      margin: 0 0 0.75em;
+      padding-left: 1.4em;
+    }
+
+    h1,
+    h2,
+    h3,
+    h4 {
+      margin: 1em 0 0.4em;
+      line-height: 1.3;
+      color: var(--text-main);
+
+      &:first-child {
+        margin-top: 0;
+      }
+    }
+
+    a {
+      color: var(--accent-fg);
+    }
+
+    hr {
+      border: none;
+      border-top: 1px solid var(--border-color);
+      margin: 1em 0;
+    }
+
+    blockquote {
+      margin: 0 0 0.75em;
+      padding: 0 0 0 12px;
+      border-left: 3px solid var(--border-color);
+      color: var(--text-secondary);
+    }
   }
 
   .inbox-detail-link {
@@ -4257,11 +4351,11 @@ body {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    padding: 12px 18px;
+    padding: 12px 20px;
     border-top: 1px solid var(--border-color);
   }
 
-  // send_mail target picker (#213)
+  // send_mail target picker
   .inbox-forward-picker {
     display: flex;
     flex-direction: column;
@@ -4278,16 +4372,19 @@ body {
     flex-wrap: wrap;
     gap: 6px;
   }
-}
 
-@keyframes inboxDetailSlideIn {
-  from {
-    transform: translateX(100%);
-    opacity: 0.6;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
+  @media (max-width: 720px) {
+    .inbox-split {
+      flex-direction: column;
+    }
+
+    .inbox-split-list {
+      flex: 0 0 40%;
+      max-width: none;
+      min-width: 0;
+      border-right: none;
+      border-bottom: 1px solid var(--border-color);
+    }
   }
 }
 
