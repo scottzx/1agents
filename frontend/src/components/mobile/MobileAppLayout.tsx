@@ -12,6 +12,7 @@ import { SystemSettingsHost } from '../shared/SystemSettingsHost';
 import { FilePreviewContent } from '../shared/FilePreviewContent';
 import { CcProvidersPanel } from '../shared/CcProvidersPanel';
 import { BuiltinBrowser } from '../browser/BuiltinBrowser';
+import { L1AppPage } from '../platform/L1Shell';
 import { t } from '../../i18n';
 import type { App, AppState } from '../app';
 import * as ui from '../../stores/uiStore';
@@ -20,6 +21,8 @@ import * as wsStore from '../../stores/workspaceStore';
 import * as sess from '../../stores/sessionStore';
 import * as modal from '../../stores/modalStore';
 import * as tabsStore from '../../stores/tabsStore';
+import * as stage from '../../stores/stageStore';
+import { activeL1PageId } from '../../stores/appManifestStore';
 import { globalBridgeManager } from '../chat/hooks';
 import { SETTINGS_STATIC_MANIFEST, type SettingsCategory } from '../../modules/settings-manifest';
 import { paneWorkspaceIdFor, paneWorkspacePathFor } from '../../utils/oneshot';
@@ -421,6 +424,35 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
             activeTabObj?.type !== 'browser';
 
         const moduleNav = tabsStore.buildModuleNav();
+        const l1MountId = activeL1PageId.value;
+
+        // L1 app (e.g. Agents 圆桌) takes over the full mobile viewport.
+        if (l1MountId) {
+            return (
+                <div class="mobile-app-layout" style={viewportStyle}>
+                    <div class="mobile-viewport mobile-l1-app">
+                        <div class="mobile-subview-header">
+                            <button
+                                class="mobile-subview-back-btn"
+                                onClick={() => stage.exitL1App()}
+                                aria-label={t('common.back', language) || '返回'}
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                    <polyline points="15 18 9 12 15 6" />
+                                </svg>
+                            </button>
+                            <div class="mobile-subview-title">{t('discovery.catApps', language) || '应用'}</div>
+                        </div>
+                        <div
+                            class="mobile-l1-app-body"
+                            style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;"
+                        >
+                            <L1AppPage mountId={l1MountId} />
+                        </div>
+                    </div>
+                </div>
+            );
+        }
 
         return (
             <div class="mobile-app-layout" style={viewportStyle}>
@@ -1125,6 +1157,15 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                             <div style={{ padding: '16px' }}>
                                                 <DiscoveryPanel
                                                     onOpenBrowserTab={tabsStore.openBrowserTab}
+                                                    onOpenApp={appId => {
+                                                        if (!stage.openAppById(appId)) {
+                                                            ui.showToast(
+                                                                language === 'zh-CN'
+                                                                    ? '应用未启用或不可用'
+                                                                    : 'App is disabled or unavailable'
+                                                            );
+                                                        }
+                                                    }}
                                                     language={language}
                                                 />
                                             </div>

@@ -32,6 +32,7 @@ import (
 	"github.com/scottzx/1Agents/backend/internal/ingest"
 	"github.com/scottzx/1Agents/backend/internal/localtoken"
 	"github.com/scottzx/1Agents/backend/internal/meta"
+	"github.com/scottzx/1Agents/backend/internal/roundtable"
 	"github.com/scottzx/1Agents/backend/internal/sources"
 	"github.com/scottzx/1Agents/backend/internal/supervisor"
 	"github.com/scottzx/1Agents/backend/internal/system"
@@ -220,6 +221,14 @@ func NewRouter(cfg *config.Config) http.Handler {
 			mux.HandleFunc("/api/agent/discussions/", agentHandler.HandleDiscussionItem)       // POST /{id}/cards, /{id}/conclude (#189)
 			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)                    // WebSocket upgrade & bridge
 			mux.HandleFunc("/api/agent/dashboard", agentHandler.HandleDashboard)               // GET — cross-project cockpit aggregate (read-only)
+
+			// Agents 圆桌脑暴 (design.md slice 1–2): room + 6×tmp seats + R1 chat/brief.
+			if rtHandler, rtErr := roundtable.NewHandlerDefaultWithPort(acpxPort); rtErr != nil {
+				log.Printf("[server] roundtable init failed: %v", rtErr)
+			} else {
+				mux.HandleFunc("/api/roundtable/rooms", rtHandler.HandleRoomsRoot)   // POST create
+				mux.HandleFunc("/api/roundtable/rooms/", rtHandler.HandleRoomsItem) // GET/POST subroutes
+			}
 
 			// Chat-digest: Feishu message sync (sync.db) + value-extraction
 			// templates (meta.db v15) + single-batch analysis tasks (run by the

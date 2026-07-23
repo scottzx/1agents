@@ -1,6 +1,6 @@
 import { signal } from '@preact/signals';
 
-import type { FsEntry, RightDrawerTab } from '../components/types';
+import { isFullPageTab, type FsEntry, type RightDrawerTab } from '../components/types';
 import { t } from '../i18n';
 import { getModuleByTab, mergeManifests, type ModuleRegistration } from '../modules/registry';
 import type { ModuleManifest } from '../modules/module-types';
@@ -11,7 +11,12 @@ import {
     settingsCategoryToPath,
     type SettingsCategory,
 } from '../modules/settings-manifest';
-import { DISCOVERY_MODULE_ID, pathToDiscoveryCategory, discoveryCategoryToPath } from '../modules/discovery-manifest';
+import {
+    DISCOVERY_MODULE_ID,
+    DISCOVERY_DEFAULT_CATEGORY,
+    pathToDiscoveryCategory,
+    discoveryCategoryToPath,
+} from '../modules/discovery-manifest';
 import * as ui from './uiStore';
 import * as fs from './fsStore';
 import * as wsStore from './workspaceStore';
@@ -84,8 +89,8 @@ const initialDrawerTab = (): RightDrawerTab => {
     return CONTENT_DRAWER_TABS.includes(stored) ? stored : 'none';
 };
 export const activeDrawerTab = signal<RightDrawerTab>(initialDrawerTab());
-/** Selected discovery category, drives the sidebar second-level menu. */
-export const discoveryCategory = signal('featured');
+/** Selected discovery category — default「应用」so 更多 → 发现中心 lands on apps (design §6.3). */
+export const discoveryCategory = signal<string>(DISCOVERY_DEFAULT_CATEGORY);
 export const activeExternalApp = signal<string | null>(null);
 
 /**
@@ -447,6 +452,12 @@ export const closeExternalApp = () => {
 // Coze click shortcut toggle dynamic drawer logic
 export const toggleDrawerTab = (tab: RightDrawerTab) => {
     activeExternalApp.value = null;
+    // Full-page modules (discovery / settings / …) and L1 apps are same-level
+    // primary surfaces — leave any active L1 app so it cannot cover the module.
+    // Lazy import avoids store cycle (stageStore → tabsStore).
+    if (isFullPageTab(tab) || (activeDrawerTab.value === tab && isFullPageTab(activeDrawerTab.value))) {
+        void import('./stageStore').then(s => s.exitL1App());
+    }
     // 任务 is a normal right-column / drawer content tab on both platforms now
     // (the old mobile full-screen 任务 overlay was removed in favor of the
     // unified in-project view switcher).
@@ -473,6 +484,10 @@ export const toggleDrawerTab = (tab: RightDrawerTab) => {
         activeDrawerTab.value = tab;
         persistDrawerTab(tab);
         activeModulePath.value = mod ? mod.entryPath : '';
+        // 更多 → 发现中心: land on「应用」category (Agents 圆桌 entry, design §6.3).
+        if (tab === 'discovery') {
+            discoveryCategory.value = DISCOVERY_DEFAULT_CATEGORY;
+        }
         if (tab === 'channels') {
             wsStore.loadCcConnectUrl();
         } else if (tab === 'providers') {

@@ -278,6 +278,7 @@ export const closeContent = (): void => {
  * full-screen overlay drawer).
  */
 export const enterProject = (): void => {
+    exitL1App();
     setStageView('conversation');
     tabsStore.openContentTab('tasks');
     setChatRailed(true);
@@ -289,6 +290,8 @@ export const enterProject = (): void => {
  * NEW conversation (the artifact column resets away).
  */
 export const enterConversation = (): void => {
+    // Session and L1 app are same-level surfaces — leave the app pane.
+    exitL1App();
     setStageView('conversation');
     tabsStore.closeContentTab();
     setChatRailed(false);
@@ -301,6 +304,8 @@ export const enterConversation = (): void => {
  * chat column un-rails so the conversation leads. Desktop only.
  */
 export const openConversation = (projectChanged: boolean): void => {
+    // Session and L1 app are same-level surfaces — leave the app pane.
+    exitL1App();
     setStageView('conversation');
     if (projectChanged) tabsStore.closeContentTab();
     setChatRailed(false);
@@ -331,6 +336,7 @@ export const showAssistantContext = (): void => {
  * context to 项目 and clears any drilled-in detail. Desktop only.
  */
 export const projectOverview = (): void => {
+    exitL1App();
     ui.sidebarMode.value = 'project';
     localStorage.setItem('1agents-sidebar-mode', 'project');
     setStageView('project');
@@ -348,6 +354,7 @@ export const projectOverview = (): void => {
  * level, and rails the chat column (the detail page owns the full width).
  */
 export const enterProjectDetail = (workspaceId: string, name: string): void => {
+    exitL1App();
     ui.sidebarMode.value = 'project';
     localStorage.setItem('1agents-sidebar-mode', 'project');
     setStageView('project');
@@ -360,19 +367,60 @@ export const enterProjectDetail = (workspaceId: string, name: string): void => {
 };
 
 /**
- * Enter an L1 app page (#332). The app page takes over the primary pane;
- * the right artifact column closes so the app gets full width.
+ * Enter an L1 app page (#332). Apps are a **first-class stage surface** at the
+ * same level as a session or 项目总览: they own the main pane until the user
+ * navigates elsewhere (session / project / another app) or archives the
+ * sidebar shortcut. Pinning keeps a shortcut card in the left sidebar.
  */
 export const enterL1App = (mountId: string): void => {
-    appStore.setActiveL1Page(mountId);
+    const hit = appStore.l1PageMounts.value.find(m => m.mount.id === mountId);
+    if (hit) {
+        appStore.pinOpenL1App({
+            mountId: hit.mount.id,
+            appId: hit.app.id,
+            label: hit.mount.label || hit.app.name,
+            icon: hit.mount.icon,
+        });
+    }
+    // Same-level switch: leave full-page modules and project/conversation
+    // chrome so the app is not stacked under discovery/settings.
     tabsStore.closeContentTab();
+    appStore.setActiveL1Page(mountId);
     setChatRailed(true);
+    ui.triggerTerminalFit();
 };
 
 /**
- * Exit the active L1 app page and return to the normal shell.
- * Restores the chat column and clears L1 page state.
+ * Open an installed app by manifest id (discovery / 更多应用).
+ * Resolves the first enabled l1-page mount and enters it. Returns false when
+ * the app is missing, disabled, or has no l1-page mount — caller may toast.
+ */
+export const openAppById = (appId: string): boolean => {
+    const app = appStore.appManifests.value.find(a => a.id === appId);
+    if (!app || !app.enabled) return false;
+    const mount = app.mountPoints.find(m => m.type === 'l1-page');
+    if (!mount) return false;
+    enterL1App(mount.id);
+    return true;
+};
+
+/**
+ * Leave the active L1 app main pane without removing the sidebar shortcut.
+ * Used when switching to a session / 项目总览 / full-page module so the app
+ * can be re-opened from the open-apps strip.
  */
 export const exitL1App = (): void => {
+    if (!appStore.activeL1PageId.value) return;
     appStore.setActiveL1Page(null);
+    appStore.clearCopilotAppContext();
+    ui.triggerTerminalFit();
+};
+
+/**
+ * Archive (close) an open-app sidebar shortcut. If it is the active app,
+ * also leaves the main pane.
+ */
+export const archiveL1App = (mountId: string): void => {
+    appStore.archiveOpenL1App(mountId);
+    ui.triggerTerminalFit();
 };

@@ -1468,6 +1468,8 @@ func nameKindLabel(kind string) string {
 		return "助理"
 	case meta.KindTmp:
 		return "临时对话"
+	case meta.KindApp:
+		return "应用"
 	default:
 		return "项目"
 	}

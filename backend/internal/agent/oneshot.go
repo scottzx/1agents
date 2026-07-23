@@ -9,18 +9,41 @@ import (
 	"github.com/scottzx/1Agents/backend/internal/meta"
 )
 
-// createTmpWorkspace allocates a disposable cwd, seeds lightweight agent
+// CreateTmpWorkspace allocates a disposable cwd, seeds lightweight agent
 // guidance, and registers a real projects row (kind=tmp) so resolveWorkspacePath
 // and the side pane work like any other workspace. Returns workspace id, path.
+//
+// workspaceID is "tmp-" + idSuffix.
+func CreateTmpWorkspace(idSuffix, displayName string) (workspaceID, cwd string, err error) {
+	return createDisposableWorkspace("tmp-", idSuffix, displayName, meta.KindTmp, "单次对话")
+}
+
+// CreateAppWorkspace is like CreateTmpWorkspace but registers kind=app.
+// App seats (e.g. Agents 圆桌) stay off the sidebar 任务区 (workforce∪tmp) and
+// project list. workspaceID is "app-" + idSuffix
+// (e.g. idSuffix "rt-<room>-ref" → "app-rt-<room>-ref").
+// Callers may overwrite AGENTS.md after creation with a role-specific seed.
+func CreateAppWorkspace(idSuffix, displayName string) (workspaceID, cwd string, err error) {
+	return createDisposableWorkspace("app-", idSuffix, displayName, meta.KindApp, "应用会话")
+}
+
+// createTmpWorkspace is the unexported implementation used by session create
+// (ephemeral oneshot).
 func createTmpWorkspace(sessionID, displayName string) (workspaceID, cwd string, err error) {
+	return createDisposableWorkspace("tmp-", sessionID, displayName, meta.KindTmp, "单次对话")
+}
+
+// createDisposableWorkspace mints a disposable cwd + projects row with the given
+// id prefix and kind (tmp | app).
+func createDisposableWorkspace(idPrefix, idSuffix, displayName, kind, defaultName string) (workspaceID, cwd string, err error) {
 	cwd, err = createOneshotCwd()
 	if err != nil {
 		return "", "", err
 	}
-	workspaceID = "tmp-" + sessionID
+	workspaceID = idPrefix + idSuffix
 	name := strings.TrimSpace(displayName)
 	if name == "" {
-		name = "单次对话"
+		name = defaultName
 	}
 	db, err := meta.OpenDefault()
 	if err != nil {
@@ -31,12 +54,12 @@ func createTmpWorkspace(sessionID, displayName string) (workspaceID, cwd string,
 		ID:            workspaceID,
 		Name:          name,
 		WorkspacePath: cwd,
-		Kind:          meta.KindTmp,
+		Kind:          kind,
 		Status:        meta.ProjectStatusActive,
 	}
 	if err := db.EnsureWorkspaceProject(p); err != nil {
 		_ = os.RemoveAll(cwd)
-		return "", "", fmt.Errorf("register tmp workspace: %w", err)
+		return "", "", fmt.Errorf("register %s workspace: %w", kind, err)
 	}
 	return workspaceID, cwd, nil
 }

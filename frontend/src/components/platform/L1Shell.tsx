@@ -37,9 +37,15 @@ export interface L1NavEntry {
 }
 
 /**
- * Returns the list of L1 nav entries from enabled apps.
- * The LeftSidebar calls this to append app-contributed entries below its
- * built-in sections.
+ * Apps launched only from 发现中心 / 更多应用 (not permanent left-sidebar L1 nav).
+ * design §6.3: Agents 圆桌 entry is 更多 → 发现中心 → 应用 → card.
+ */
+const DISCOVERY_ONLY_APP_IDS = new Set(['agents-roundtable']);
+
+/**
+ * Returns the list of L1 nav entries from enabled apps for the left sidebar.
+ * Discovery-only apps (e.g. agents-roundtable) are excluded — they still open
+ * via DiscoveryPanel → openAppById → enterL1App, but do not appear under 侧栏「应用」.
  *
  * @example
  * // In LeftSidebar.tsx, alongside the built-in nav items:
@@ -47,13 +53,15 @@ export interface L1NavEntry {
  * appL1Entries.forEach(entry => renderNavItem(entry));
  */
 export function getL1NavEntries(): L1NavEntry[] {
-    return appStore.l1PageMounts.value.map(({ app, mount }) => ({
-        id: mount.id,
-        label: mount.label,
-        icon: mount.icon,
-        appId: app.id,
-        view: mount.view,
-    }));
+    return appStore.l1PageMounts.value
+        .filter(({ app }) => !DISCOVERY_ONLY_APP_IDS.has(app.id))
+        .map(({ app, mount }) => ({
+            id: mount.id,
+            label: mount.label,
+            icon: mount.icon,
+            appId: app.id,
+            view: mount.view,
+        }));
 }
 
 // ── L1 App Page Renderer ──────────────────────────────────────────────────────

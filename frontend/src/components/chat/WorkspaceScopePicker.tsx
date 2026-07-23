@@ -53,7 +53,8 @@ export function WorkspaceScopePicker({
     const projects = useMemo(
         () =>
             localWorkspaces
-                .filter(w => !isAssistantWs(w))
+                // Only real projects — exclude workforce / tmp / app (圆桌 seats).
+                .filter(w => (w.kind ?? 'project') === 'project')
                 .filter(w => !q || w.name.toLowerCase().includes(q))
                 .sort((a, b) => a.name.localeCompare(b.name)),
         [localWorkspaces, q]

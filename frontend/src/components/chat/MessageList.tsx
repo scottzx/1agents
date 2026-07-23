@@ -389,6 +389,24 @@ export function MessageList({ items, typing, emptyHint, loading, loadingHint, on
     }
 
     if (items.length === 0) {
+        // Speaking / mid-turn with no bubbles yet: still show typing wave so
+        // embed cards (roundtable seats) are never a blank "empty" void.
+        if (typing) {
+            return (
+                <div class="chat-messages">
+                    <div class="chat-messages-body" ref={scrollRef}>
+                        <div class="chat-empty chat-empty-typing">
+                            <p>{emptyHint ?? t('chat.empty.send', ui.language.value)}</p>
+                        </div>
+                        <div class="chat-typing-row" aria-label="thinking">
+                            <span class="chat-typing-dot" />
+                            <span class="chat-typing-dot" />
+                            <span class="chat-typing-dot" />
+                        </div>
+                    </div>
+                </div>
+            );
+        }
         return (
             <div class="chat-empty">
                 <p>{emptyHint ?? t('chat.empty.send', ui.language.value)}</p>

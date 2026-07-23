@@ -6,8 +6,8 @@ import { AGENT_TYPE_LABELS, type ChatSession } from '../../types';
 import type { CellHelpers, GridColumn } from './DataGrid';
 import { fmtDate } from './utils';
 
-type RoleKey = 'pmo' | 'pm' | 'executor' | 'verifier' | 'general';
-const ROLE_KEYS: readonly RoleKey[] = ['pmo', 'pm', 'executor', 'verifier', 'general'];
+type RoleKey = 'pmo' | 'pm' | 'executor' | 'verifier' | 'auto' | 'general';
+const ROLE_KEYS: readonly RoleKey[] = ['pmo', 'pm', 'executor', 'verifier', 'auto', 'general'];
 
 export function getRoleLabel(role: string, lang: Lang): string {
     if (!ROLE_KEYS.includes(role as RoleKey)) return role;

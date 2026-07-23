@@ -127,9 +127,79 @@ export const clearCopilotAppContext = (): void => {
  * The mount-point id of the currently active L1 page (e.g. "crm-l1-page").
  * null = one of the built-in platform pages (助理 / project list / settings).
  * Drives left-nav active state and co-pilot context switching.
+ *
+ * L1 apps sit at the **same stage level** as a session / project overview:
+ * only one of them owns the main pane. Opening a session or 项目总览 must
+ * clear this id (see stageStore.exitL1App / selectSession).
  */
 export const activeL1PageId = signal<string | null>(null);
 
 export const setActiveL1Page = (mountPointId: string | null): void => {
     activeL1PageId.value = mountPointId;
+};
+
+// ── Open L1 apps (sidebar shortcuts, like open sessions) ─────────────────────
+
+/**
+ * An app the user has launched this session (or restored). Shown as a
+ * sidebar shortcut card; archive removes the shortcut and exits if active.
+ * Discovery-only apps (e.g. agents-roundtable) only appear here — they are
+ * not permanent L1 nav entries.
+ */
+export interface OpenL1App {
+    /** mountPoints[].id for type=l1-page */
+    mountId: string;
+    appId: string;
+    label: string;
+    icon?: string;
+}
+
+const OPEN_L1_APPS_KEY = '1agents-open-l1-apps';
+
+const loadOpenL1Apps = (): OpenL1App[] => {
+    try {
+        const raw = localStorage.getItem(OPEN_L1_APPS_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(parsed)) return [];
+        return parsed.filter(
+            (e: unknown): e is OpenL1App =>
+                !!e &&
+                typeof e === 'object' &&
+                typeof (e as OpenL1App).mountId === 'string' &&
+                typeof (e as OpenL1App).appId === 'string' &&
+                typeof (e as OpenL1App).label === 'string'
+        );
+    } catch {
+        return [];
+    }
+};
+
+/** Open/pinned L1 apps for the left-sidebar shortcut strip. */
+export const openL1Apps = signal<OpenL1App[]>(loadOpenL1Apps());
+
+const persistOpenL1Apps = (list: OpenL1App[]): void => {
+    openL1Apps.value = list;
+    try {
+        localStorage.setItem(OPEN_L1_APPS_KEY, JSON.stringify(list));
+    } catch {
+        /* non-fatal */
+    }
+};
+
+/** Pin an app into the open strip (idempotent; moves to front). */
+export const pinOpenL1App = (entry: OpenL1App): void => {
+    const rest = openL1Apps.value.filter(a => a.mountId !== entry.mountId);
+    persistOpenL1Apps([entry, ...rest]);
+};
+
+/**
+ * Archive (close) an open-app shortcut. If it is the active L1 page, clear
+ * the main pane so session/project can show again.
+ */
+export const archiveOpenL1App = (mountId: string): void => {
+    persistOpenL1Apps(openL1Apps.value.filter(a => a.mountId !== mountId));
+    if (activeL1PageId.value === mountId) {
+        activeL1PageId.value = null;
+        clearCopilotAppContext();
+    }
 };

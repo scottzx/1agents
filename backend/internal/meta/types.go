@@ -73,10 +73,12 @@ type Project struct {
 	// AvailableAgents is the allowlist of agent types that may run in this
 	// workspace (e.g. ["claudecode", "codex"]). Empty means unrestricted.
 	AvailableAgents []string `json:"availableAgents,omitempty"`
-	// Kind splits workspaces into three families:
+	// Kind splits workspaces into families:
 	//   KindWorkforce ("workforce") — UI「助理」; light chat unit, optional PM shell
 	//   KindProject   ("project")   — full project with kanban / milestones (default)
 	//   KindTmp       ("tmp")       — UI「单次/临时对话」; real path, path may be hidden
+	//   KindApp       ("app")       — app-owned disposable seats (e.g. 圆桌); hidden from
+	//                                 sidebar 任务区 (workforce∪tmp) and 项目列表
 	// Empty on legacy rows is treated as KindProject. Historical kind=assistant is
 	// migrated to workforce on Open.
 	Kind string `json:"kind,omitempty"`
@@ -87,16 +89,16 @@ type Project struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// Workspace kind values persisted on projects.kind (Epic #184 §0.4 / #189 + tmp).
+// Workspace kind values persisted on projects.kind (Epic #184 §0.4 / #189 + tmp + app).
 const (
 	KindWorkforce = "workforce" // UI「助理」
 	KindProject   = "project"   // UI「项目」
 	KindTmp       = "tmp"       // UI「单次/临时对话」— real WorkspaceId + pwd; path may be hidden in UI
+	KindApp       = "app"       // App-owned seats (圆桌等); not listed in sidebar 任务/项目
 )
 
 // NormalizeProjectKind maps empty/legacy kind strings to persisted values.
-// kind=assistant becomes workforce. Unknown non-empty values are kept as-is
-// only if they are already a known kind; otherwise default to project.
+// kind=assistant becomes workforce. Unknown non-empty values default to project.
 func NormalizeProjectKind(kind string) string {
 	switch kind {
 	case "", KindProject:
@@ -105,6 +107,8 @@ func NormalizeProjectKind(kind string) string {
 		return KindWorkforce
 	case KindTmp:
 		return KindTmp
+	case KindApp:
+		return KindApp
 	default:
 		return KindProject
 	}
@@ -113,6 +117,11 @@ func NormalizeProjectKind(kind string) string {
 // IsTmpKind reports whether kind is a temporary-dialogue workspace.
 func IsTmpKind(kind string) bool {
 	return NormalizeProjectKind(kind) == KindTmp
+}
+
+// IsAppKind reports whether kind is an app-owned disposable workspace (e.g. roundtable seats).
+func IsAppKind(kind string) bool {
+	return NormalizeProjectKind(kind) == KindApp
 }
 
 // ChatSessionRecord is the 1agents-side index of a chat session.

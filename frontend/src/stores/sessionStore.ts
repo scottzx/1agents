@@ -23,6 +23,7 @@ import * as modal from './modalStore';
 import type { SessionSetupOpenOpts } from './modalStore';
 import { sessionSetupDefaults } from './sessionSetupDefaults';
 import { AGENT_TYPE_LABELS } from '../components/types';
+import * as stage from './stageStore';
 
 /**
  * Session state (tmux terminal windows, chat session index, active session)
@@ -935,6 +936,9 @@ export const selectSession = async (session: Session) => {
     if (isFullPageTab(tabsStore.activeDrawerTab.value)) {
         tabsStore.activeDrawerTab.value = 'none';
     }
+    // Session and L1 app are same-level primary surfaces — leave any open app
+    // pane so the chat/terminal is not covered (sidebar shortcut stays pinned).
+    stage.exitL1App();
     const oldWorkspaceId = wsStore.activeWorkspaceId.value;
     const workspaces = wsStore.workspaces.value;
 

@@ -33,13 +33,14 @@ export interface Workspace {
     defaultAgent?: import('../protocol/session').AgentType;
     builtin?: boolean;
     /**
-     * "workforce" | "project" | "tmp" —
+     * "workforce" | "project" | "tmp" | "app" —
      *   workforce — UI「助理」
      *   project   — UI「项目」
      *   tmp       — UI「单次/临时对话」(real path; UI may hide pwd)
+     *   app       — App-owned seats (e.g. 圆桌); excluded from sidebar 任务区
      * Empty value from a legacy row is treated as "project".
      */
-    kind?: 'workforce' | 'project' | 'tmp';
+    kind?: 'workforce' | 'project' | 'tmp' | 'app';
     /** Avatar URL served by GET /avatars/ (preset or uploaded image). */
     avatar?: string;
     /**

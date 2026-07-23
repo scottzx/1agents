@@ -67,7 +67,14 @@ export const remoteLoading = signal<Record<string, boolean>>({});
 export const remoteProjects = signal<Record<string, Workspace[]>>({});
 
 export const toggleFolder = (folderId: string) => {
+    const folder = folders.value.find(f => f.id === folderId);
+    const willExpand = folder ? !folder.expanded : true;
     folders.value = folders.value.map(f => (f.id === folderId ? { ...f, expanded: !f.expanded } : f));
+    // Expanding a project: re-fetch its chat index so headless auto-runs
+    // (task executor / verifier) appear under the tree without a full reload.
+    if (willExpand) {
+        void sess.loadChatSessions(folderId);
+    }
 };
 
 /** 一键折叠:收起给定 id 范围内(助理/项目某一侧)所有展开的 project-folder。 */
