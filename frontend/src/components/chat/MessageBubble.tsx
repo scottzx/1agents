@@ -88,10 +88,16 @@ interface MessageBubbleProps {
      * spinner).
      */
     active?: boolean;
+    /**
+     * True for the newest assistant_text in the timeline. Latest answer
+     * skips max-height / fold so the full body stays readable; older
+     * answers keep the capped inner scroller.
+     */
+    isLatestAssistant?: boolean;
     onCancelQueued?: (queueRequestId: string) => void;
 }
 
-export function MessageBubble({ item, isLast, active, onCancelQueued }: MessageBubbleProps) {
+export function MessageBubble({ item, isLast, active, isLatestAssistant, onCancelQueued }: MessageBubbleProps) {
     switch (item.kind) {
         case 'user':
             return (
@@ -103,7 +109,9 @@ export function MessageBubble({ item, isLast, active, onCancelQueued }: MessageB
                 />
             );
         case 'assistant_text':
-            return <AssistantBubble content={item.content} streaming={item.streaming} />;
+            return (
+                <AssistantBubble content={item.content} streaming={item.streaming} limitHeight={!isLatestAssistant} />
+            );
         case 'thinking':
             return <ThinkingBubble content={item.content} streaming={!!active && isLast} />;
         case 'tool_group':
@@ -224,10 +232,13 @@ function AssistantContent({
     content,
     streaming,
     showActions,
+    limitHeight = true,
 }: {
     content: string;
     streaming: boolean;
     showActions: boolean;
+    /** When false (latest assistant answer), no max-height / fold. */
+    limitHeight?: boolean;
 }) {
     // Expansion + "selected" state stay local to this AssistantContent instance.
     // Clicking the block activates it (shows copy/fold); clicking outside
@@ -248,14 +259,14 @@ function AssistantContent({
 
         const handlePointerDown = (event: PointerEvent) => {
             if (!blockRef.current?.contains(event.target as Node)) {
-                isExpanded.value = false;
+                if (limitHeight) isExpanded.value = false;
                 isActive.value = false;
             }
         };
 
         document.addEventListener('pointerdown', handlePointerDown);
         return () => document.removeEventListener('pointerdown', handlePointerDown);
-    }, [showActions]);
+    }, [showActions, limitHeight]);
 
     useEffect(() => {
         if (streaming) return;
@@ -263,6 +274,10 @@ function AssistantContent({
     }, [html, streaming, currentTheme]);
 
     useEffect(() => {
+        if (!limitHeight) {
+            isCollapsible.value = false;
+            return;
+        }
         if (!showActions || !bodyRef.current) return;
 
         const body = bodyRef.current;
@@ -275,7 +290,7 @@ function AssistantContent({
         const observer = new ResizeObserver(updateCollapsible);
         observer.observe(body);
         return () => observer.disconnect();
-    }, [html, showActions]);
+    }, [html, showActions, limitHeight]);
 
     const copy = async () => {
         const copied = await copyToClipboard(content);
@@ -290,9 +305,12 @@ function AssistantContent({
         if (showActions) isActive.value = true;
     };
 
-    const canCollapse = showActions && isCollapsible.value;
-    const expanded = !canCollapse || isExpanded.value;
+    const canCollapse = limitHeight && showActions && isCollapsible.value;
+    const expanded = !limitHeight || !canCollapse || isExpanded.value;
     const actionsVisible = showActions && isActive.value;
+    const contentClass = !limitHeight
+        ? 'chat-assistant-content is-unlimited'
+        : `chat-assistant-content ${expanded ? 'is-expanded' : 'is-collapsed'}`;
 
     return (
         <div
@@ -300,7 +318,7 @@ function AssistantContent({
             class={`chat-assistant-block${isActive.value ? ' is-active' : ''}`}
             onPointerDown={activate}
         >
-            <div class={`chat-assistant-content ${expanded ? 'is-expanded' : 'is-collapsed'}`}>
+            <div class={contentClass}>
                 <div ref={bodyRef} class="markdown-body md-conv" dangerouslySetInnerHTML={{ __html: html }} />
                 {streaming && <span class="chat-cursor">▍</span>}
             </div>
@@ -332,12 +350,20 @@ function AssistantContent({
     );
 }
 
-function AssistantBubble({ content, streaming }: { content: string; streaming: boolean }) {
+function AssistantBubble({
+    content,
+    streaming,
+    limitHeight = true,
+}: {
+    content: string;
+    streaming: boolean;
+    limitHeight?: boolean;
+}) {
     return (
         <div class="chat-message-row chat-message-row-assistant">
             <div class="chat-bubble chat-bubble-assistant">
                 <div class="chat-bubble-body">
-                    <AssistantContent content={content} streaming={streaming} showActions />
+                    <AssistantContent content={content} streaming={streaming} showActions limitHeight={limitHeight} />
                 </div>
             </div>
         </div>

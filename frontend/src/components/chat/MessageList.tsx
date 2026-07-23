@@ -440,37 +440,53 @@ export function MessageList({ items, typing, emptyHint, loading, loadingHint, on
         }
     }
 
+    // Newest assistant body is unlimited; earlier ones keep max-height fold.
+    let latestAssistantIndex = -1;
+    for (let i = groupedItems.length - 1; i >= 0; i--) {
+        if (groupedItems[i].kind === 'assistant_text') {
+            latestAssistantIndex = i;
+            break;
+        }
+    }
+
+    // Two-layer scroll (same idea as WorkspaceScopePicker):
+    //   .chat-messages       — shell, overflow hidden, fills panel
+    //   .chat-messages-body  — outer: conversation timeline
+    //   long blocks inside   — inner: max-height + overflow-y (older assistant / tools)
     return (
-        <div
-            class="chat-messages"
-            ref={scrollRef}
-            onScroll={handleScroll}
-            onPointerDown={() => {
-                interactingRef.current = true;
-            }}
-            onPointerUp={() => {
-                interactingRef.current = false;
-            }}
-            onPointerCancel={() => {
-                interactingRef.current = false;
-            }}
-        >
-            {groupedItems.map((item, index) => (
-                <MessageBubble
-                    key={item.id}
-                    item={item}
-                    isLast={index === groupedItems.length - 1}
-                    active={typing && index === activeProcessIndex}
-                    onCancelQueued={onCancelQueued}
-                />
-            ))}
-            {showTyping && (
-                <div class="chat-typing-row" aria-label="thinking">
-                    <span class="chat-typing-dot" />
-                    <span class="chat-typing-dot" />
-                    <span class="chat-typing-dot" />
-                </div>
-            )}
+        <div class="chat-messages">
+            <div
+                class="chat-messages-body"
+                ref={scrollRef}
+                onScroll={handleScroll}
+                onPointerDown={() => {
+                    interactingRef.current = true;
+                }}
+                onPointerUp={() => {
+                    interactingRef.current = false;
+                }}
+                onPointerCancel={() => {
+                    interactingRef.current = false;
+                }}
+            >
+                {groupedItems.map((item, index) => (
+                    <MessageBubble
+                        key={item.id}
+                        item={item}
+                        isLast={index === groupedItems.length - 1}
+                        active={typing && index === activeProcessIndex}
+                        isLatestAssistant={index === latestAssistantIndex}
+                        onCancelQueued={onCancelQueued}
+                    />
+                ))}
+                {showTyping && (
+                    <div class="chat-typing-row" aria-label="thinking">
+                        <span class="chat-typing-dot" />
+                        <span class="chat-typing-dot" />
+                        <span class="chat-typing-dot" />
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

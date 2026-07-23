@@ -17583,14 +17583,41 @@ body {
   }
 }
 
+/* Two-layer scroll nest (mirrors WorkspaceScopePicker):
+ *   .chat-messages       — panel shell (overflow:hidden, flex fill)
+ *   .chat-messages-body  — outer scroller: conversation timeline
+ *   long blocks inside   — inner scroller: assistant content / tool groups
+ *     (max-height + overflow-y + overscroll-behavior: contain)
+ */
 .chat-messages {
   flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--chat-bg-page);
+}
+
+.chat-messages-body {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 20px 24px 24px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  background: var(--chat-bg-page);
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background-color: var(--border-color);
+    border-radius: 3px;
+  }
+  &::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
 }
 
 .chat-empty {
@@ -17745,7 +17772,7 @@ body {
 }
 
 @media (max-width: 768px) {
-  .chat-messages {
+  .chat-messages-body {
     padding-left: 8px;
     padding-right: 8px;
   }
@@ -17768,9 +17795,13 @@ body {
   min-width: 0;
 }
 
+/* Inner scroller: older assistant answers stay nested with a height cap.
+ * Latest answer uses .is-unlimited (no max-height) so it grows with the
+ * outer timeline instead of folding. */
 .chat-assistant-content {
-  max-height: 320px;
+  max-height: 30em;
   overflow-y: auto;
+  overscroll-behavior: contain;
 
   &::-webkit-scrollbar {
     width: 6px;
@@ -17791,8 +17822,14 @@ body {
   }
 
   &.is-expanded {
+    max-height: min(70vh, 720px);
+    overflow-y: auto;
+  }
+
+  /* Newest assistant_text: full body, scroll with outer .chat-messages-body */
+  &.is-unlimited {
     max-height: none;
-    overflow: visible;
+    overflow-y: visible;
   }
 }
 
@@ -17878,6 +17915,7 @@ body {
 .chat-thinking-body {
   max-height: 320px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   white-space: pre-wrap;
   word-wrap: break-word;
   margin-top: 6px;
@@ -18137,7 +18175,12 @@ body {
   animation: chat-loading-spin 0.8s linear infinite;
 }
 
+/* Inner scroller: expanded tool group body — header stays sticky in outer flow,
+ * long tool lists roll inside this pane instead of stretching the timeline. */
 .chat-tool-calls-list {
+  max-height: min(50vh, 480px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   // No top border / fill — header underline already separates the list.
@@ -18145,6 +18188,17 @@ body {
   background: transparent;
   // Child tools indented under the group header (parent → child hierarchy).
   padding-left: 2ch;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background-color: var(--border-color);
+    border-radius: 3px;
+  }
+  &::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
 }
 
 .chat-tool-row {
@@ -18379,6 +18433,7 @@ body {
   word-break: break-all;
   max-height: 240px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 
   &::-webkit-scrollbar {
     width: 6px;
@@ -18662,6 +18717,7 @@ body {
   word-break: break-all;
   max-height: 200px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 
   &::-webkit-scrollbar {
     width: 6px;
