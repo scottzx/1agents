@@ -43,6 +43,69 @@ function assistantShortLabel(name: string): string {
     return chars[0] || '?';
 }
 
+/** Session kind: ordinary chat / task-linked chat / terminal. */
+type SessionKindFilter = 'all' | 'normal' | 'task' | 'terminal';
+/** Last-reply window for chat sessions (terminals have no reply timestamp). */
+type SessionTimeFilter = 'all' | '1h' | '1d' | '1w' | 'custom';
+
+function sessionActivityMs(c: ChatSession): number {
+    const raw = c.lastEventAt || c.createdAt || '';
+    if (!raw) return 0;
+    const ts = Date.parse(raw);
+    return Number.isFinite(ts) ? ts : 0;
+}
+
+function timeBounds(
+    time: SessionTimeFilter,
+    customFrom: string,
+    customTo: string
+): { minTs: number; maxTs: number } {
+    let minTs = 0;
+    let maxTs = Number.POSITIVE_INFINITY;
+    if (time === '1h') minTs = Date.now() - 3_600_000;
+    else if (time === '1d') minTs = Date.now() - 86_400_000;
+    else if (time === '1w') minTs = Date.now() - 7 * 86_400_000;
+    else if (time === 'custom') {
+        if (customFrom) {
+            const d = Date.parse(`${customFrom}T00:00:00`);
+            if (Number.isFinite(d)) minTs = d;
+        }
+        if (customTo) {
+            const d = Date.parse(`${customTo}T23:59:59.999`);
+            if (Number.isFinite(d)) maxTs = d;
+        }
+    }
+    return { minTs, maxTs };
+}
+
+/** Filter chat sessions by kind + last-reply window. Kind=terminal → no chats. */
+function filterChatsByRules(
+    sessions: ChatSession[],
+    kind: SessionKindFilter,
+    time: SessionTimeFilter,
+    customFrom: string,
+    customTo: string
+): ChatSession[] {
+    if (kind === 'terminal') return [];
+
+    const { minTs, maxTs } = timeBounds(time, customFrom, customTo);
+    return sessions.filter(c => {
+        if (kind === 'normal' && c.taskId) return false;
+        if (kind === 'task' && !c.taskId) return false;
+        if (time !== 'all') {
+            const ts = sessionActivityMs(c);
+            if (ts < minTs || ts > maxTs) return false;
+        }
+        return true;
+    });
+}
+
+/** Terminals only when kind is all or terminal; hidden for chat-only kinds. */
+function filterTermsByKind(terms: Session[], kind: SessionKindFilter): Session[] {
+    if (kind === 'normal' || kind === 'task') return [];
+    return terms;
+}
+
 const SECTION_OPEN_KEY = {
     tasks: '1agents-sidebar-section-tasks',
     projects: '1agents-sidebar-section-projects',
@@ -322,6 +385,13 @@ export function LeftSidebar({
     const [projectSearchOpen, setProjectSearchOpen] = useState(false);
     /** Flat task list filter: null = all assistants; else workspace id. */
     const [taskFilterWsId, setTaskFilterWsId] = useState<string | null>(null);
+    /** Global session filters (kind + last-reply window for chats). */
+    const [sessionKindFilter, setSessionKindFilter] = useState<SessionKindFilter>('all');
+    const [sessionTimeFilter, setSessionTimeFilter] = useState<SessionTimeFilter>('all');
+    const [sessionTimeFrom, setSessionTimeFrom] = useState('');
+    const [sessionTimeTo, setSessionTimeTo] = useState('');
+    const [sessionFilterOpen, setSessionFilterOpen] = useState(false);
+    const sessionFilterRef = useRef<HTMLDivElement | null>(null);
     /** Section-level fold: 任务 / 项目 region expand (persisted). */
     const [tasksSectionOpen, setTasksSectionOpen] = useState(() => readSectionOpen('tasks', true));
     const [projectsSectionOpen, setProjectsSectionOpen] = useState(() => readSectionOpen('projects', true));
@@ -351,6 +421,25 @@ export function LeftSidebar({
     // Task id → title map for the optional session task badge (issue
     // model: sessions linked to a task show 📋 <task title>).
     const [taskTitles, setTaskTitles] = useState<Record<string, string>>({});
+
+    const sessionFilterActive = sessionKindFilter !== 'all' || sessionTimeFilter !== 'all';
+
+    useEffect(() => {
+        if (!sessionFilterOpen) return;
+        const onDown = (e: MouseEvent) => {
+            const el = sessionFilterRef.current;
+            if (el && !el.contains(e.target as Node)) setSessionFilterOpen(false);
+        };
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setSessionFilterOpen(false);
+        };
+        document.addEventListener('mousedown', onDown);
+        document.addEventListener('keydown', onKey);
+        return () => {
+            document.removeEventListener('mousedown', onDown);
+            document.removeEventListener('keydown', onKey);
+        };
+    }, [sessionFilterOpen]);
 
     const hasTaskLinkedSession = chatSessionsSignal.value.some(c => !c.archived && Boolean(c.taskId));
     const folderIdsKey = folders.map(f => f.id).join(',');
@@ -454,10 +543,17 @@ export function LeftSidebar({
     );
     void chatIndexRev.value;
 
-    /** Chat rows from chatSessions (SoT) + terminal rows from folder.sessions. */
+    /** Chat rows from chatSessions (SoT) + terminal rows from folder.sessions.
+     *  Global session filters apply in both 任务 and 项目 sections. */
     const sessionsForFolder = (folderId: string, folderSessions: Session[]) => ({
-        chats: chatsForWorkspace(folderId),
-        terms: terminalsForFolderSessions(folderSessions),
+        chats: filterChatsByRules(
+            chatsForWorkspace(folderId),
+            sessionKindFilter,
+            sessionTimeFilter,
+            sessionTimeFrom,
+            sessionTimeTo
+        ),
+        terms: filterTermsByKind(terminalsForFolderSessions(folderSessions), sessionKindFilter),
     });
 
     const openAssistantDetail = (workspaceId: string) => {
@@ -510,8 +606,21 @@ export function LeftSidebar({
         'oneshot', // legacy sentinel sessions
     ];
     const assistantById = new Map([...assistantWorkspaces, ...tmpWorkspaces].map(w => [w.id, w] as const));
-    const taskChats: ChatSession[] = chatsForAssistants(taskWorkspaceIds, taskFilterWsId);
+    const taskChats: ChatSession[] = filterChatsByRules(
+        chatsForAssistants(taskWorkspaceIds, taskFilterWsId),
+        sessionKindFilter,
+        sessionTimeFilter,
+        sessionTimeFrom,
+        sessionTimeTo
+    );
     const showProjects = !isBeginnerMode.value;
+
+    const clearSessionFilters = () => {
+        setSessionKindFilter('all');
+        setSessionTimeFilter('all');
+        setSessionTimeFrom('');
+        setSessionTimeTo('');
+    };
 
     return (
         <aside
@@ -676,9 +785,139 @@ export function LeftSidebar({
                                 <button type="button" class="section-header-label" onClick={toggleTasksSection}>
                                     {t('sidebar.section.tasks', language)}
                                 </button>
-                                {tasksSectionOpen && (
-                                    <div class="section-header-actions">
+                                <div class="section-header-actions">
+                                    <div class="session-filter-host" ref={sessionFilterRef}>
                                         <button
+                                            type="button"
+                                            class={`section-search-btn${
+                                                sessionFilterOpen || sessionFilterActive ? ' active' : ''
+                                            }`}
+                                            title={t('sidebar.sessionFilter', language)}
+                                            aria-label={t('sidebar.sessionFilter', language)}
+                                            aria-expanded={sessionFilterOpen}
+                                            aria-haspopup="dialog"
+                                            onClick={() => setSessionFilterOpen(v => !v)}
+                                        >
+                                            <svg
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                                aria-hidden="true"
+                                            >
+                                                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+                                            </svg>
+                                        </button>
+                                        {sessionFilterOpen && (
+                                            <div
+                                                class="session-filter-popover"
+                                                role="dialog"
+                                                aria-label={t('sidebar.sessionFilter', language)}
+                                            >
+                                                <div class="session-filter-section">
+                                                    <div class="session-filter-label">
+                                                        {t('sidebar.sessionFilter.link', language)}
+                                                    </div>
+                                                    <div class="session-filter-chips" role="group">
+                                                        {(
+                                                            [
+                                                                ['all', 'sidebar.sessionFilter.link.all'],
+                                                                ['normal', 'sidebar.sessionFilter.link.normal'],
+                                                                ['task', 'sidebar.sessionFilter.link.task'],
+                                                                ['terminal', 'sidebar.sessionFilter.link.terminal'],
+                                                            ] as const
+                                                        ).map(([value, key]) => (
+                                                            <button
+                                                                key={value}
+                                                                type="button"
+                                                                class={`session-filter-chip${
+                                                                    sessionKindFilter === value ? ' active' : ''
+                                                                }`}
+                                                                onClick={() => setSessionKindFilter(value)}
+                                                            >
+                                                                {t(key, language)}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                                <div class="session-filter-section">
+                                                    <div class="session-filter-label">
+                                                        {t('sidebar.sessionFilter.time', language)}
+                                                    </div>
+                                                    <div class="session-filter-chips" role="group">
+                                                        {(
+                                                            [
+                                                                ['all', 'sidebar.sessionFilter.time.all'],
+                                                                ['1h', 'sidebar.sessionFilter.time.1h'],
+                                                                ['1d', 'sidebar.sessionFilter.time.1d'],
+                                                                ['1w', 'sidebar.sessionFilter.time.1w'],
+                                                                ['custom', 'sidebar.sessionFilter.time.custom'],
+                                                            ] as const
+                                                        ).map(([value, key]) => (
+                                                            <button
+                                                                key={value}
+                                                                type="button"
+                                                                class={`session-filter-chip${
+                                                                    sessionTimeFilter === value ? ' active' : ''
+                                                                }`}
+                                                                onClick={() => setSessionTimeFilter(value)}
+                                                            >
+                                                                {t(key, language)}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    {sessionTimeFilter === 'custom' && (
+                                                        <div class="session-filter-range">
+                                                            <label class="session-filter-date">
+                                                                <span>
+                                                                    {t('sidebar.sessionFilter.time.from', language)}
+                                                                </span>
+                                                                <input
+                                                                    type="date"
+                                                                    value={sessionTimeFrom}
+                                                                    max={sessionTimeTo || undefined}
+                                                                    onInput={(e: Event) =>
+                                                                        setSessionTimeFrom(
+                                                                            (e.target as HTMLInputElement).value
+                                                                        )
+                                                                    }
+                                                                />
+                                                            </label>
+                                                            <label class="session-filter-date">
+                                                                <span>
+                                                                    {t('sidebar.sessionFilter.time.to', language)}
+                                                                </span>
+                                                                <input
+                                                                    type="date"
+                                                                    value={sessionTimeTo}
+                                                                    min={sessionTimeFrom || undefined}
+                                                                    onInput={(e: Event) =>
+                                                                        setSessionTimeTo(
+                                                                            (e.target as HTMLInputElement).value
+                                                                        )
+                                                                    }
+                                                                />
+                                                            </label>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                {sessionFilterActive && (
+                                                    <button
+                                                        type="button"
+                                                        class="session-filter-clear"
+                                                        onClick={clearSessionFilters}
+                                                    >
+                                                        {t('sidebar.sessionFilter.clear', language)}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                    {tasksSectionOpen && (
+                                        <button
+                                            type="button"
                                             class="section-search-btn"
                                             title={t('sidebar.addAssistant', language)}
                                             onClick={openCreateAssistantModal}
@@ -695,8 +934,8 @@ export function LeftSidebar({
                                                 <line x1="5" y1="12" x2="19" y2="12" />
                                             </svg>
                                         </button>
-                                    </div>
-                                )}
+                                    )}
+                                </div>
                             </div>
                             {tasksSectionOpen && (
                                 <Fragment>
@@ -752,7 +991,14 @@ export function LeftSidebar({
                                     ) : taskChats.length === 0 ? (
                                         <div class="chat-item" style="opacity:0.5;cursor:default;pointer-events:none;">
                                             <div class="chat-item-left">
-                                                <span class="chat-title">{t('sidebar.noChats', language)}</span>
+                                                <span class="chat-title">
+                                                    {t(
+                                                        sessionFilterActive
+                                                            ? 'sidebar.sessionFilter.empty'
+                                                            : 'sidebar.noChats',
+                                                        language
+                                                    )}
+                                                </span>
                                             </div>
                                         </div>
                                     ) : (

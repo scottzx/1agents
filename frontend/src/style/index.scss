@@ -851,6 +851,12 @@ body {
       color: var(--text-sidebar-muted);
       padding: 8px 4px;
 
+      /* Popover lives inside this sticky stacking context; raise above the
+       * next section's sticky title (e.g. 项目) while the filter is open. */
+      &:has(.session-filter-popover) {
+        z-index: 20;
+      }
+
       .section-fold-btn {
         display: flex;
         align-items: center;
@@ -939,6 +945,126 @@ body {
 
         &:hover { opacity: 1; background: var(--btn-hover); }
         &.active { opacity: 1; color: var(--accent-fg); }
+      }
+
+      /* Session filter popover (task-section header). Floating overlay. */
+      .session-filter-host {
+        position: relative;
+        flex-shrink: 0;
+      }
+
+      .session-filter-popover {
+        position: absolute;
+        top: calc(100% + 6px);
+        right: 0;
+        z-index: 30;
+        width: min(228px, calc(100vw - 48px));
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: var(--bento-radius, 10px);
+        box-shadow: var(--shadow-md, 0 8px 24px rgba(0, 0, 0, 0.18));
+        text-transform: none;
+        letter-spacing: normal;
+        font-weight: 400;
+        color: var(--text-main);
+      }
+
+      .session-filter-section {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .session-filter-label {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        color: var(--text-muted);
+      }
+
+      .session-filter-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .session-filter-chip {
+        padding: 3px 10px;
+        font-size: 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 999px;
+        background: var(--bg-panel);
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: border-color 0.15s, color 0.15s, background 0.15s;
+
+        &:hover {
+          border-color: var(--text-main);
+          color: var(--text-main);
+        }
+
+        &.active {
+          background: var(--accent-color);
+          border-color: var(--accent-color);
+          color: var(--on-accent, #fff);
+        }
+      }
+
+      .session-filter-range {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 2px;
+      }
+
+      .session-filter-date {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 12px;
+        color: var(--text-secondary);
+
+        span {
+          flex-shrink: 0;
+          min-width: 2em;
+        }
+
+        input[type='date'] {
+          flex: 1;
+          min-width: 0;
+          padding: 4px 6px;
+          font-size: 12px;
+          border: 1px solid var(--border-color);
+          border-radius: 6px;
+          background: var(--bg-page);
+          color: var(--text-main);
+          color-scheme: light dark;
+
+          &:focus {
+            outline: none;
+            border-color: var(--accent-color);
+          }
+        }
+      }
+
+      .session-filter-clear {
+        align-self: flex-start;
+        padding: 4px 0;
+        font-size: 12px;
+        border: none;
+        background: none;
+        color: var(--danger-fg);
+        cursor: pointer;
+
+        &:hover {
+          text-decoration: underline;
+        }
       }
     }
 
