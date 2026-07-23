@@ -1,11 +1,11 @@
 import { h } from 'preact';
-import { useState, useEffect, useRef } from 'preact/hooks';
-import { useSignal } from '@preact/signals';
+import { useState, useEffect } from 'preact/hooks';
 import { Workspace, type AgentType } from '../types';
 import { t, type Lang } from '../../i18n';
 import * as wsStore from '../../stores/workspaceStore';
 import * as sess from '../../stores/sessionStore';
 import { SessionSetupForm, type TeamMemberOption } from './SessionSetupForm';
+import { WorkspaceScopePicker, ONESHOT_WORKSPACE_ID } from './WorkspaceScopePicker';
 import { soulService } from '@1agents/core/services/soulService';
 
 /**
@@ -43,7 +43,6 @@ export function NewChatHome({
     language,
 }: NewChatHomeProps) {
     const [showConfig, setShowConfig] = useState(false);
-    const [wsSearch, setWsSearch] = useState('');
     const [teamMembers, setTeamMembers] = useState<TeamMemberOption[]>([]);
     // Unified picker (no assistant/project mode switch): remember last choice.
     const [selectedWsId, setSelectedWsId] = useState(() => {
@@ -53,28 +52,14 @@ export function NewChatHome({
         return (
             workspaces.find(w => (w.kind ?? 'project') === 'workforce' && !w.deviceId)?.id ||
             workspaces.find(w => !w.deviceId)?.id ||
-            activeWorkspaceId
+            ONESHOT_WORKSPACE_ID
         );
     });
     const selectedWorkspaceId = lockedWorkspaceId ?? selectedWsId;
     const setSelectedWorkspaceId = (id: string) => setSelectedWsId(id);
-    const wsDropdownOpen = useSignal(false);
-    const wsDropdownRef = useRef<HTMLDivElement | null>(null);
 
-    const activeWorkspace = workspaces.find(w => w.id === selectedWorkspaceId) || workspaces[0];
-    const isAssistantWs = (w: Workspace) => (w.kind ?? 'project') === 'workforce';
-
-    const pickerWorkspaces = workspaces
-        .filter(ws => !ws.deviceId)
-        .filter(ws => ws.name.toLowerCase().includes(wsSearch.toLowerCase()))
-        .sort((a, b) => {
-            const ka = isAssistantWs(a) ? 0 : 1;
-            const kb = isAssistantWs(b) ? 0 : 1;
-            if (ka !== kb) return ka - kb;
-            if (a.id === 'default') return -1;
-            if (b.id === 'default') return 1;
-            return 0;
-        });
+    const isOneshot = selectedWorkspaceId === ONESHOT_WORKSPACE_ID;
+    const activeWorkspace = isOneshot ? undefined : workspaces.find(w => w.id === selectedWorkspaceId) || workspaces[0];
 
     useEffect(() => {
         const injected = wsStore.newChatWorkspaceId.value;
@@ -85,19 +70,8 @@ export function NewChatHome({
     }, [wsStore.newChatWorkspaceId.value]);
 
     useEffect(() => {
-        if (!wsDropdownOpen.value) return;
-        const handleDown = (e: MouseEvent) => {
-            if (wsDropdownRef.current && !wsDropdownRef.current.contains(e.target as Node)) {
-                wsDropdownOpen.value = false;
-            }
-        };
-        document.addEventListener('mousedown', handleDown);
-        return () => document.removeEventListener('mousedown', handleDown);
-    }, [wsDropdownOpen.value]);
-
-    useEffect(() => {
         let cancelled = false;
-        if (!selectedWorkspaceId) {
+        if (!selectedWorkspaceId || selectedWorkspaceId === ONESHOT_WORKSPACE_ID) {
             setTeamMembers([]);
             return;
         }
@@ -118,7 +92,7 @@ export function NewChatHome({
 
     const openCreate = () => {
         void sess.openSessionSetup({
-            workspaceId: selectedWorkspaceId || activeWorkspaceId,
+            workspaceId: selectedWorkspaceId || activeWorkspaceId || ONESHOT_WORKSPACE_ID,
             locked: !!lockedWorkspaceId,
             defaultAgent: activeWorkspace?.defaultAgent,
         });
@@ -130,95 +104,22 @@ export function NewChatHome({
 
     return (
         <div class="new-chat-home new-chat-home--simplified">
-            {activeWorkspace && !lockedWorkspaceId && (
-                <div class="new-chat-ws-picker-container" ref={wsDropdownRef}>
+            {!lockedWorkspaceId && (
+                <div class="new-chat-ws-picker-container new-chat-ws-picker-container--scope">
+                    <WorkspaceScopePicker
+                        workspaces={workspaces}
+                        value={selectedWorkspaceId || ONESHOT_WORKSPACE_ID}
+                        language={language}
+                        onChange={setSelectedWorkspaceId}
+                    />
                     <button
-                        class="new-chat-ws-picker-trigger"
-                        onClick={() => (wsDropdownOpen.value = !wsDropdownOpen.value)}
-                        title={t('sidebar.workspaces', language)}
+                        type="button"
+                        class="new-chat-open-folder-btn"
+                        onClick={onOpenFolder}
+                        title={t('sidebar.newWorkspace', language)}
                     >
-                        <svg
-                            class="folder-icon"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
-                        </svg>
-                        <span class="ws-name">{activeWorkspace.name}</span>
-                        <span
-                            class={`dropdown-kind-tag ${isAssistantWs(activeWorkspace) ? 'is-assistant' : 'is-project'}`}
-                        >
-                            {isAssistantWs(activeWorkspace)
-                                ? t('newchat.kind.assistant', language)
-                                : t('newchat.kind.project', language)}
-                        </span>
-                        <svg
-                            class={`chevron ${wsDropdownOpen.value ? 'open' : ''}`}
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2.5"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <polyline points="6 9 12 15 18 9" />
-                        </svg>
+                        {t('sidebar.newWorkspace', language)}
                     </button>
-                    {wsDropdownOpen.value && (
-                        <div class="new-chat-ws-dropdown">
-                            <div class="dropdown-search-wrap">
-                                <input
-                                    class="dropdown-search-input"
-                                    type="text"
-                                    placeholder={t('newchat.searchWs', language)}
-                                    value={wsSearch}
-                                    onInput={(e: Event) => setWsSearch((e.target as HTMLInputElement).value)}
-                                    autoFocus
-                                />
-                            </div>
-                            <div class="dropdown-list">
-                                {pickerWorkspaces.map(ws => (
-                                    <button
-                                        key={ws.id}
-                                        class={`dropdown-item ${ws.id === selectedWorkspaceId ? 'active' : ''}`}
-                                        onClick={() => {
-                                            setSelectedWorkspaceId(ws.id);
-                                            wsDropdownOpen.value = false;
-                                            setWsSearch('');
-                                        }}
-                                    >
-                                        <span class="item-name">{ws.name}</span>
-                                        <span
-                                            class={`dropdown-kind-tag ${
-                                                isAssistantWs(ws) ? 'is-assistant' : 'is-project'
-                                            }`}
-                                        >
-                                            {isAssistantWs(ws)
-                                                ? t('newchat.kind.assistant', language)
-                                                : t('newchat.kind.project', language)}
-                                        </span>
-                                    </button>
-                                ))}
-                                {pickerWorkspaces.length === 0 && (
-                                    <div class="dropdown-empty">{t('newchat.noWsMatch', language)}</div>
-                                )}
-                            </div>
-                            <button
-                                class="dropdown-item open-folder"
-                                onClick={() => {
-                                    onOpenFolder();
-                                    wsDropdownOpen.value = false;
-                                    setWsSearch('');
-                                }}
-                            >
-                                <span class="item-name">{t('sidebar.newWorkspace', language)}</span>
-                            </button>
-                        </div>
-                    )}
                 </div>
             )}
 

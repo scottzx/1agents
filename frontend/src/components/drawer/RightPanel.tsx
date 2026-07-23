@@ -18,6 +18,7 @@ import * as fs from '../../stores/fsStore';
 import * as wsStore from '../../stores/workspaceStore';
 import * as taskNav from '../../stores/taskNavStore';
 import * as appStore from '../../stores/appManifestStore';
+import { isOneshotWorkspaceId } from '../../utils/oneshot';
 
 interface RightPanelProps {
     activeDrawerTab: RightDrawerTab;
@@ -272,7 +273,13 @@ export function RightPanel({
                     // tabs (#331), host the task list inside ProjectShell so the
                     // 动态/计划/任务/资产 scaffold + app tabs (素材/阶段追踪 …) show.
                     // No apps enabled → bare TaskList, identical to before.
-                    (activeWorkspaceId && appStore.projectTabMounts.value.length > 0 ? (
+                    // Oneshot (单次对话) has no projects row — never open ProjectShell.
+                    (activeWorkspaceId &&
+                    activeWorkspaceId !== 'oneshot' &&
+                    !isOneshotWorkspaceId(activeWorkspaceId) &&
+                    // kind=tmp: light board only, no app ProjectShell scaffold
+                    wsStore.workspaces.value.find(w => w.id === activeWorkspaceId)?.kind !== 'tmp' &&
+                    appStore.projectTabMounts.value.length > 0 ? (
                         <ProjectShell workspaceId={activeWorkspaceId} workspaceName={activeWorkspaceName} />
                     ) : (
                         <TaskList
@@ -335,7 +342,14 @@ export function RightPanel({
                 };`}
             >
                 {activeDrawerTab === 'files' &&
-                    (viewMode === 'list' ? (
+                    (activeWorkspaceId === 'oneshot' ? (
+                        <div class="task-oneshot-empty">
+                            <div class="task-oneshot-empty-inner">
+                                <p class="task-oneshot-empty-title">{t('tasks.oneshot.emptyTitle', language)}</p>
+                                <p class="task-oneshot-empty-desc">{t('tasks.oneshot.emptyDesc', language)}</p>
+                            </div>
+                        </div>
+                    ) : viewMode === 'list' ? (
                         <FlatFileBrowser
                             flatFiles={fs.flatFiles.value}
                             flatFilesLoading={fs.flatFilesLoading.value}
@@ -385,15 +399,23 @@ export function RightPanel({
                         )
                     ))}
 
-                {activeDrawerTab === 'git' && (
-                    <GitPanel
-                        workdir={activeWorkspacePath}
-                        activeWorkspaceId={activeWorkspaceId}
-                        onLoadingChange={setGitLoading}
-                        onRegisterRefresh={fn => setGitRefreshFn(() => fn)}
-                        language={language}
-                    />
-                )}
+                {activeDrawerTab === 'git' &&
+                    (activeWorkspaceId === 'oneshot' ? (
+                        <div class="task-oneshot-empty">
+                            <div class="task-oneshot-empty-inner">
+                                <p class="task-oneshot-empty-title">{t('tasks.oneshot.emptyTitle', language)}</p>
+                                <p class="task-oneshot-empty-desc">{t('tasks.oneshot.emptyDesc', language)}</p>
+                            </div>
+                        </div>
+                    ) : (
+                        <GitPanel
+                            workdir={activeWorkspacePath}
+                            activeWorkspaceId={activeWorkspaceId}
+                            onLoadingChange={setGitLoading}
+                            onRegisterRefresh={fn => setGitRefreshFn(() => fn)}
+                            language={language}
+                        />
+                    ))}
 
                 {activeDrawerTab === 'tasks' && (
                     <TaskList workspaceId={activeWorkspaceId} onSelectSession={onSelectSession} />

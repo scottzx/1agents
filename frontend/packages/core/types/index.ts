@@ -33,11 +33,13 @@ export interface Workspace {
     defaultAgent?: import('../protocol/session').AgentType;
     builtin?: boolean;
     /**
-     * "workforce" | "project" — splits the sidebar into 助理 vs 项目 lists
-     * (Epic #184 / #190). Code kind is workforce; Chinese UI still says「助理」.
+     * "workforce" | "project" | "tmp" —
+     *   workforce — UI「助理」
+     *   project   — UI「项目」
+     *   tmp       — UI「单次/临时对话」(real path; UI may hide pwd)
      * Empty value from a legacy row is treated as "project".
      */
-    kind?: 'workforce' | 'project';
+    kind?: 'workforce' | 'project' | 'tmp';
     /** Avatar URL served by GET /avatars/ (preset or uploaded image). */
     avatar?: string;
     /**

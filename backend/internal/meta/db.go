@@ -105,7 +105,7 @@ func (db *DB) Close() error { return db.sql.Close() }
 // migrations without touching the global schemaVersion counter.
 func (db *DB) SQL() *sql.DB { return db.sql }
 
-const schemaVersion = 23
+const schemaVersion = 25
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -238,6 +238,20 @@ func (db *DB) migrateSchema() error {
 			return fmt.Errorf("meta: apply schema v23: %w", err)
 		}
 	}
+	// v24 (#202 / #204): Workspace Inbox envelope columns on inbox_items.
+	// Columns + backfill are handled by ensureInboxItemsColumns (idempotent).
+	if version < 24 {
+		if _, err := db.sql.Exec(schemaV24); err != nil {
+			return fmt.Errorf("meta: apply schema v24: %w", err)
+		}
+	}
+	// v25: sessions.cwd for oneshot (单次对话) disposable working directories.
+	// Column is added by ensureSessionsColumns (idempotent).
+	if version < 25 {
+		if _, err := db.sql.Exec(schemaV25); err != nil {
+			return fmt.Errorf("meta: apply schema v25: %w", err)
+		}
+	}
 	// Schema v9–v12 only add project_items columns, but the v9 branch collision
 	// between #47 (source, user_confirm) and #50 (verifier/review fields) left
 	// some DBs with user_version bumped to the latest while the other branch's
@@ -291,6 +305,11 @@ func (db *DB) migrateSchema() error {
 	// a sibling branch before this column landed.
 	if err := db.ensureSessionsColumns(); err != nil {
 		return fmt.Errorf("meta: reconcile sessions columns: %w", err)
+	}
+	// v24 (#202 / #204): Workspace Inbox envelope columns + backfill of legacy
+	// unscoped rows onto the builtin default assistant workspace.
+	if err := db.ensureInboxItemsColumns(); err != nil {
+		return fmt.Errorf("meta: reconcile inbox_items columns: %w", err)
 	}
 	if version < schemaVersion {
 		if _, err := db.sql.Exec(fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)); err != nil {
@@ -515,6 +534,8 @@ func (db *DB) ensureSessionsColumns() error {
 	type col struct{ name, ddl string }
 	wanted := []col{
 		{"user_named", "ALTER TABLE sessions ADD COLUMN user_named INTEGER NOT NULL DEFAULT 0"},
+		// Oneshot chats store the disposable agent cwd here (not a real project path).
+		{"cwd", "ALTER TABLE sessions ADD COLUMN cwd TEXT NOT NULL DEFAULT ''"},
 	}
 	for _, c := range wanted {
 		if have[c.name] {
@@ -912,6 +933,59 @@ const schemaV22 = ``
 // is applied unconditionally by migrateAssistantKindIfNeeded; the const body is
 // intentionally empty — the version counter marks the cutover complete.
 const schemaV23 = ``
+
+// schemaV24 (#202 / #204) extends inbox_items with Workspace envelope fields.
+// Column adds + legacy backfill run via ensureInboxItemsColumns (unconditional,
+// idempotent) so half-migrated DBs still heal.
+const schemaV24 = ``
+
+// schemaV25 adds sessions.cwd for oneshot (单次对话) sessions. Column is added
+// by ensureSessionsColumns (idempotent ADD COLUMN).
+const schemaV25 = ``
+
+// ensureInboxItemsColumns adds Workspace Inbox envelope columns (#202 Phase 1)
+// when missing and backfills empty workspace_id onto the builtin default
+// assistant ("default"). Idempotent and independent of user_version.
+func (db *DB) ensureInboxItemsColumns() error {
+	has, err := db.tableExists("inbox_items")
+	if err != nil || !has {
+		return err
+	}
+	have, err := db.tableColumns("inbox_items")
+	if err != nil {
+		return err
+	}
+	type col struct{ name, ddl string }
+	wanted := []col{
+		{"workspace_id", "ALTER TABLE inbox_items ADD COLUMN workspace_id TEXT NOT NULL DEFAULT ''"},
+		{"from_workspace_id", "ALTER TABLE inbox_items ADD COLUMN from_workspace_id TEXT NOT NULL DEFAULT ''"},
+		{"from_ref", "ALTER TABLE inbox_items ADD COLUMN from_ref TEXT NOT NULL DEFAULT ''"},
+		{"payload", "ALTER TABLE inbox_items ADD COLUMN payload TEXT NOT NULL DEFAULT ''"},
+	}
+	for _, c := range wanted {
+		if have[c.name] {
+			continue
+		}
+		if _, err := db.sql.Exec(c.ddl); err != nil {
+			return fmt.Errorf("add inbox_items.%s: %w", c.name, err)
+		}
+	}
+	// Legacy unscoped rows (pre-#202 global Inbox) land on the builtin default
+	// assistant workforce — 总助/默认助理 id is always "default".
+	if _, err := db.sql.Exec(
+		`UPDATE inbox_items SET workspace_id = ? WHERE TRIM(workspace_id) = ''`,
+		DefaultInboxWorkspaceID,
+	); err != nil {
+		return fmt.Errorf("backfill inbox_items.workspace_id: %w", err)
+	}
+	// Index for per-workspace list/unread badge queries.
+	if _, err := db.sql.Exec(
+		`CREATE INDEX IF NOT EXISTS idx_inbox_workspace_status ON inbox_items(workspace_id, status, created_at DESC)`,
+	); err != nil {
+		return fmt.Errorf("create idx_inbox_workspace_status: %w", err)
+	}
+	return nil
+}
 
 // migrateAssistantKindIfNeeded rewrites legacy projects.kind='assistant' to
 // 'workforce' (Epic #184 §0.4 / #189). Idempotent; no dual-read path remains.

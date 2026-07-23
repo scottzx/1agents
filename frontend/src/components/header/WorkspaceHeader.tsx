@@ -271,18 +271,19 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
     const activeWs = workspaces.value.find(w => w.id === activeWorkspaceId.value);
     const wsKind = activeWs?.kind ?? 'project';
     const isAssistantCtx = wsKind === 'workforce';
+    const isTmpCtx = wsKind === 'tmp' || !!activeWs?.id?.startsWith('tmp-');
     const isProjectCtx = !!activeWs && wsKind === 'project' && !activeWs.builtin && activeWs.id !== 'default';
-    const isEntityCtx = isAssistantCtx || isProjectCtx;
+    const isEntityCtx = isAssistantCtx || isProjectCtx || isTmpCtx;
     const openOverview = () => {
         if (isAssistantCtx) {
             tabsStore.assistantDetailId.value = null;
             tabsStore.activeDrawerTab.value = 'assistants';
-        } else {
+        } else if (!isTmpCtx) {
             stage.projectOverview();
         }
     };
     const openEntityDetail = () => {
-        if (!activeWs) return;
+        if (!activeWs || isTmpCtx) return;
         if (isAssistantCtx) {
             tabsStore.assistantDetailId.value = activeWs.id;
             tabsStore.activeDrawerTab.value = 'assistants';
@@ -291,16 +292,22 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
         }
     };
     // L3 crumb: the new-chat landing shows 新建对话 until the session starts,
-    // then the session title takes its place.
+    // then the session title takes its place. Tmp hides the path; breadcrumb is 单次对话 › session.
     const entityLeaf = activeTab === 'new_chat' ? t('assistant.detail.newChat', language) : sessionName;
-    const rootLabel = isAssistantCtx ? t('sidebar.assistants', language) : t('projectHome.title', language);
+    const rootLabel = isTmpCtx
+        ? t('newchat.kind.oneshot', language)
+        : isAssistantCtx
+          ? t('sidebar.assistants', language)
+          : t('projectHome.title', language);
     const entityCrumbs = activeWs
-        ? [
-              { label: rootLabel, onClick: openOverview },
-              ...(entityLeaf
-                  ? [{ label: activeWs.name, onClick: openEntityDetail }, { label: entityLeaf }]
-                  : [{ label: activeWs.name }]),
-          ]
+        ? isTmpCtx
+            ? [{ label: rootLabel }, ...(entityLeaf ? [{ label: entityLeaf }] : [{ label: activeWs.name }])]
+            : [
+                  { label: rootLabel, onClick: openOverview },
+                  ...(entityLeaf
+                      ? [{ label: activeWs.name, onClick: openEntityDetail }, { label: entityLeaf }]
+                      : [{ label: activeWs.name }]),
+              ]
         : [];
 
     // Show the current session: close any open artifact drawer (keeps the

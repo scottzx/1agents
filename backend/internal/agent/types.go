@@ -188,4 +188,9 @@ type IndexRequest struct {
 	// Role marks a special-purpose session ("pm" = AI Project Manager).
 	// Empty for an ordinary chat. See meta.ChatSessionRecord.Role.
 	Role string `json:"role"`
+	// Ephemeral marks a "单次对话" (oneshot) session: no real project workspace.
+	// The server allocates workspace_id=oneshot and a disposable cwd under
+	// /tmp/1agents-chat/<random>. Also accepted when workspace_id is already
+	// "oneshot".
+	Ephemeral bool `json:"ephemeral,omitempty"`
 }

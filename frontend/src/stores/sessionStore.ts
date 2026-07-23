@@ -398,13 +398,12 @@ export const loadChatSessions = async (workspaceId?: string) => {
  */
 export const loadAllChatSessions = async () => {
     const wss = wsStore.workspaces.value;
-    if (wss.length === 0) return;
     try {
         // Skip any workspace with a blank id — the backend rejects
         // workspace_id= with 400, and a blank-id row is never a real workspace.
-        const lists = await Promise.all(
-            wss.filter(w => w.id).map(w => agentService.list(w.id, true).catch(() => [] as ChatSession[]))
-        );
+        // kind=tmp workspaces are in the registry; also load legacy workspace_id=oneshot.
+        const ids = [...new Set([...wss.filter(w => w.id).map(w => w.id), 'oneshot'])];
+        const lists = await Promise.all(ids.map(id => agentService.list(id, true).catch(() => [] as ChatSession[])));
         chatSessions.value = lists.flat().map(c => ({
             ...c,
             forkSupported: c.forkSupported ?? (c.agentType === 'claudecode' ? true : undefined),
@@ -433,38 +432,46 @@ export const createChatSession = async (
     role?: string,
     permissionMode?: import('../components/types').PermissionMode,
     taskId?: string,
-    agentRef?: string
+    agentRef?: string,
+    ephemeral?: boolean
 ) => {
-    const ws = wsStore.workspaces.value.find(w => w.id === workspaceId);
-    if (!ws) {
+    const wantTmp = ephemeral || workspaceId === 'oneshot';
+    const ws = wantTmp ? undefined : wsStore.workspaces.value.find(w => w.id === workspaceId);
+    if (!wantTmp && !ws) {
         ui.showToast('工作空间不存在');
         return;
     }
     try {
         ui.showToast('正在创建聊天会话…');
-        // Switch the real workspace context (terminal/fs/chat list) only now,
-        // when a message is actually sent — the new-chat picker is frontend-only.
-        if (wsStore.activeWorkspaceId.value !== workspaceId) {
-            await wsStore.selectWorkspace(ws);
-        }
-        // Web 会话纯走 1acp:直接登记到 1agents 索引,不再在 cc-connect 建会话。
+        // Web 会话纯走 1acp:直接登记到 1agents 索引。
+        // ephemeral → backend mints kind=tmp workspace (tmp-<id>) + seeded cwd.
         const indexed = await agentService.index({
-            workspace_id: workspaceId,
+            workspace_id: wantTmp ? 'oneshot' : workspaceId,
             name: name || `${agentType} 会话`,
             agent_type: agentType,
             role,
             permission_mode: permissionMode,
             task_id: taskId,
+            ephemeral: wantTmp || undefined,
         });
-        await loadChatSessions(workspaceId);
-        // Auto-select the new session and switch to the agents tab. agentRef is a
-        // transient expert pick — carried on the in-memory session so the first
-        // chat-WS connect forwards it (persona is injected once, on that connect).
-        activeSession.value = { ...indexed, agentRef, active: true };
+        if (wantTmp) {
+            // Bind side pane / fs to the real tmp workspace (path may stay hidden in UI).
+            const tmpWs = wsStore.ensureTmpWorkspace({
+                id: indexed.workspaceId,
+                name: indexed.name || '单次对话',
+                path: indexed.cwd || '',
+            });
+            await wsStore.selectWorkspace(tmpWs, { skipLanding: true });
+        } else if (ws && wsStore.activeWorkspaceId.value !== workspaceId) {
+            await wsStore.selectWorkspace(ws);
+        }
+        await loadChatSessions(indexed.workspaceId);
+        activeSession.value = {
+            ...indexed,
+            agentRef: wantTmp ? undefined : agentRef,
+            active: true,
+        };
         pendingInitialMessage.value = initialMessage || null;
-        // Switch the primary pane to the new chat. activeTabId must move off
-        // 'tasks' too, otherwise the kanban stays on top and the new session
-        // never shows (the project-landing → session switch bug).
         tabsStore.activeTabId.value = 'terminal';
         tabsStore.activeTab.value = 'agents';
         ui.showToast('聊天会话已创建 ✓');
@@ -500,9 +507,11 @@ export const createFromSessionSetup = async (args: {
     initialMessage?: string;
     taskId?: string;
     agentRef?: string;
+    ephemeral?: boolean;
 }) => {
-    const ws = wsStore.workspaces.value.find(w => w.id === args.workspaceId);
-    if (!ws) {
+    const isOneshot = args.ephemeral || args.workspaceId === 'oneshot';
+    const ws = isOneshot ? undefined : wsStore.workspaces.value.find(w => w.id === args.workspaceId);
+    if (!isOneshot && !ws) {
         ui.showToast('工作空间不存在');
         return;
     }
@@ -511,14 +520,15 @@ export const createFromSessionSetup = async (args: {
     const name = (args.name || '').trim() || `${label} 会话`;
     // No role / permission on the unified path (PRD §5.4).
     await createChatSession(
-        args.workspaceId,
+        isOneshot ? 'oneshot' : args.workspaceId,
         name,
         agentType,
         args.initialMessage,
         undefined,
         undefined,
         args.taskId,
-        args.agentRef || undefined
+        isOneshot ? undefined : args.agentRef || undefined,
+        isOneshot
     );
 };
 
@@ -979,14 +989,34 @@ export const selectSession = async (session: Session) => {
             sessions,
         };
     });
-    localStorage.setItem('1agents-active-workspace', session.workspaceId);
+    // Tmp / 单次对话: real workspace id (tmp-…) — activate it so side pane uses
+    // its pwd. Bare legacy "oneshot" sentinel has no project row; heal away.
+    const chat = isChat(session) ? (session as ChatSession) : null;
+    const isTmpSession = Boolean(chat && chat.workspaceId.startsWith('tmp-'));
+    const isLegacyOneshot = Boolean(chat && chat.workspaceId === 'oneshot');
+    if (isLegacyOneshot) {
+        const fallback = workspaces.find(w => w.id && w.id !== 'oneshot' && !w.id.startsWith('tmp-'));
+        if (fallback) {
+            localStorage.setItem('1agents-active-workspace', fallback.id);
+            wsStore.activeWorkspaceId.value = fallback.id;
+        }
+    } else {
+        localStorage.setItem('1agents-active-workspace', session.workspaceId);
+        wsStore.activeWorkspaceId.value = session.workspaceId;
+        if (isTmpSession && chat) {
+            wsStore.ensureTmpWorkspace({
+                id: chat.workspaceId,
+                name: chat.name || '单次对话',
+                path: chat.cwd || '',
+            });
+        }
+    }
     activeSession.value = { ...session, active: true };
     // A session opened with a transient initialMessage (issue-model follow-up /
     // new-session reply) auto-sends that prompt once ChatPanel is ready. Plain
     // switches carry none, which also clears any stale pending message.
     pendingInitialMessage.value = (isChat(session) && session.initialMessage) || null;
     wsStore.folders.value = updatedFolders;
-    wsStore.activeWorkspaceId.value = session.workspaceId;
     tabsStore.activeTabId.value = 'terminal';
     // Chat sessions live in the agents tab; terminals in the terminal tab.
     tabsStore.activeTab.value = isChat(session) ? 'agents' : 'terminal';
@@ -994,8 +1024,15 @@ export const selectSession = async (session: Session) => {
     // Chat sessions don't need tmux / fs / git context switching; just
     // ensure the workspace is loaded and we're done.
     if (isChat(session)) {
-        if (session.workspaceId !== oldWorkspaceId) {
-            const ws = workspaces.find(w => w.id === session.workspaceId);
+        if (!isLegacyOneshot && session.workspaceId !== oldWorkspaceId) {
+            let ws = workspaces.find(w => w.id === session.workspaceId);
+            if (!ws && isTmpSession && chat) {
+                ws = wsStore.ensureTmpWorkspace({
+                    id: chat.workspaceId,
+                    name: chat.name || '单次对话',
+                    path: chat.cwd || '',
+                });
+            }
             if (ws) await fs.switchFsContext(ws);
         }
         // Rebuild sidebar from the full index (includes archived for the grid).

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { t, type Lang } from '../../i18n';
 import type { Workspace, AgentType } from '../types';
 import { SessionSetupForm, type SessionSetupFormValues, type TeamMemberOption } from './SessionSetupForm';
+import { ONESHOT_WORKSPACE_ID } from './WorkspaceScopePicker';
 import { soulService } from '@1agents/core/services/soulService';
 
 /**
@@ -51,7 +52,7 @@ export function SessionSetupModal({
     useEffect(() => {
         const wsId = locked ? defaultWorkspaceId : formWorkspaceId || defaultWorkspaceId;
         let cancelled = false;
-        if (!wsId) {
+        if (!wsId || wsId === ONESHOT_WORKSPACE_ID) {
             setTeamMembers([]);
             return;
         }
@@ -74,7 +75,7 @@ export function SessionSetupModal({
     const subtitle = workspaceName ? ` · ${workspaceName}` : '';
 
     return (
-        <div class="ws-modal-overlay" onClick={onCancel}>
+        <div class="ws-modal-overlay session-setup-overlay" onClick={onCancel}>
             <div class="ws-modal session-setup-modal" onClick={(e: MouseEvent) => e.stopPropagation()}>
                 <div class="ws-modal-header">
                     <span>

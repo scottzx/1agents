@@ -89,9 +89,11 @@ export function ModalHost() {
                 (() => {
                     const locked = !!sessionSetupOpts.locked && !!sessionSetupOpts.workspaceId;
                     const defaultWsId =
-                        sessionSetupOpts.workspaceId || wsStore.activeWorkspaceId.value || workspaces[0]?.id || '';
+                        sessionSetupOpts.workspaceId ||
+                        wsStore.activeWorkspaceId.value ||
+                        workspaces[0]?.id ||
+                        'oneshot';
                     const ws = workspaces.find(w => w.id === defaultWsId);
-                    if (!defaultWsId && workspaces.length === 0) return null;
                     return (
                         <SessionSetupModal
                             workspaces={workspaces}
@@ -112,6 +114,7 @@ export function ModalHost() {
                                     initialMessage: opts.initialMessage,
                                     taskId: opts.taskId,
                                     agentRef: values.agentRef || opts.agentRef,
+                                    ephemeral: values.ephemeral,
                                 });
                             }}
                         />

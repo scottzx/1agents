@@ -3804,15 +3804,19 @@ body {
   }
 }
 
+// Inbox (#60 / #202 / #211) — list + side-detail shell. Flat bento/hairline.
+// Full-width list (no max-width); detail drawer overlays within the pane.
 .inbox-pane {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-width: 860px;
+  max-width: none;
   width: 100%;
-  margin: 0 auto;
+  margin: 0;
+  // Positioning context so the detail drawer overlays only this pane.
+  position: relative;
 
   .inbox-header {
     flex-shrink: 0;
@@ -3831,11 +3835,25 @@ body {
     gap: 10px;
   }
 
+  .inbox-workspace-tag {
+    font-size: 12px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 999px;
+    color: var(--text-secondary);
+    background: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .inbox-unread-pill {
     font-size: 12px;
     font-weight: 600;
     padding: 2px 8px;
-    border-radius: 10px;
+    border-radius: 999px;
     color: var(--accent-fg);
     background: var(--accent-bg);
   }
@@ -3845,14 +3863,17 @@ body {
     padding: 0 12px;
     font-size: 13px;
     border: 1px solid var(--border-color);
-    border-radius: 6px;
+    border-radius: 999px;
     background: var(--bg-card);
     color: var(--text-secondary);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: border-color var(--bento-transition, 0.15s ease),
+      color var(--bento-transition, 0.15s ease),
+      background var(--bento-transition, 0.15s ease);
 
     &:hover {
-      color: var(--accent-fg);
+      color: var(--text-main);
+      border-color: var(--text-main);
       background: var(--btn-hover);
     }
   }
@@ -3874,7 +3895,7 @@ body {
     color: var(--text-main);
     background: var(--bg-card);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: var(--bento-radius-sm, 8px);
 
     &:focus {
       outline: none;
@@ -3891,9 +3912,10 @@ body {
     color: var(--on-accent);
     background: var(--accent-emphasis);
     border: none;
-    border-radius: 8px;
+    border-radius: 999px;
     cursor: pointer;
-    transition: opacity 0.15s ease;
+    transition: background var(--bento-transition, 0.15s ease),
+      opacity var(--bento-transition, 0.15s ease);
 
     &:hover:not(:disabled) {
       background: var(--accent-active);
@@ -3911,7 +3933,7 @@ body {
     font-size: 12px;
     color: var(--danger-fg);
     background: var(--danger-bg);
-    border-radius: 6px;
+    border-radius: var(--bento-radius-sm, 8px);
   }
 
   .inbox-list {
@@ -3920,7 +3942,7 @@ body {
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--bento-gap, 8px);
   }
 
   .inbox-empty {
@@ -3930,23 +3952,40 @@ body {
     color: var(--text-muted);
   }
 
+  // List row: full-width button, hairline card, one-line summary.
   .inbox-item {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: 12px;
+    width: 100%;
+    margin: 0;
     padding: 12px 14px;
+    text-align: left;
+    font: inherit;
+    color: inherit;
     background: var(--bg-card);
     border: 1px solid var(--border-color);
-    border-radius: 10px;
-    transition: border-color 0.15s ease;
+    border-radius: var(--bento-radius, 10px);
+    cursor: pointer;
+    transition: border-color var(--bento-transition, 0.15s ease);
 
     &:hover {
-      border-color: var(--accent-emphasis);
+      border-color: var(--text-main);
     }
 
     &.is-unread {
       border-left: 3px solid var(--accent-emphasis);
+      padding-left: 12px;
+
+      .inbox-item-summary {
+        font-weight: 600;
+        color: var(--text-main);
+      }
+    }
+
+    &.is-selected {
+      border-color: var(--accent-emphasis);
     }
 
     &.is-archived {
@@ -3972,7 +4011,7 @@ body {
     font-size: 11px;
     font-weight: 600;
     padding: 1px 7px;
-    border-radius: 6px;
+    border-radius: 999px;
     color: var(--text-secondary);
     background: var(--bg-panel);
     border: 1px solid var(--border-color);
@@ -3981,17 +4020,200 @@ body {
   .inbox-item-time {
     font-size: 11px;
     color: var(--text-muted);
+    margin-left: auto;
   }
 
-  .inbox-item-text {
+  .inbox-item-summary {
     font-size: 13px;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .inbox-item-unread-dot {
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-emphasis);
+  }
+
+  .inbox-action {
+    height: 28px;
+    padding: 0 12px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: border-color var(--bento-transition, 0.15s ease),
+      color var(--bento-transition, 0.15s ease),
+      background var(--bento-transition, 0.15s ease);
+
+    &:hover:not(:disabled) {
+      color: var(--text-main);
+      border-color: var(--text-main);
+      background: var(--btn-hover);
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    &.inbox-action-primary {
+      color: var(--on-accent);
+      background: var(--accent-emphasis);
+      border-color: var(--accent-emphasis);
+
+      &:hover:not(:disabled) {
+        color: var(--on-accent);
+        background: var(--accent-active);
+        border-color: var(--accent-active);
+      }
+    }
+  }
+
+  // Side detail drawer (#211) — overlay within pane; Esc / × / backdrop close.
+  .inbox-detail-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.28);
+    z-index: 20;
+    animation: fadeIn 0.15s ease-out;
+  }
+
+  .inbox-detail-drawer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(420px, 100%);
+    z-index: 21;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-card);
+    border-left: 1px solid var(--border-color);
+    box-shadow: var(--shadow-lg);
+    animation: inboxDetailSlideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .inbox-detail-head {
+    flex-shrink: 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 18px 12px;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .inbox-detail-head-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .inbox-detail-badges {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .inbox-detail-status-pill {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    background: var(--bg-panel);
+
+    &.is-unread {
+      color: var(--accent-fg);
+      background: var(--accent-bg);
+      border-color: transparent;
+    }
+
+    &.is-archived {
+      color: var(--text-muted);
+    }
+  }
+
+  .inbox-detail-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
     color: var(--text-main);
+    line-height: 1.4;
+    word-break: break-word;
+  }
+
+  .inbox-detail-close {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    transition: border-color var(--bento-transition, 0.15s ease),
+      color var(--bento-transition, 0.15s ease);
+
+    &:hover {
+      color: var(--text-main);
+      border-color: var(--text-main);
+    }
+  }
+
+  .inbox-detail-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 18px 16px;
+  }
+
+  .inbox-detail-section {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-color);
+
+    &:last-child {
+      border-bottom: none;
+    }
+  }
+
+  .inbox-detail-section-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 8px;
+  }
+
+  .inbox-detail-text {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-secondary);
     word-break: break-word;
     white-space: pre-wrap;
   }
 
-  .inbox-item-link {
+  .inbox-detail-content {
+    color: var(--text-main);
+  }
+
+  .inbox-detail-link {
+    font-size: 13px;
     color: var(--accent-fg);
+    word-break: break-all;
     text-decoration: none;
 
     &:hover {
@@ -3999,44 +4221,68 @@ body {
     }
   }
 
-  .inbox-item-actions {
+  .inbox-detail-meta-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .inbox-detail-meta-row {
+    display: flex;
+    gap: 12px;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  .inbox-detail-meta-key {
+    flex-shrink: 0;
+    width: 88px;
+    color: var(--text-muted);
+  }
+
+  .inbox-detail-meta-val {
+    flex: 1;
+    min-width: 0;
+    color: var(--text-main);
+    word-break: break-word;
+  }
+
+  .inbox-detail-actions {
     flex-shrink: 0;
     display: flex;
-    gap: 6px;
-  }
-
-  .inbox-action {
-    height: 26px;
-    padding: 0 10px;
-    font-size: 12px;
-    color: var(--text-secondary);
-    background: transparent;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-
-    &:hover {
-      color: var(--accent-fg);
-      background: var(--btn-hover);
-    }
-  }
-
-  // PMO 分发 (#61): inline project picker shown under an item when dispatching.
-  .inbox-dispatch-picker {
-    display: flex;
     flex-wrap: wrap;
-    align-items: center;
     gap: 6px;
-    margin-top: 8px;
-    padding-top: 8px;
+    padding: 12px 18px;
     border-top: 1px solid var(--border-color);
   }
 
-  .inbox-dispatch-label,
-  .inbox-dispatch-empty {
+  // send_mail target picker (#213)
+  .inbox-forward-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .inbox-forward-hint {
     font-size: 12px;
     color: var(--text-muted);
+  }
+
+  .inbox-forward-targets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+}
+
+@keyframes inboxDetailSlideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0.6;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
   }
 }
 
@@ -11730,14 +11976,62 @@ body {
       a non-active pill swaps to --text-main (the same ink-hairline rule used
       by every other interactive card in the design system). */
 
+/* Shift new-session modal up so the workspace dropdown has room below */
+.ws-modal-overlay.session-setup-overlay {
+  /* Keep vertical center, then lift modal 15vh for dropdown room */
+  overflow-y: auto;
+  padding: 24px 0 48px;
+  box-sizing: border-box;
+}
+
 .session-setup-modal {
   width: 420px;
+  /* Let WorkspaceScopePicker dropdown escape the modal panel */
+  overflow: visible;
+  /* Up ~15% of viewport from pure center */
+  transform: translateY(-15vh);
+
+  .ws-modal-body {
+    overflow: visible;
+  }
 }
 
 .session-setup-form {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  /* Keep dropdown above footer buttons within the form stack */
+  position: relative;
+  z-index: 1;
+}
+
+/* TaskList empty state when active workspace is synthetic oneshot */
+.task-oneshot-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  padding: 24px;
+  box-sizing: border-box;
+
+  .task-oneshot-empty-inner {
+    max-width: 320px;
+    text-align: center;
+  }
+
+  .task-oneshot-empty-title {
+    margin: 0 0 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+
+  .task-oneshot-empty-desc {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+  }
 }
 
 .session-setup-mode-toggle {
@@ -11813,6 +12107,297 @@ body {
   font-size: 12px;
   color: var(--warning-fg, var(--text-muted));
   line-height: 1.4;
+}
+
+/* ── Workspace scope picker (oneshot | workforce | project) ───────────────
+ * Self-contained: used in SessionSetup modal AND NewChatHome. Do not rely on
+ * .new-chat-home-nested dropdown rules — those only apply on the landing page. */
+.ws-scope-picker {
+  position: relative;
+  width: 100%;
+
+  .ws-scope-picker-trigger {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 38px;
+    box-sizing: border-box;
+    padding: 8px 12px;
+    text-align: left;
+    cursor: pointer;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-card);
+    color: var(--text-main);
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.15s, background-color 0.15s;
+
+    &:hover:not(:disabled) {
+      border-color: var(--text-main);
+      background: var(--bg-card);
+    }
+
+    &:focus-visible {
+      border-color: var(--accent-color);
+      box-shadow: 0 0 0 3px var(--badge-glow, rgba(var(--accent-rgb), 0.18));
+    }
+
+    &:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .ws-scope-picker-label {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 500;
+    }
+
+    .dropdown-kind-tag {
+      margin-left: 0;
+    }
+
+    .chevron {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+      color: var(--text-muted);
+      transition: transform 0.15s;
+      &.open {
+        transform: rotate(180deg);
+      }
+    }
+  }
+
+  .ws-scope-picker-trigger.is-open {
+    border-color: var(--accent-color);
+  }
+
+  /* Floating panel — elevation allowed for dropdown overlays only */
+  .ws-scope-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    width: auto;
+    min-width: 100%;
+    max-height: min(440px, 70vh);
+    z-index: 1200;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--bento-radius, 10px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  }
+
+  .dropdown-search-wrap {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-page);
+
+    .dropdown-search-icon {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+      color: var(--text-muted);
+    }
+
+    .dropdown-search-input {
+      flex: 1;
+      min-width: 0;
+      border: none;
+      outline: none;
+      background: transparent;
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--text-main);
+      padding: 2px 0;
+      line-height: 1.4;
+
+      &::placeholder {
+        color: var(--text-muted);
+      }
+    }
+  }
+
+  /* Sections stack; each list clips at max-height independently */
+  .ws-scope-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .ws-scope-section {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border-color);
+
+    &:last-of-type {
+      border-bottom: none;
+    }
+
+    .dropdown-header {
+      flex-shrink: 0;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+      padding: 8px 12px 4px;
+      background: var(--bg-card);
+      border-bottom: none;
+      user-select: none;
+    }
+  }
+
+  .ws-scope-section-list {
+    max-height: 140px;
+    overflow-y: auto;
+    padding: 2px 6px 6px;
+    overscroll-behavior: contain;
+
+    &::-webkit-scrollbar {
+      width: 6px;
+    }
+    &::-webkit-scrollbar-thumb {
+      background: var(--border-color);
+      border-radius: 3px;
+    }
+  }
+
+  .dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border: none;
+    border-radius: 8px;
+    background: none;
+    color: var(--text-main);
+    font-size: 13px;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.12s, color 0.12s;
+
+    .item-name {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .dropdown-kind-tag {
+      margin-left: auto;
+    }
+
+    &:hover {
+      background: var(--btn-hover);
+    }
+
+    &.active {
+      background: var(--accent-light, var(--accent-bg));
+      color: var(--accent-color);
+      font-weight: 500;
+
+      .item-name {
+        color: var(--accent-color);
+      }
+    }
+  }
+
+  .dropdown-empty {
+    padding: 10px 12px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  .ws-scope-footer-empty {
+    flex-shrink: 0;
+    border-top: 1px solid var(--border-color);
+  }
+}
+
+/* Kind tags on trigger + rows (oneshot / assistant / project) */
+.dropdown-kind-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+
+  &.is-oneshot {
+    background: var(--warning-bg);
+    color: var(--warning-fg);
+  }
+  &.is-assistant {
+    background: var(--accent-bg);
+    color: var(--accent-fg);
+  }
+  &.is-project {
+    background: var(--purple-bg);
+    color: var(--purple-fg);
+  }
+}
+
+.new-chat-ws-picker-container--scope {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  width: min(360px, 100%);
+
+  .ws-scope-picker {
+    width: 100%;
+  }
+
+  .ws-scope-picker-trigger {
+    border-radius: 999px;
+    padding: 8px 16px;
+    min-height: 40px;
+  }
+
+  .new-chat-open-folder-btn {
+    align-self: flex-start;
+    background: none;
+    border: none;
+    padding: 0 4px;
+    font-size: 12px;
+    font-family: inherit;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: color 0.15s;
+
+    &:hover {
+      color: var(--accent-color);
+    }
+  }
 }
 
 /* P1 simplified NewChatHome: CTA + config gear, no create-on-submit bar */
@@ -20621,24 +21206,6 @@ body {
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
-}
-
-// NewChatHome workspace picker — 助理/项目 kind tag on trigger + dropdown rows.
-.dropdown-kind-tag {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 4px;
-  flex-shrink: 0;
-  line-height: 1.5;
-
-  &.is-assistant {
-    background: var(--accent-bg);
-    color: var(--accent-fg);
-  }
-  &.is-project {
-    background: var(--purple-bg);
-    color: var(--purple-fg);
-  }
 }
 
 // AssistantModal — legacy skill picker list (still referenced by hint blocks).

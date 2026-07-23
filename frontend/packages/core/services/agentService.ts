@@ -18,6 +18,11 @@ export interface IndexChatSessionRequest {
     role?: string;
     /** Initial permission policy for the session. Defaults to 'approve-reads' when omitted. */
     permission_mode?: string;
+    /**
+     * Oneshot / 单次对话: no real project. Backend allocates workspace_id=oneshot
+     * and a disposable cwd under /tmp/1agents-chat/<random>.
+     */
+    ephemeral?: boolean;
 }
 
 /** Default agent type used when a workspace has none configured. */
@@ -178,6 +183,8 @@ interface RawChatSession {
     cc_session_id?: string;
     acp_session_id?: string;
     session_key?: string;
+    /** Disposable cwd for oneshot sessions. */
+    cwd?: string;
     status?: string;
     created_at?: string;
     last_event_at?: string;
@@ -238,6 +245,7 @@ function normalizeChatSession(raw: RawChatSession): ChatSession {
         ccSessionId: String(raw.cc_session_id ?? ''),
         acpSessionId: raw.acp_session_id ? String(raw.acp_session_id) : undefined,
         sessionKey: String(raw.session_key ?? ''),
+        cwd: raw.cwd ? String(raw.cwd) : undefined,
         status: (raw.status ?? 'idle') as ChatSession['status'],
         createdAt: cleanTime(raw.created_at),
         lastEventAt: cleanTime(raw.last_event_at),

@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Workspace.kind = `tmp`（单次/临时对话）** — 扩展原 `workforce | project` 两档：
+  - 创建 ephemeral 会话时 mint 真实 `projects` 行：`id=tmp-<sessionId>`，`kind=tmp`，`path=/tmp/1agents-chat/...`（seed `.grok/config.toml` + `AGENTS.md` + `Claude.md`）。
+  - 有真实 WorkspaceId + pwd；UI 隐藏路径（面包屑显示「单次对话」）。
+  - **任务区** = workforce ∪ tmp；**项目区**仅 `kind=project`。
+  - 副 pane（文件/任务）绑定该 tmp workspace 的 path，不再误用上一个项目。
+  - 前端 picker 哨兵仍为 `oneshot`（提交时转 create tmp）。
+
 ### Changed
 
 - **Terminology migration (Epic #184 / 名称定义表 §0)** — align storage, API types, UI kinds, and docs with the glossary cutover:

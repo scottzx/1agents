@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'preact/hooks';
 import { t, type Lang } from '../../i18n';
 import type { Workspace, AgentType } from '../types';
 import { AgentTypePicker } from './AgentTypePicker';
+import { WorkspaceScopePicker, ONESHOT_WORKSPACE_ID } from './WorkspaceScopePicker';
 import { sessionSetupDefaults, saveSessionSetupDefaults } from '../../stores/sessionSetupDefaults';
 import { agentCatalog, agentCatalogLoading, pickableAgents } from '../../stores/agentCatalogStore';
 
@@ -20,6 +21,8 @@ export interface SessionSetupFormValues {
     /** Team expert file ref; empty = primary. */
     agentRef?: string;
     skipModal?: boolean;
+    /** True when workspace is oneshot / 单次对话. */
+    ephemeral?: boolean;
 }
 
 export interface TeamMemberOption {
@@ -53,8 +56,9 @@ interface SessionSetupFormProps {
 }
 
 const pickInitialWorkspace = (workspaces: Workspace[], preferred: string): string => {
+    if (preferred === ONESHOT_WORKSPACE_ID) return ONESHOT_WORKSPACE_ID;
     if (workspaces.some(w => w.id === preferred)) return preferred;
-    return workspaces[0]?.id ?? '';
+    return workspaces[0]?.id ?? ONESHOT_WORKSPACE_ID;
 };
 
 export function SessionSetupForm({
@@ -100,15 +104,19 @@ export function SessionSetupForm({
     const noPickableAgent =
         !agentCatalogLoading.value && pickableAgents.value.length === 0 && agentCatalog.value.length > 0;
 
+    const effectiveWorkspaceId = locked ? defaultWorkspaceId : workspaceId;
+    const isOneshot = effectiveWorkspaceId === ONESHOT_WORKSPACE_ID;
+
     const submit = () => {
         if (catalogBlocking || noPickableAgent) return;
         const values: SessionSetupFormValues = {
             mode: 'chat',
             agentType,
             name: name.trim(),
-            workspaceId: locked ? defaultWorkspaceId : workspaceId,
-            agentRef: agentRef || undefined,
+            workspaceId: effectiveWorkspaceId,
+            agentRef: isOneshot ? undefined : agentRef || undefined,
             skipModal: showSkipToggle ? skipModal : undefined,
+            ephemeral: isOneshot,
         };
 
         if (variant === 'config' || (rememberDefault && remember)) {
@@ -141,7 +149,7 @@ export function SessionSetupForm({
             <label class="ws-modal-label">{t('sessionSetup.agent.label', language)}</label>
             <AgentTypePicker value={agentType} onChange={setAgentType} disabled={catalogBlocking} />
 
-            {teamMembers.length > 0 && (
+            {teamMembers.length > 0 && !isOneshot && (
                 <Fragment>
                     <label class="ws-modal-label">{t('newchat.expert.aria', language)}</label>
                     <select
@@ -163,21 +171,21 @@ export function SessionSetupForm({
             {!locked && (
                 <Fragment>
                     <label class="ws-modal-label">{t('modal.sessionSetup.workspace', language)}</label>
-                    <select
-                        class="agent-type-picker"
+                    <WorkspaceScopePicker
+                        workspaces={workspaces}
                         value={workspaceId}
-                        onChange={(e: Event) => {
-                            const id = (e.target as HTMLSelectElement).value;
+                        language={language}
+                        disabled={catalogBlocking}
+                        onChange={id => {
                             setWorkspaceId(id);
                             onWorkspaceChange?.(id);
                         }}
-                    >
-                        {workspaces.map(w => (
-                            <option key={w.id} value={w.id}>
-                                {w.name}
-                            </option>
-                        ))}
-                    </select>
+                    />
+                    {isOneshot && (
+                        <p class="session-setup-hint" role="note">
+                            {t('modal.sessionSetup.oneshotHint', language)}
+                        </p>
+                    )}
                 </Fragment>
             )}
 

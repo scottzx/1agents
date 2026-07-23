@@ -129,8 +129,14 @@ func (h *Handler) HandleSessionsItem(w http.ResponseWriter, r *http.Request) {
 		if rec.AcpSessionID != "" && !rec.UserNamed {
 			name := rec.Name
 			if name == "" || name == "聊天会话" || name == "新建会话" || strings.HasPrefix(name, "Chat") || strings.HasSuffix(name, "会话") {
-				if wsPath, err := h.resolveWorkspacePath(rec.WorkspaceID); err == nil {
-					if title := resolveAcpSessionTitle(wsPath, rec.AcpSessionID, name); title != "" && title != name {
+				titlePath := strings.TrimSpace(rec.Cwd)
+				if titlePath == "" {
+					if p, err := h.resolveWorkspacePath(rec.WorkspaceID); err == nil {
+						titlePath = p
+					}
+				}
+				if titlePath != "" {
+					if title := resolveAcpSessionTitle(titlePath, rec.AcpSessionID, name); title != "" && title != name {
 						rec.Name = title
 						go func(id, newName string) {
 							_ = h.store.UpdateName(id, newName)
@@ -259,7 +265,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	recs = filtered
 
 	var wsPath string
-	if len(recs) > 0 {
+	if len(recs) > 0 && wsID != meta.OneshotWorkspaceID {
 		if path, err := h.resolveWorkspacePath(wsID); err == nil {
 			wsPath = path
 		}
@@ -274,7 +280,11 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		if rec.AcpSessionID != "" && !rec.UserNamed {
 			name := rec.Name
 			if name == "" || name == "聊天会话" || name == "新建会话" || strings.HasPrefix(name, "Chat") || strings.HasSuffix(name, "会话") {
-				if title := resolveAcpSessionTitle(wsPath, rec.AcpSessionID, name); title != "" && title != name {
+				titlePath := wsPath
+				if rec.Cwd != "" {
+					titlePath = rec.Cwd
+				}
+				if title := resolveAcpSessionTitle(titlePath, rec.AcpSessionID, name); title != "" && title != name {
 					rec.Name = title
 					go func(id, newName string) {
 						_ = h.store.UpdateName(id, newName)
@@ -301,8 +311,9 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "workspace_id and agent_type are required", http.StatusBadRequest)
 		return
 	}
+	sessionID := newID()
 	rec := ChatSessionRecord{
-		ID:          newID(),
+		ID:          sessionID,
 		WorkspaceID: body.WorkspaceID,
 		Name:        body.Name,
 		AgentType:   body.AgentType,
@@ -311,6 +322,17 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		CcSessionID: body.CcSessionID,
 		SessionKey:  body.SessionKey,
 		Role:        body.Role,
+	}
+	// 单次对话 (kind=tmp): real WorkspaceId + disposable pwd. UI may hide the path.
+	if body.Ephemeral || body.WorkspaceID == meta.OneshotWorkspaceID {
+		wsID, cwd, err := createTmpWorkspace(sessionID, body.Name)
+		if err != nil {
+			log.Printf("[agent] tmp workspace: %v", err)
+			http.Error(w, "failed to create tmp workspace: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		rec.WorkspaceID = wsID
+		rec.Cwd = cwd
 	}
 	// AI Project Manager sessions default to "auto" (issue #63): the task tools
 	// are already hard-locked to this project via env injection, so "auto"
@@ -1338,21 +1360,30 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wsPath, err := h.resolveWorkspacePath(wsID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
-		return
-	}
-
 	// Look up the 1agents-side chat record early: a previously-recorded
 	// agent session id (e.g. Claude Code's UUID) means this is a resume,
 	// which both skips the background injection (issue-model decision G)
-	// and is passed to the bridge as resumeSessionId.
+	// and is passed to the bridge as resumeSessionId. Oneshot sessions also
+	// store their disposable cwd on the record (no real workspace path).
 	var acpSessionID string
 	var sessionRole string
+	var sessionCwd string
 	if rec, ok, err := h.store.Get(sessionId); err == nil && ok {
 		acpSessionID = rec.AcpSessionID
 		sessionRole = rec.Role
+		sessionCwd = strings.TrimSpace(rec.Cwd)
+	}
+
+	var wsPath string
+	if sessionCwd != "" {
+		wsPath = sessionCwd
+	} else {
+		var err error
+		wsPath, err = h.resolveWorkspacePath(wsID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
 	}
 
 	var systemContext string

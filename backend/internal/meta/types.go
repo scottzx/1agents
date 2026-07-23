@@ -9,7 +9,11 @@
 // stores. See docs/features/project-model/design.md.
 package meta
 
-import "time"
+import (
+	"encoding/json"
+	"strings"
+	"time"
+)
 
 // ProjectStatus is a project's lifecycle phase (issue #141). A project leaves
 // the active view via two paths that share one terminal mechanism but carry a
@@ -69,11 +73,12 @@ type Project struct {
 	// AvailableAgents is the allowlist of agent types that may run in this
 	// workspace (e.g. ["claudecode", "codex"]). Empty means unrestricted.
 	AvailableAgents []string `json:"availableAgents,omitempty"`
-	// Kind splits workspaces into two families (Epic #184 / #189):
+	// Kind splits workspaces into three families:
 	//   KindWorkforce ("workforce") — UI「助理」; light chat unit, optional PM shell
 	//   KindProject   ("project")   — full project with kanban / milestones (default)
+	//   KindTmp       ("tmp")       — UI「单次/临时对话」; real path, path may be hidden
 	// Empty on legacy rows is treated as KindProject. Historical kind=assistant is
-	// migrated to workforce on Open; write paths only persist workforce|project.
+	// migrated to workforce on Open.
 	Kind string `json:"kind,omitempty"`
 	// Avatar is an optional image URL ("/avatars/presets/x.png" or an upload
 	// under "/avatars/"). Rendered on the assistant card and sidebar folder icon.
@@ -82,24 +87,32 @@ type Project struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// Workspace kind values persisted on projects.kind (Epic #184 §0.4 / #189).
+// Workspace kind values persisted on projects.kind (Epic #184 §0.4 / #189 + tmp).
 const (
 	KindWorkforce = "workforce" // UI「助理」
-	KindProject   = "project"
+	KindProject   = "project"   // UI「项目」
+	KindTmp       = "tmp"       // UI「单次/临时对话」— real WorkspaceId + pwd; path may be hidden in UI
 )
 
-// NormalizeProjectKind maps legacy/empty kind strings to the only two persisted
-// values. kind=assistant becomes workforce (one-shot write-side remap, no
-// long-lived dual-read of storage).
+// NormalizeProjectKind maps empty/legacy kind strings to persisted values.
+// kind=assistant becomes workforce. Unknown non-empty values are kept as-is
+// only if they are already a known kind; otherwise default to project.
 func NormalizeProjectKind(kind string) string {
 	switch kind {
 	case "", KindProject:
 		return KindProject
 	case KindWorkforce, "assistant":
 		return KindWorkforce
+	case KindTmp:
+		return KindTmp
 	default:
-		return kind
+		return KindProject
 	}
+}
+
+// IsTmpKind reports whether kind is a temporary-dialogue workspace.
+func IsTmpKind(kind string) bool {
+	return NormalizeProjectKind(kind) == KindTmp
 }
 
 // ChatSessionRecord is the 1agents-side index of a chat session.
@@ -111,6 +124,19 @@ func NormalizeProjectKind(kind string) string {
 // Fields map 1:1 to the JSON shape returned by /api/agent/sessions:
 //
 //	{id, workspace_id, name, agent_type, cc_project, cc_session_id, session_key, created_at, last_event_at}
+//
+// OneshotWorkspaceID is the frontend picker sentinel for「单次对话」only.
+// Creating an ephemeral session mints a real projects row (kind=tmp) with a
+// disposable path under /tmp/1agents-chat/; session.workspace_id points at that
+// row. Legacy sessions may still use workspace_id=oneshot with session.cwd.
+const OneshotWorkspaceID = "oneshot"
+
+// IsOneshotWorkspaceID is true for the picker sentinel or tmp-workspace ids
+// (prefix "tmp-"). Prefer checking projects.kind == tmp when a project row exists.
+func IsOneshotWorkspaceID(id string) bool {
+	return id == OneshotWorkspaceID || strings.HasPrefix(id, "tmp-") || strings.HasPrefix(id, "oneshot-")
+}
+
 type ChatSessionRecord struct {
 	ID          string `json:"id"`
 	WorkspaceID string `json:"workspace_id"`
@@ -128,8 +154,12 @@ type ChatSessionRecord struct {
 	// CcSessionID, which only identifies the cc-connect / IM side.
 	AcpSessionID string    `json:"acp_session_id,omitempty"`
 	SessionKey   string    `json:"session_key"`
-	CreatedAt    time.Time `json:"created_at"`
-	LastEventAt  time.Time `json:"last_event_at,omitempty"`
+	// Cwd is the absolute agent working directory when it differs from the
+	// workspace project path. Used by oneshot (单次对话) sessions that live
+	// under /tmp/1agents-chat/<random>. Empty = resolve path from WorkspaceID.
+	Cwd         string    `json:"cwd,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	LastEventAt time.Time `json:"last_event_at,omitempty"`
 	// PermissionMode is the per-session permission policy forwarded to the
 	// bridge-server (which gates handlePermissionRequestCallback). One of
 	// "approve-reads" (default; auto-allow reads, prompt otherwise),
@@ -621,15 +651,22 @@ type Milestone struct {
 	Completed int `json:"completed"`
 }
 
-// InboxItem is one piece of captured external context in the Inbox 收口层 (#60):
-// the most-upstream layer that aggregates manual captures, IM forwards, emails,
-// RSS and misc into a single intake list. Items are never deleted — Status
-// flips to "archived" so the trail of what each item became survives. PMO
-// dispatch metadata (#61) is intentionally absent here.
+// InboxItem is one piece of captured context in a Workspace Inbox (#202 / #60):
+// every row belongs to a recipient Workspace (workspace_id). Deliver is the
+// unified write path (function / agent / human / channel). Items are never
+// deleted — Status flips to "archived" so the trail of what each item became
+// survives. Accept into a requirement pool reuses PMO Dispatch (#61).
 type InboxItem struct {
 	ID string `json:"id"`
-	// Source is the intake channel: manual / im / email / rss / misc.
+	// WorkspaceID is the recipient Workspace (projects.id). Required on write.
+	WorkspaceID string `json:"workspaceId"`
+	// Source is the deliverer type: manual / agent / function / im / email /
+	// rss / data_source / misc.
 	Source string `json:"source"`
+	// FromWorkspaceID is the sender Workspace when this is an in-org handoff.
+	FromWorkspaceID string `json:"fromWorkspaceId,omitempty"`
+	// FromRef is an optional producer id (function name / agent role / source id).
+	FromRef string `json:"fromRef,omitempty"`
 	// Title / Content / URL hold the raw captured material.
 	Title   string `json:"title"`
 	Content string `json:"content,omitempty"`
@@ -637,6 +674,8 @@ type InboxItem struct {
 	// Summary / Tags are optional enrichment (left empty by MVP manual capture).
 	Summary string   `json:"summary,omitempty"`
 	Tags    []string `json:"tags,omitempty"`
+	// Payload is optional JSON extension for structured deliverers.
+	Payload json.RawMessage `json:"payload,omitempty"`
 	// Status is unread / read / archived.
 	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"createdAt"`
@@ -645,13 +684,20 @@ type InboxItem struct {
 
 // Inbox item sources and statuses.
 const (
-	InboxSourceManual = "manual"
-	InboxSourceIM     = "im"
-	InboxSourceEmail  = "email"
-	InboxSourceRSS    = "rss"
-	InboxSourceMisc   = "misc"
+	InboxSourceManual     = "manual"
+	InboxSourceAgent      = "agent"
+	InboxSourceFunction   = "function"
+	InboxSourceIM         = "im"
+	InboxSourceEmail      = "email"
+	InboxSourceRSS        = "rss"
+	InboxSourceDataSource = "data_source"
+	InboxSourceMisc       = "misc"
 
 	InboxStatusUnread   = "unread"
 	InboxStatusRead     = "read"
 	InboxStatusArchived = "archived"
+
+	// DefaultInboxWorkspaceID is the builtin default assistant (总助/默认助理)
+	// workspace id used to backfill legacy unscoped inbox rows.
+	DefaultInboxWorkspaceID = "default"
 )

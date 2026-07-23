@@ -34,7 +34,6 @@ import { activeL1PageId } from '../../stores/appManifestStore';
 import { getL1NavEntries, L1NavItem } from '../platform/L1Shell';
 import { enterL1App, exitL1App, projectOverview, projectStack } from '../../stores/stageStore';
 import { projectItemService } from '@1agents/core/services/taskService';
-import { inboxService } from '@1agents/core/services/inboxService';
 import { openSearch } from '../../stores/searchStore';
 import type { ChatSession } from '../types';
 
@@ -352,23 +351,6 @@ export function LeftSidebar({
     // Task id → title map for the optional session task badge (issue
     // model: sessions linked to a task show 📋 <task title>).
     const [taskTitles, setTaskTitles] = useState<Record<string, string>>({});
-    // Inbox unread badge (#60). Refetched on mount and whenever the Inbox tab is
-    // opened/closed, so archiving/reading there keeps the count in sync.
-    const [inboxUnread, setInboxUnread] = useState(0);
-    useEffect(() => {
-        let cancelled = false;
-        inboxService
-            .list(false)
-            .then(res => {
-                if (!cancelled) setInboxUnread(res.unread);
-            })
-            .catch(() => {
-                /* badge is decorative — ignore fetch failures */
-            });
-        return () => {
-            cancelled = true;
-        };
-    }, [activeDrawerTab]);
 
     const hasTaskLinkedSession = chatSessionsSignal.value.some(c => !c.archived && Boolean(c.taskId));
     const folderIdsKey = folders.map(f => f.id).join(',');
@@ -520,9 +502,15 @@ export function LeftSidebar({
             if (b.id === 'default') return 1;
             return 0;
         });
-    const assistantIds = assistantWorkspaces.map(w => w.id);
-    const assistantById = new Map(assistantWorkspaces.map(w => [w.id, w]));
-    const taskChats: ChatSession[] = chatsForAssistants(assistantIds, taskFilterWsId);
+    // 任务区 = workforce ∪ tmp（临时/单次对话，有真实 workspace + path）
+    const tmpWorkspaces = workspaces.filter(w => w.kind === 'tmp' && !w.deviceId);
+    const taskWorkspaceIds = [
+        ...assistantWorkspaces.map(w => w.id),
+        ...tmpWorkspaces.map(w => w.id),
+        'oneshot', // legacy sentinel sessions
+    ];
+    const assistantById = new Map([...assistantWorkspaces, ...tmpWorkspaces].map(w => [w.id, w] as const));
+    const taskChats: ChatSession[] = chatsForAssistants(taskWorkspaceIds, taskFilterWsId);
     const showProjects = !isBeginnerMode.value;
 
     return (
@@ -665,25 +653,6 @@ export function LeftSidebar({
                         <span>{t('sidebar.navCtrl.contacts', language)}</span>
                     </div>
                     <div
-                        class={`nav-control-item${activeDrawerTab === 'inbox' ? ' active' : ''}`}
-                        onClick={() => toggleDrawerTab('inbox')}
-                    >
-                        <svg
-                            class="btn-icon"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <path d="M22 12h-6l-2 3h-4l-2-3H2" />
-                            <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
-                        </svg>
-                        <span>{t('sidebar.navCtrl.inbox', language)}</span>
-                        {inboxUnread > 0 && <span class="nav-control-badge">{inboxUnread}</span>}
-                    </div>
-                    <div
                         class={`nav-control-item${activeDrawerTab === 'reminders' ? ' active' : ''}`}
                         onClick={() => toggleDrawerTab('reminders')}
                     >
@@ -786,7 +755,7 @@ export function LeftSidebar({
                                             ))}
                                         </div>
                                     )}
-                                    {assistantWorkspaces.length === 0 ? (
+                                    {assistantWorkspaces.length === 0 && taskChats.length === 0 ? (
                                         <div class="ws-empty">
                                             <svg
                                                 viewBox="0 0 24 24"
@@ -814,10 +783,16 @@ export function LeftSidebar({
                                         <div class="task-session-list">
                                             {taskChats.map(session => {
                                                 const aw = assistantById.get(session.workspaceId);
+                                                const isTmp =
+                                                    session.workspaceId === 'oneshot' ||
+                                                    session.workspaceId.startsWith('tmp-') ||
+                                                    aw?.kind === 'tmp';
                                                 return renderSession(session, {
                                                     assistantAvatar: aw?.avatar,
-                                                    assistantName: aw?.name || '?',
-                                                    withAssistantDetail: true,
+                                                    assistantName: isTmp
+                                                        ? aw?.name || t('newchat.kind.oneshot', language)
+                                                        : aw?.name || '?',
+                                                    withAssistantDetail: !isTmp && aw?.kind === 'workforce',
                                                 });
                                             })}
                                         </div>
@@ -936,11 +911,11 @@ export function LeftSidebar({
                                             </div>
                                         )}
 
-                                        {/* Empty state — folders whose ws is a project (i.e. not an assistant). */}
+                                        {/* Empty state — project folders only (not assistant / tmp). */}
                                         {!workspacesLoading &&
                                             folders.filter(f => {
                                                 const w = workspaces.find(x => x.id === f.id);
-                                                return (w?.kind ?? 'project') !== 'workforce';
+                                                return (w?.kind ?? 'project') === 'project';
                                             }).length === 0 && (
                                                 <div class="ws-empty">
                                                     <svg
@@ -964,7 +939,7 @@ export function LeftSidebar({
                                             folders
                                                 .filter(f => {
                                                     const w = workspaces.find(x => x.id === f.id);
-                                                    return (w?.kind ?? 'project') !== 'workforce';
+                                                    return (w?.kind ?? 'project') === 'project';
                                                 })
                                                 .filter(f => {
                                                     if (!projectSearch) return true;

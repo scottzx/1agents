@@ -22,6 +22,7 @@ import * as modal from '../../stores/modalStore';
 import * as tabsStore from '../../stores/tabsStore';
 import { globalBridgeManager } from '../chat/hooks';
 import { SETTINGS_STATIC_MANIFEST, type SettingsCategory } from '../../modules/settings-manifest';
+import { paneWorkspaceIdFor, paneWorkspacePathFor } from '../../utils/oneshot';
 import './MobileAppLayout.scss';
 
 /**
@@ -403,6 +404,8 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
 
         const activeWorkspace = workspaces.find(w => w.id === selectedWorkspaceId || w.id === activeWorkspaceId);
         const activeWorkspacePath = activeWorkspace?.path || '.';
+        const paneWorkspaceId = paneWorkspaceIdFor(activeSession, selectedWorkspaceId || activeWorkspaceId);
+        const paneWorkspacePath = paneWorkspacePathFor(activeSession, activeWorkspacePath);
         const activeTabObj = tabs.find(t => t.id === activeTabId);
 
         // Dynamic inline styles based on keyboard state and visual viewport height
@@ -818,8 +821,8 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                 <RightPanelHost
                                                     app={app}
                                                     state={state}
-                                                    activeWorkspaceId={selectedWorkspaceId}
-                                                    activeWorkspacePath={activeWorkspacePath}
+                                                    activeWorkspaceId={paneWorkspaceId}
+                                                    activeWorkspacePath={paneWorkspacePath}
                                                     rightPanelWidth={window.innerWidth}
                                                     onToggleFullscreen={() => {
                                                         if (selectedFsEntry) {

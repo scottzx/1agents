@@ -136,6 +136,35 @@ export const loadArchivedWorkspaces = async () => {
 export const findWorkspaceAnyStatus = (id: string): Workspace | undefined =>
     workspaces.value.find(w => w.id === id) ?? archivedWorkspaces.value.find(w => w.id === id);
 
+/**
+ * Ensure a kind=tmp workspace is present in the local registry (and folders)
+ * after minting via POST /api/agent/sessions?ephemeral. Backend already has the
+ * projects row; the list API may lag until next loadWorkspaces.
+ */
+export const ensureTmpWorkspace = (opts: { id: string; name: string; path: string }): Workspace => {
+    const existing = workspaces.value.find(w => w.id === opts.id);
+    if (existing) {
+        if (opts.path && existing.path !== opts.path) {
+            const next = { ...existing, path: opts.path, kind: 'tmp' as const };
+            workspaces.value = workspaces.value.map(w => (w.id === opts.id ? next : w));
+            return next;
+        }
+        return existing;
+    }
+    const ws: Workspace = {
+        id: opts.id,
+        name: opts.name || '单次对话',
+        path: opts.path || '',
+        status: 'active',
+        kind: 'tmp',
+    };
+    workspaces.value = [...workspaces.value, ws];
+    if (!folders.value.some(f => f.id === ws.id)) {
+        folders.value = [...folders.value, { id: ws.id, name: ws.name, expanded: true, sessions: [] }];
+    }
+    return ws;
+};
+
 /** Archive a project/assistant, then refresh both boards. */
 export const archiveWorkspace = async (id: string) => {
     await workspaceService.archive(id);
@@ -168,14 +197,17 @@ export const loadWorkspaces = async (skipAutoSelect = false) => {
         hasLoadedWorkspaces.value = true;
         if (!skipAutoSelect) {
             const activeId = activeWorkspaceId.value;
-            const activeStillExists = list.some(ws => ws.id === activeId);
+            // "oneshot" is a synthetic chat scope, never a real projects row.
+            const activeStillExists =
+                Boolean(activeId) && activeId !== 'oneshot' && list.some(ws => ws.id === activeId);
             if (!activeId || !activeStillExists) {
-                // Active workspace was deleted or never set — switch to first available
+                // Active workspace was deleted, never set, or corrupted to oneshot
                 if (list.length > 0) {
                     selectWorkspace(list[0]);
                 } else {
                     // No workspaces left — clear stale state
                     activeWorkspaceId.value = '';
+                    localStorage.removeItem('1agents-active-workspace');
                     ccConnectUrl.value = '';
                     ccProvidersUrl.value = '';
                 }
@@ -446,21 +478,26 @@ export const reorderFolders = async (draggedId: string, targetId: string, positi
 };
 
 /** Switch active workspace and cd into it in a matching tmux window */
-export const selectWorkspace = async (ws: Workspace) => {
+export const selectWorkspace = async (ws: Workspace, opts?: { skipLanding?: boolean }) => {
     if (isFullPageTab(tabsStore.activeDrawerTab.value)) {
         tabsStore.activeDrawerTab.value = 'none';
     }
-    // Always land on the 任务 view — even when this workspace is already
-    // active (e.g. clicking 任务 while a terminal/chat in the same workspace
-    // is showing). No terminal is auto-created or switched here.
-    tabsStore.activeTabId.value = 'tasks';
+    // Default: land on 任务 view. skipLanding keeps the current chat tab when
+    // binding a newly minted tmp workspace after session create.
+    if (!opts?.skipLanding) {
+        tabsStore.activeTabId.value = 'tasks';
+    }
 
     // 多设备(#114):切换 API 路由目标。远程项目 → 经 #111 代理路由;本机 → 直连。
     const targetDeviceId = ws.deviceId ?? '';
     setActiveDevice(targetDeviceId || null);
 
     const activeId = activeWorkspaceId.value;
-    if (ws.id === activeId && activeWorkspaceDeviceId.value === targetDeviceId) return;
+    if (ws.id === activeId && activeWorkspaceDeviceId.value === targetDeviceId) {
+        // Still refresh fs when re-selecting with an updated path (tmp mint).
+        if (ws.path) await fs.switchFsContext(ws);
+        return;
+    }
     activeWorkspaceDeviceId.value = targetDeviceId;
 
     const prevWsId = activeId;
@@ -475,7 +512,9 @@ export const selectWorkspace = async (ws: Workspace) => {
 
     // Switch backend context (fs + git roots) and reload file browser
     await fs.switchFsContext(ws);
-    ui.showToast(t('app.toast.workspaceSwitched', ui.language.value, { name: ws.name }));
+    if (!opts?.skipLanding) {
+        ui.showToast(t('app.toast.workspaceSwitched', ui.language.value, { name: ws.name }));
+    }
 };
 
 /** Submit handler for the workspace create/rename modal. */

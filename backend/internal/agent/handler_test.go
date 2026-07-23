@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -136,6 +138,61 @@ func TestHandlerCreateRejectsMissingFields(t *testing.T) {
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("status %d, want 400", rr.Code)
 	}
+}
+
+func TestHandlerCreateTmpEphemeral(t *testing.T) {
+	h, _ := newTestHandler(t)
+	body := IndexRequest{
+		WorkspaceID: "oneshot",
+		Name:        "brainstorm",
+		AgentType:   AgentTypeGrokBuild,
+		Ephemeral:   true,
+	}
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/agent/sessions", jsonBody(body))
+	h.HandleSessionsRoot(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("create status %d, body %s", rr.Code, rr.Body.String())
+	}
+	var created ChatSessionRecord
+	if err := json.NewDecoder(rr.Body).Decode(&created); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !strings.HasPrefix(created.WorkspaceID, "tmp-") {
+		t.Fatalf("workspace_id = %q, want tmp-<sessionId>", created.WorkspaceID)
+	}
+	if created.WorkspaceID != "tmp-"+created.ID {
+		t.Fatalf("workspace_id %q should be tmp-+session id %q", created.WorkspaceID, created.ID)
+	}
+	if created.Cwd == "" {
+		t.Fatal("expected disposable cwd for tmp session")
+	}
+	if !strings.Contains(created.Cwd, "1agents-chat") {
+		t.Fatalf("cwd %q should be under 1agents-chat", created.Cwd)
+	}
+	if st, err := os.Stat(created.Cwd); err != nil || !st.IsDir() {
+		t.Fatalf("cwd should exist as directory: %v", err)
+	}
+	// Real projects row (kind=tmp) must resolve path.
+	path, err := h.resolveWorkspacePath(created.WorkspaceID)
+	if err != nil {
+		t.Fatalf("resolveWorkspacePath: %v", err)
+	}
+	if path != created.Cwd {
+		t.Fatalf("resolved path %q != cwd %q", path, created.Cwd)
+	}
+	// Seeded lightweight project config.
+	for _, rel := range []string{
+		filepath.Join(".grok", "config.toml"),
+		"AGENTS.md",
+		"Claude.md",
+	} {
+		p := filepath.Join(created.Cwd, rel)
+		if st, err := os.Stat(p); err != nil || st.IsDir() {
+			t.Fatalf("seeded file missing %s: %v", rel, err)
+		}
+	}
+	_ = os.RemoveAll(created.Cwd)
 }
 
 func TestHandlerMethodNotAllowed(t *testing.T) {

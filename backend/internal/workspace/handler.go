@@ -1460,14 +1460,17 @@ func writeJSONStatus(w http.ResponseWriter, status int, v any) {
 	}
 }
 
-// nameKindLabel returns a Chinese label ("助理" / "项目") for a conflicting
-// workspace's kind — used in the 409 message shown to the user.
-// Code kind is workforce; product copy stays 「助理」(#189 / §0.4).
+// nameKindLabel returns a Chinese label for a conflicting workspace's kind —
+// used in the 409 message shown to the user.
 func nameKindLabel(kind string) string {
-	if meta.NormalizeProjectKind(kind) == meta.KindWorkforce {
+	switch meta.NormalizeProjectKind(kind) {
+	case meta.KindWorkforce:
 		return "助理"
+	case meta.KindTmp:
+		return "临时对话"
+	default:
+		return "项目"
 	}
-	return "项目"
 }
 
 // ListDirectories handles GET /api/workspace/list-directories

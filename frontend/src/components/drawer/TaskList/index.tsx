@@ -19,6 +19,8 @@ import { MilestoneView } from './MilestoneView';
 import { RequirementPool } from './RequirementPool';
 import { DiscussionView } from './DiscussionView';
 import { SessionsView } from './SessionsView';
+import { t } from '../../../i18n';
+import * as ui from '../../../stores/uiStore';
 
 const cachedTasks = signal<Record<string, ProjectItem[]>>({});
 const cachedMilestones = signal<Record<string, Milestone[]>>({});
@@ -84,8 +86,12 @@ export function TaskList({
         [workspaceId]
     );
 
+    // Only the bare picker sentinel "oneshot" has no projects row.
+    // Real kind=tmp workspaces (tmp-…) resolve path and load like any other.
+    const bareOneshotSentinel = workspaceId === 'oneshot';
+
     const fetchMilestones = useCallback(async () => {
-        if (!workspaceId) return;
+        if (!workspaceId || workspaceId === 'oneshot') return;
         try {
             setMilestones(await projectItemService.listMilestones(workspaceId));
         } catch {
@@ -94,7 +100,7 @@ export function TaskList({
     }, [workspaceId, setMilestones]);
 
     const fetchTasks = useCallback(async () => {
-        if (!workspaceId) return;
+        if (!workspaceId || workspaceId === 'oneshot') return;
         setLoading(true);
         setError('');
         try {
@@ -108,7 +114,7 @@ export function TaskList({
 
     // The 总览 会话 card shows the live count of active (non-archived) sessions.
     const fetchSessionCount = useCallback(async () => {
-        if (!workspaceId) return;
+        if (!workspaceId || workspaceId === 'oneshot') return;
         try {
             const data = await agentService.list(workspaceId);
             setSessionCount(data.length);
@@ -119,6 +125,14 @@ export function TaskList({
 
     // Polling tasks status changes every 5 seconds
     useEffect(() => {
+        if (workspaceId === 'oneshot') {
+            setLoading(false);
+            setError('');
+            setTasksState([]);
+            setMilestonesState([]);
+            setSessionCount(0);
+            return;
+        }
         fetchTasks();
         fetchMilestones();
         fetchSessionCount();
@@ -128,7 +142,7 @@ export function TaskList({
             fetchSessionCount();
         }, 5000);
         return () => clearInterval(timer);
-    }, [fetchTasks, fetchMilestones, fetchSessionCount]);
+    }, [workspaceId, fetchTasks, fetchMilestones, fetchSessionCount]);
 
     // Reset detail selection and load cached data when switching workspaces
     useEffect(() => {
@@ -268,6 +282,18 @@ export function TaskList({
         },
         [workspaceId, fetchMilestones, fetchTasks]
     );
+
+    // Bare picker sentinel has no projects row; real tmp-* workspaces load normally.
+    if (bareOneshotSentinel) {
+        return (
+            <div class="task-dashboard-container task-oneshot-empty">
+                <div class="task-oneshot-empty-inner">
+                    <p class="task-oneshot-empty-title">{t('tasks.oneshot.emptyTitle', ui.language.value)}</p>
+                    <p class="task-oneshot-empty-desc">{t('tasks.oneshot.emptyDesc', ui.language.value)}</p>
+                </div>
+            </div>
+        );
+    }
 
     if (selectedTaskId) {
         return (

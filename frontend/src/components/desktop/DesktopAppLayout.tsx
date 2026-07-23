@@ -18,6 +18,7 @@ import * as modal from '../../stores/modalStore';
 import * as tabsStore from '../../stores/tabsStore';
 import * as stage from '../../stores/stageStore';
 import { globalBridgeManager } from '../chat/hooks';
+import { paneWorkspaceIdFor, paneWorkspacePathFor } from '../../utils/oneshot';
 
 interface DesktopAppLayoutProps {
     app: App;
@@ -72,6 +73,9 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
 
         const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
         const activeWorkspacePath = activeWorkspace?.path || '.';
+        // Side pane must follow oneshot chat, not the previous real project.
+        const paneWorkspaceId = paneWorkspaceIdFor(activeSession, activeWorkspaceId);
+        const paneWorkspacePath = paneWorkspacePathFor(activeSession, activeWorkspacePath);
         const activeTabObj = tabs.find(t => t.id === activeTabId);
 
         // File preview may still use workspace tabs; browser is a right-drawer tab.
@@ -357,8 +361,8 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                         <RightPanelHost
                                             app={app}
                                             state={state}
-                                            activeWorkspaceId={activeWorkspaceId}
-                                            activeWorkspacePath={activeWorkspacePath}
+                                            activeWorkspaceId={paneWorkspaceId}
+                                            activeWorkspacePath={paneWorkspacePath}
                                             rightPanelWidth={ui.rightPanelWidth.value}
                                             paneStyle={contentPaneStyle}
                                             onSelectSession={s => {

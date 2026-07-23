@@ -112,6 +112,11 @@ export interface ChatSession {
      */
     acpSessionId?: string;
     sessionKey: string; // cc-connect bridge session_key
+    /**
+     * Disposable agent cwd for oneshot (单次对话) sessions under
+     * /tmp/1agents-chat/<random>. Empty for normal project-bound chats.
+     */
+    cwd?: string;
     status: ChatStatus;
     createdAt?: string; // ISO timestamp — when the session was indexed
     lastEventAt?: string; // ISO timestamp
