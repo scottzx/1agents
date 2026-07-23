@@ -27,6 +27,7 @@ import * as sess from '../../stores/sessionStore';
 import * as fs from '../../stores/fsStore';
 import { TaskList } from '../drawer/TaskList';
 import { SessionsView } from '../drawer/TaskList/SessionsView';
+import { InboxPane } from '../drawer/Inbox';
 import { WorkspaceFilesSplit, ChannelsPane } from '../shared/WorkspacePanes';
 import { TeamTab } from '../pages/TeamTab';
 import { SettingsTab } from '../pages/SettingsTab';
@@ -40,7 +41,17 @@ import * as tabPrefs from '../../stores/projectTabPrefs';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type BuiltinTab = 'sessions' | 'team' | 'activity' | 'plan' | 'tasks' | 'files' | 'channels' | 'assets' | 'settings';
+type BuiltinTab =
+    | 'sessions'
+    | 'team'
+    | 'activity'
+    | 'plan'
+    | 'tasks'
+    | 'inbox'
+    | 'files'
+    | 'channels'
+    | 'assets'
+    | 'settings';
 type TabId = BuiltinTab | string; // string for app-contributed tabs (mount point id)
 
 interface ProjectShellProps {
@@ -104,6 +115,7 @@ export function ProjectShell({ workspaceId, workspaceName, crumbs, variant = 'pa
         { id: 'sessions', label: t('assistant.detail.tab.sessions', language) },
         { id: 'team', label: t('assistant.detail.tab.team', language) },
         { id: 'tasks', label: t('assistant.detail.tab.tasks', language) },
+        { id: 'inbox', label: t('inbox.title', language) },
         { id: 'files', label: t('assistant.detail.tab.files', language) },
         { id: 'channels', label: t('assistant.detail.tab.channels', language) },
     ];
@@ -111,6 +123,8 @@ export function ProjectShell({ workspaceId, workspaceName, crumbs, variant = 'pa
         { id: 'activity', label: '动态' },
         { id: 'plan', label: '计划' },
         ...(isDetail ? [] : [{ id: 'tasks' as BuiltinTab, label: '任务' }]),
+        // panel workbench: inbox next to tasks (detail already has it in detailLead)
+        ...(isDetail ? [] : [{ id: 'inbox' as BuiltinTab, label: t('inbox.title', language) }]),
         { id: 'assets', label: '资产' },
     ];
 
@@ -171,6 +185,11 @@ export function ProjectShell({ workspaceId, workspaceName, crumbs, variant = 'pa
             {activeTab === 'tasks' && (
                 <div class="project-shell-tasks-wrap">
                     <TaskList workspaceId={workspaceId} onSelectSession={s => void sess.selectSession(s)} />
+                </div>
+            )}
+            {activeTab === 'inbox' && (
+                <div class="assistant-pane-fill assistant-pane-inset">
+                    <InboxPane workspaceId={workspaceId} />
                 </div>
             )}
             {activeTab === 'files' && app && (

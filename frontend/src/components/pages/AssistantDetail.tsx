@@ -10,6 +10,7 @@ import * as tabs from '../../stores/tabsStore';
 import { ShellNav, type ShellTab } from '../platform/ShellNav';
 import { TaskList } from '../drawer/TaskList';
 import { SessionsView } from '../drawer/TaskList/SessionsView';
+import { InboxPane } from '../drawer/Inbox';
 import { WorkspaceFilesSplit, ChannelsPane } from '../shared/WorkspacePanes';
 import { SkillsTab } from './SkillsTab';
 import { TeamTab } from './TeamTab';
@@ -21,16 +22,14 @@ import { SettingsTab } from './SettingsTab';
  * the assistant's workbench hub: an identity hero + a secondary top-nav that
  * switches between the surfaces that used to be locked to the side pane.
  *
- * Tabs: 会话 (all sessions incl. archived) · 灵魂 (SOUL.md, via the shared file
- * preview/editor) · 任务 (TaskList) · 技能 (folder-per-skill browser) · 渠道
- * (cc-connect) · 文件 (two-pane browser + preview) · MCP (placeholder).
+ * Tabs: 会话 · 团队 · 任务 · 收件箱 · 技能 · 渠道 · 文件 · MCP · 设置.
  *
- * 渠道 / 文件 / 灵魂 / 技能 read the *active* workspace's fs / cc-connect state,
- * so on mount we make this assistant the active workspace context (without the
- * navigation side-effects of selectWorkspace, which would drop the full-page
- * detail).
+ * 渠道 / 文件 / 技能 / 收件箱 read the *active* workspace's fs / cc-connect /
+ * inbox state, so on mount we make this assistant the active workspace context
+ * (without the navigation side-effects of selectWorkspace, which would drop
+ * the full-page detail).
  */
-type DetailTab = 'sessions' | 'team' | 'tasks' | 'skills' | 'channels' | 'files' | 'mcp' | 'settings';
+type DetailTab = 'sessions' | 'team' | 'tasks' | 'inbox' | 'skills' | 'channels' | 'files' | 'mcp' | 'settings';
 
 interface AssistantDetailProps {
     workspaceId: string;
@@ -79,6 +78,7 @@ export function AssistantDetail({ workspaceId, app }: AssistantDetailProps) {
         { id: 'sessions', label: t('assistant.detail.tab.sessions', language) },
         { id: 'team', label: t('assistant.detail.tab.team', language) },
         { id: 'tasks', label: t('assistant.detail.tab.tasks', language) },
+        { id: 'inbox', label: t('inbox.title', language) },
         { id: 'skills', label: t('assistant.detail.tab.skills', language) },
         { id: 'channels', label: t('assistant.detail.tab.channels', language) },
         { id: 'files', label: t('assistant.detail.tab.files', language) },
@@ -115,6 +115,12 @@ export function AssistantDetail({ workspaceId, app }: AssistantDetailProps) {
                 {activeTab === 'tasks' && (
                     <div class="project-shell-tasks-wrap">
                         <TaskList workspaceId={workspaceId} onSelectSession={s => void sessStore.selectSession(s)} />
+                    </div>
+                )}
+
+                {activeTab === 'inbox' && (
+                    <div class="assistant-pane-fill assistant-pane-inset">
+                        <InboxPane workspaceId={workspaceId} />
                     </div>
                 )}
 

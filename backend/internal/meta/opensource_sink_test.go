@@ -27,7 +27,8 @@ func TestInboxProposalSink_Submit(t *testing.T) {
 	if err := sink.Submit(sampleProposal()); err != nil {
 		t.Fatalf("submit: %v", err)
 	}
-	items, err := store.List(false)
+	// #206: lands on default workspace, not a bare global row
+	items, err := store.ListByWorkspace(DefaultInboxWorkspaceID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,6 +36,12 @@ func TestInboxProposalSink_Submit(t *testing.T) {
 		t.Fatalf("expected 1 item, got %d", len(items))
 	}
 	it := items[0]
+	if it.WorkspaceID != DefaultInboxWorkspaceID {
+		t.Errorf("workspaceId = %q, want %q", it.WorkspaceID, DefaultInboxWorkspaceID)
+	}
+	if it.Status != InboxStatusUnread {
+		t.Errorf("status = %q, want unread", it.Status)
+	}
 	if it.Source != InboxSourceMisc {
 		t.Errorf("source = %q, want misc", it.Source)
 	}
@@ -65,7 +72,7 @@ func TestInboxProposalSink_DedupByURL(t *testing.T) {
 	if err := sink.Submit(p); err != nil {
 		t.Fatal(err)
 	}
-	items, err := store.List(true)
+	items, err := store.ListByWorkspace(DefaultInboxWorkspaceID, true)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -16,20 +16,23 @@ func NewInboxProposalSink(store *InboxStore) *InboxProposalSink {
 	return &InboxProposalSink{store: store}
 }
 
-// Submit captures the proposal as a misc-source Inbox item. The decision and
-// repo full name go into Tags so the UI can filter "open-source absorb" items.
-// Dedup is by URL — re-running the pipeline won't double-capture the same repo.
+// Submit delivers the proposal into the default Workspace Inbox (#202 P3):
+// source=misc (opensource absorb channel), workspace_id always set (never bare
+// global). Dedup is by URL — re-running the pipeline won't double-capture.
 func (s *InboxProposalSink) Submit(p opensource.Proposal) error {
 	if s.alreadyCaptured(p.Candidate.URL) {
 		return nil
 	}
-	_, err := s.store.Capture(InboxItem{
-		Source:  InboxSourceMisc,
-		Title:   p.Title(),
-		Content: p.Body(),
-		URL:     p.Candidate.URL,
-		Summary: p.Summary(),
-		Tags:    []string{"opensource-absorb", string(p.Decision)},
+	_, err := s.store.Deliver(InboxItem{
+		WorkspaceID: DefaultInboxWorkspaceID,
+		Source:      InboxSourceMisc,
+		FromRef:     "opensource:" + p.Candidate.FullName,
+		Title:       p.Title(),
+		Content:     p.Body(),
+		URL:         p.Candidate.URL,
+		Summary:     p.Summary(),
+		Tags:        []string{"opensource-absorb", string(p.Decision)},
+		Status:      InboxStatusUnread,
 	})
 	return err
 }

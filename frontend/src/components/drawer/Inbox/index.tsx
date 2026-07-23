@@ -1,18 +1,24 @@
-import { h, Fragment } from 'preact';
-import { useState, useEffect, useCallback } from 'preact/hooks';
+import { h } from 'preact';
+import { useState, useEffect, useCallback, useMemo } from 'preact/hooks';
 
 import * as ui from '../../../stores/uiStore';
+import * as wsStore from '../../../stores/workspaceStore';
 import { t } from '../../../i18n';
-import { inboxService, type InboxItem, type InboxSource } from '@1agents/core/services/inboxService';
-import { pmoService, type DispatchTarget } from '@1agents/core/services/pmoService';
+import { inboxService, type InboxItem, type InboxTarget } from '@1agents/core/services/inboxService';
+import { InboxList } from './InboxList';
+import { InboxDetail } from './InboxDetail';
 
-// Inbox 统一信息收口层 (#60): the most-upstream layer that funnels scattered
-// external context (manual capture today; IM / email / RSS later) into one
-// intake list. Archiving never deletes — it flips status so the trail of
-// "what did this become" survives. PMO 分发 (#61) is the downstream action
-// surfaced per item: dispatch an item into a project's requirement pool.
-export function InboxPane() {
+// Workspace Inbox (#210): list + side drawer detail.
+// Human triage: accept → requirement (toast, stay) | send_mail forward | archive.
+// PMO cross-project dispatch removed from this UI.
+export function InboxPane(props: { workspaceId?: string } = {}) {
     const language = ui.language.value;
+    const workspaceId = props.workspaceId || wsStore.activeWorkspaceId.value || 'default';
+    const workspaceName =
+        wsStore.workspaces.value.find(w => w.id === workspaceId)?.name ||
+        wsStore.findWorkspaceAnyStatus(workspaceId)?.name ||
+        workspaceId;
+
     const [items, setItems] = useState<InboxItem[]>([]);
     const [unread, setUnread] = useState(0);
     const [showArchived, setShowArchived] = useState(false);
@@ -20,15 +26,15 @@ export function InboxPane() {
     const [error, setError] = useState('');
     const [draft, setDraft] = useState('');
     const [capturing, setCapturing] = useState(false);
-    // PMO 分发 (#61): the item currently being dispatched, plus the project menu.
-    const [dispatchFor, setDispatchFor] = useState<string | null>(null);
-    const [targets, setTargets] = useState<DispatchTarget[]>([]);
+    const [accepting, setAccepting] = useState<string | null>(null);
+    const [forwarding, setForwarding] = useState(false);
+    const [selectedId, setSelectedId] = useState<string | null>(null);
 
     const refresh = useCallback(async () => {
         setLoading(true);
         setError('');
         try {
-            const res = await inboxService.list(showArchived);
+            const res = await inboxService.list(showArchived, workspaceId);
             setItems(res.items || []);
             setUnread(res.unread);
         } catch (err) {
@@ -36,20 +42,39 @@ export function InboxPane() {
         } finally {
             setLoading(false);
         }
-    }, [showArchived]);
+    }, [showArchived, workspaceId]);
 
     useEffect(() => {
         refresh();
     }, [refresh]);
 
+    // Clear selection when workspace / archive filter changes.
+    useEffect(() => {
+        setSelectedId(null);
+    }, [workspaceId, showArchived]);
+
+    // Keep selection bound to a live list row after refresh (status may change).
+    const selectedItem = useMemo(
+        () => (selectedId ? items.find(i => i.id === selectedId) || null : null),
+        [items, selectedId]
+    );
+
+    useEffect(() => {
+        if (selectedId && !selectedItem) {
+            setSelectedId(null);
+        }
+    }, [selectedId, selectedItem]);
+
     const capture = async () => {
         const text = draft.trim();
         if (!text || capturing) return;
         setCapturing(true);
+        setError('');
         try {
-            // A bare URL becomes the url field; anything else is free-form content.
             const isUrl = /^https?:\/\/\S+$/i.test(text);
-            await inboxService.capture(isUrl ? { url: text } : { content: text });
+            await inboxService.capture(
+                isUrl ? { workspaceId, url: text, source: 'manual' } : { workspaceId, content: text, source: 'manual' }
+            );
             setDraft('');
             await refresh();
         } catch (err) {
@@ -60,38 +85,74 @@ export function InboxPane() {
     };
 
     const act = async (id: string, action: 'archive' | 'read' | 'unread') => {
-        try {
-            await inboxService.setStatus(id, action);
-            await refresh();
-        } catch (err) {
-            setError((err as Error).message);
-        }
-    };
-
-    // Open the project picker for an item, lazily loading the dispatch targets.
-    const openDispatch = async (id: string) => {
         setError('');
-        setDispatchFor(id);
         try {
-            setTargets(await pmoService.targets());
+            await inboxService.setStatus(id, action, workspaceId);
+            await refresh();
         } catch (err) {
-            setError((err as Error).message);
+            const msg = (err as Error).message;
+            setError(msg);
+            ui.showToast(msg);
         }
     };
 
-    // Dispatch an inbox item into a project's requirement pool: title = the item
-    // text, fromInbox = the item id (backlink + marks the item read).
-    const dispatch = async (item: InboxItem, projectId: string) => {
-        const title = (item.title || item.content || item.url || '').trim();
-        if (!title) return;
+    // Accept into the current Workspace requirement pool; toast + stay on Inbox (#212).
+    const accept = async (item: InboxItem) => {
+        if (accepting) return;
+        setAccepting(item.id);
+        setError('');
         try {
-            await pmoService.dispatch({ projectId, title, fromInbox: item.id });
-            setDispatchFor(null);
+            await inboxService.accept(item.id, { workspaceId });
+            ui.showToast(t('inbox.acceptDone', language));
             await refresh();
         } catch (err) {
-            setError((err as Error).message);
+            const msg = (err as Error).message;
+            setError(msg);
+            ui.showToast(t('inbox.acceptFailed', language, { err: msg }));
+        } finally {
+            setAccepting(null);
         }
     };
+
+    // send_mail: deliver envelope to target Workspace (#213). Original stays, marked read.
+    // Returns true on success so the detail picker can close.
+    const forward = async (item: InboxItem, target: InboxTarget): Promise<boolean> => {
+        if (forwarding) return false;
+        // Guard: never deliver back into the current box (UI also filters this).
+        if (target.projectId === workspaceId) return false;
+        setForwarding(true);
+        setError('');
+        try {
+            // Backend requires title | content | url; fall back summary → title when needed.
+            const title = item.title || (!item.content && !item.url ? item.summary : undefined) || undefined;
+            await inboxService.deliver({
+                workspaceId: target.projectId,
+                fromWorkspaceId: workspaceId,
+                source: 'manual',
+                title,
+                content: item.content || undefined,
+                url: item.url || undefined,
+                summary: item.summary || undefined,
+                tags: item.tags,
+            });
+            // Stay in this box; mark original read; do not archive.
+            if (item.status === 'unread') {
+                await inboxService.setStatus(item.id, 'read', workspaceId);
+            }
+            ui.showToast(t('inbox.forwardDone', language, { name: target.name }));
+            await refresh();
+            return true;
+        } catch (err) {
+            const msg = (err as Error).message;
+            setError(msg);
+            ui.showToast(t('inbox.forwardFailed', language, { err: msg }));
+            return false;
+        } finally {
+            setForwarding(false);
+        }
+    };
+
+    const loadTargets = useCallback(() => inboxService.listTargets(), []);
 
     const onKeyDown = (e: KeyboardEvent) => {
         if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
@@ -100,20 +161,21 @@ export function InboxPane() {
         }
     };
 
-    const sourceLabel = (s: InboxSource) => t(`inbox.source.${s}`, language) || s;
-
     return (
         <div class="inbox-pane">
             <div class="inbox-header">
                 <h2 class="inbox-title">
                     {t('inbox.title', language)}
+                    <span class="inbox-workspace-tag" title={workspaceId}>
+                        {workspaceName}
+                    </span>
                     {unread > 0 && (
                         <span class="inbox-unread-pill">
                             {unread} {t('inbox.unreadBadge', language)}
                         </span>
                     )}
                 </h2>
-                <button class="inbox-archive-toggle" onClick={() => setShowArchived(v => !v)}>
+                <button type="button" class="inbox-archive-toggle" onClick={() => setShowArchived(v => !v)}>
                     {t(showArchived ? 'inbox.hideArchived' : 'inbox.showArchived', language)}
                 </button>
             </div>
@@ -127,98 +189,36 @@ export function InboxPane() {
                     onKeyDown={onKeyDown}
                     rows={2}
                 />
-                <button class="inbox-capture-btn" onClick={capture} disabled={!draft.trim() || capturing}>
+                <button type="button" class="inbox-capture-btn" onClick={capture} disabled={!draft.trim() || capturing}>
                     {t('inbox.captureBtn', language)}
                 </button>
             </div>
 
             {error && <div class="inbox-error">{error}</div>}
 
-            <div class="inbox-list">
-                {!loading && items.length === 0 && (
-                    <div class="inbox-empty">{t(showArchived ? 'inbox.emptyArchived' : 'inbox.empty', language)}</div>
-                )}
-                {items.map(item => {
-                    const archived = item.status === 'archived';
-                    const text = item.title || item.content || item.url || '';
-                    return (
-                        <div
-                            key={item.id}
-                            class={`inbox-item${item.status === 'unread' ? ' is-unread' : ''}${
-                                archived ? ' is-archived' : ''
-                            }`}
-                        >
-                            <div class="inbox-item-main">
-                                <div class="inbox-item-meta">
-                                    <span class={`inbox-source-tag source-${item.source}`}>
-                                        {sourceLabel(item.source)}
-                                    </span>
-                                    <span class="inbox-item-time">
-                                        {new Date(item.createdAt).toLocaleString(language)}
-                                    </span>
-                                </div>
-                                {item.url ? (
-                                    <a
-                                        class="inbox-item-text inbox-item-link"
-                                        href={item.url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                    >
-                                        {text}
-                                    </a>
-                                ) : (
-                                    <div class="inbox-item-text">{text}</div>
-                                )}
-                            </div>
-                            <div class="inbox-item-actions">
-                                {item.status === 'unread' && (
-                                    <button class="inbox-action" onClick={() => act(item.id, 'read')}>
-                                        {t('inbox.markRead', language)}
-                                    </button>
-                                )}
-                                {!archived && (
-                                    <button class="inbox-action" onClick={() => openDispatch(item.id)}>
-                                        {t('inbox.dispatch', language)}
-                                    </button>
-                                )}
-                                <button
-                                    class="inbox-action"
-                                    onClick={() => act(item.id, archived ? 'unread' : 'archive')}
-                                >
-                                    {t(archived ? 'inbox.unarchive' : 'inbox.archive', language)}
-                                </button>
-                            </div>
-                            {dispatchFor === item.id && (
-                                <div class="inbox-dispatch-picker">
-                                    {targets.length === 0 ? (
-                                        <span class="inbox-dispatch-empty">
-                                            {t('inbox.dispatchNoProjects', language)}
-                                        </span>
-                                    ) : (
-                                        <Fragment>
-                                            <span class="inbox-dispatch-label">
-                                                {t('inbox.dispatchPickProject', language)}
-                                            </span>
-                                            {targets.map(tgt => (
-                                                <button
-                                                    key={tgt.projectId}
-                                                    class="inbox-action"
-                                                    onClick={() => dispatch(item, tgt.projectId)}
-                                                >
-                                                    {tgt.name}
-                                                </button>
-                                            ))}
-                                        </Fragment>
-                                    )}
-                                    <button class="inbox-action" onClick={() => setDispatchFor(null)}>
-                                        {t('inbox.dispatchCancel', language)}
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    );
-                })}
-            </div>
+            <InboxList
+                items={items}
+                loading={loading}
+                showArchived={showArchived}
+                selectedId={selectedId}
+                language={language}
+                onSelect={item => setSelectedId(item.id)}
+            />
+
+            {selectedItem && (
+                <InboxDetail
+                    item={selectedItem}
+                    language={language}
+                    accepting={accepting}
+                    forwarding={forwarding}
+                    workspaceId={workspaceId}
+                    onClose={() => setSelectedId(null)}
+                    onAccept={accept}
+                    onAct={act}
+                    onForward={forward}
+                    loadTargets={loadTargets}
+                />
+            )}
         </div>
     );
 }

@@ -76,7 +76,8 @@ docs/
 | Issue / ProjectItem 话题模型 | [issue-model/](./features/issue-model/) | 设计 + GitHub 字段映射；主实体 = ProjectItem |
 | 可验证完成门禁 | [verification-gate/](./features/verification-gate/) | 提案中 |
 | 上下文中心 | [context-center/](./features/context-center/) | 设计 |
-| Inbox 全上下文引擎 | [inbox-context-engine/](./features/inbox-context-engine/) | RFC 定稿 |
+| Inbox 全上下文引擎 | [inbox-context-engine/](./features/inbox-context-engine/) | RFC 定稿（引擎/角色吸收） |
+| Workspace Inbox（项目邮箱 + 派件接力） | [workspace-inbox/](./features/workspace-inbox/) | 定稿·实现中 |
 | 统一新建会话 | [unified-session-setup/](./features/unified-session-setup/) | 设计就绪 |
 | 右栏 Artifact 多 Tab | [right-panel-tabs/](./features/right-panel-tabs/) | PRD |
 | Git 面板 | [git-panel/](./features/git-panel/) | PRD |

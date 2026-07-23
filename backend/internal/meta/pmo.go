@@ -124,9 +124,49 @@ type DispatchTarget struct {
 	WorkspacePath string `json:"workspacePath"`
 }
 
+// Accept adopts an inbox item into the recipient Workspace's requirement pool
+// (#202): verifies the item belongs to workspaceID, then reuses Dispatch to
+// write type=requirement with a dispatched-from backlink and mark the mail read.
+// title/description default from the inbox item when empty.
+func (s *PMOStore) Accept(workspaceID, inboxItemID, title, description, priority string) (DispatchResult, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	inboxItemID = strings.TrimSpace(inboxItemID)
+	if workspaceID == "" || inboxItemID == "" {
+		return DispatchResult{}, fmt.Errorf("meta: accept requires workspaceId and inbox item id")
+	}
+	if s.inbox == nil {
+		return DispatchResult{}, fmt.Errorf("meta: inbox store not configured")
+	}
+	item, ok, err := s.inbox.Get(inboxItemID)
+	if err != nil {
+		return DispatchResult{}, err
+	}
+	if !ok || item.WorkspaceID != workspaceID {
+		return DispatchResult{}, ErrNotFound
+	}
+	if strings.TrimSpace(title) == "" {
+		title = item.Title
+	}
+	if strings.TrimSpace(description) == "" {
+		if item.Summary != "" {
+			description = item.Summary
+		} else {
+			description = item.Content
+		}
+		if item.URL != "" {
+			if description != "" {
+				description += "\n\n"
+			}
+			description += item.URL
+		}
+	}
+	return s.Dispatch(workspaceID, title, description, priority, inboxItemID)
+}
+
 // Targets lists the projects the PMO may dispatch requirements into: every
 // active project (a legacy personal bucket, if present, is excluded). This is
-// the cross-project menu the PMO conversation picks a target from.
+// the cross-project menu the PMO conversation picks a target from — also the
+// list_mail_targets / GET /api/inbox/targets surface.
 func (s *PMOStore) Targets() ([]DispatchTarget, error) {
 	projects, err := s.tasks.db.ListProjectsByStatus(ProjectStatusActive)
 	if err != nil {

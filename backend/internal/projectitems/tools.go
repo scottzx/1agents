@@ -215,7 +215,7 @@ var toolDefs = []map[string]any{
 	},
 }
 
-// complete_human_project_item tool definition (appended to toolDefs at init time).
+// complete_human_project_item + Workspace Inbox mail tools (appended at init).
 func init() {
 	toolDefs = append(toolDefs, map[string]any{
 		"name":        "complete_human_project_item",
@@ -230,6 +230,82 @@ func init() {
 			},
 		},
 	})
+	// Workspace Inbox mail tools (#202 Phase2 / #205). PM scope only — not
+	// added to executorScopedTools / verifierScopedTools, so task-locked
+	// sessions never see write mail tools. from on send_mail is forced by the
+	// server to the env-injected workspace.
+	toolDefs = append(toolDefs,
+		map[string]any{
+			"name":        "check_inbox",
+			"description": "List mail in the current Workspace Inbox. Default: non-archived items. Pass status='unread' for unread only, or includeArchived=true to include archived. Use this at session start or when the user asks you to check the inbox.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"status":          map[string]any{"type": "string", "enum": []string{"unread", "read", "all"}, "description": "Optional filter. 'unread' / 'read' filter after list; 'all' (or omit) returns non-archived by default."},
+					"includeArchived": map[string]any{"type": "boolean", "description": "When true, include archived items."},
+				},
+			},
+		},
+		map[string]any{
+			"name":        "get_mail",
+			"description": "Fetch full details of one inbox item in the current Workspace Inbox by id.",
+			"inputSchema": map[string]any{
+				"type":     "object",
+				"required": []string{"id"},
+				"properties": map[string]any{
+					"id": map[string]any{"type": "string", "description": "Inbox item id."},
+				},
+			},
+		},
+		map[string]any{
+			"name":        "accept_mail",
+			"description": "Adopt an inbox item as a requirement in the current Workspace (reuses PMO Dispatch: type=requirement + dispatched-from backlink, mail marked read). Optionally override title/description/priority.",
+			"inputSchema": map[string]any{
+				"type":     "object",
+				"required": []string{"id"},
+				"properties": map[string]any{
+					"id":          map[string]any{"type": "string", "description": "Inbox item id to accept."},
+					"title":       map[string]any{"type": "string", "description": "Optional title override; defaults from the mail."},
+					"description": map[string]any{"type": "string", "description": "Optional description override; defaults from summary/content/url."},
+					"priority":    map[string]any{"type": "string", "enum": []string{"urgent", "high", "medium", "low"}},
+				},
+			},
+		},
+		map[string]any{
+			"name":        "archive_mail",
+			"description": "Archive an inbox item in the current Workspace Inbox (status→archived; never deleted). Optional reason is recorded in the tool response only.",
+			"inputSchema": map[string]any{
+				"type":     "object",
+				"required": []string{"id"},
+				"properties": map[string]any{
+					"id":     map[string]any{"type": "string", "description": "Inbox item id."},
+					"reason": map[string]any{"type": "string", "description": "Optional archive reason for the transcript."},
+				},
+			},
+		},
+		map[string]any{
+			"name":        "list_mail_targets",
+			"description": "List Workspaces that can receive mail (active projects/workforce, excluding personal bucket). Use before send_mail to pick toWorkspaceId.",
+			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}},
+		},
+		map[string]any{
+			"name":        "send_mail",
+			"description": "Deliver an envelope to another Workspace's Inbox. The sender (fromWorkspaceId) is forced to the current workspace; source is always 'agent'. This is the only allowed cross-workspace write — it only inserts an inbox row on the target, never mutates their ProjectItems.",
+			"inputSchema": map[string]any{
+				"type":     "object",
+				"required": []string{"toWorkspaceId", "title"},
+				"properties": map[string]any{
+					"toWorkspaceId": map[string]any{"type": "string", "description": "Recipient Workspace id (from list_mail_targets)."},
+					"title":         map[string]any{"type": "string"},
+					"content":       map[string]any{"type": "string"},
+					"url":           map[string]any{"type": "string"},
+					"summary":       map[string]any{"type": "string"},
+					"tags":          map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+					"fromRef":       map[string]any{"type": "string", "description": "Optional producer label (role name / function id)."},
+				},
+			},
+		},
+	)
 }
 
 // reviewVerifier is "verifier" — the ONEAGENTS_TASK_ROLE value selecting the
@@ -382,6 +458,18 @@ func (s *server) onToolCall(params json.RawMessage) map[string]any {
 		return s.toolSubmitReview(p.Arguments)
 	case "complete_human_project_item":
 		return s.toolCompleteHumanTask(p.Arguments)
+	case "check_inbox":
+		return s.toolCheckInbox(p.Arguments)
+	case "get_mail":
+		return s.toolGetMail(p.Arguments)
+	case "accept_mail":
+		return s.toolAcceptMail(p.Arguments)
+	case "archive_mail":
+		return s.toolArchiveMail(p.Arguments)
+	case "list_mail_targets":
+		return s.toolListMailTargets()
+	case "send_mail":
+		return s.toolSendMail(p.Arguments)
 	default:
 		return toolErr("unknown tool: " + p.Name)
 	}
@@ -723,4 +811,148 @@ func (s *server) toolCompleteHumanTask(args json.RawMessage) map[string]any {
 		return toolErr(fmt.Sprintf("complete_human_project_item failed (%d): %s", status, strings.TrimSpace(string(resp))))
 	}
 	return toolText("human task " + a.ID + " completed")
+}
+
+// ── Workspace Inbox mail tools (#205) ───────────────────────────────────────
+
+func (s *server) toolCheckInbox(args json.RawMessage) map[string]any {
+	var a struct {
+		Status          string `json:"status"`
+		IncludeArchived bool   `json:"includeArchived"`
+	}
+	_ = json.Unmarshal(args, &a)
+	status, body, err := s.cl().ListInbox(a.IncludeArchived)
+	if err != nil {
+		return toolErr(err.Error())
+	}
+	if status != 200 {
+		return toolErr(fmt.Sprintf("check_inbox failed (%d): %s", status, strings.TrimSpace(string(body))))
+	}
+	var payload struct {
+		Items  []json.RawMessage `json:"items"`
+		Unread int               `json:"unread"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return toolText(string(body))
+	}
+	// Optional status filter client-side (daemon list is workspace-scoped).
+	want := strings.ToLower(strings.TrimSpace(a.Status))
+	if want == "" || want == "all" {
+		return toolJSON(map[string]any{
+			"count":  len(payload.Items),
+			"unread": payload.Unread,
+			"items":  payload.Items,
+		})
+	}
+	filtered := make([]json.RawMessage, 0, len(payload.Items))
+	for _, raw := range payload.Items {
+		var it struct {
+			Status string `json:"status"`
+		}
+		if err := json.Unmarshal(raw, &it); err != nil {
+			continue
+		}
+		if it.Status == want {
+			filtered = append(filtered, raw)
+		}
+	}
+	return toolJSON(map[string]any{
+		"count":  len(filtered),
+		"unread": payload.Unread,
+		"items":  filtered,
+	})
+}
+
+func (s *server) toolGetMail(args json.RawMessage) map[string]any {
+	var a struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil || strings.TrimSpace(a.ID) == "" {
+		return toolErr("id is required")
+	}
+	status, body, err := s.cl().GetInboxItem(a.ID)
+	if err != nil {
+		return toolErr(err.Error())
+	}
+	if status != 200 {
+		return toolErr(fmt.Sprintf("get_mail failed (%d): %s", status, strings.TrimSpace(string(body))))
+	}
+	return toolText(string(body))
+}
+
+func (s *server) toolAcceptMail(args json.RawMessage) map[string]any {
+	var a struct {
+		ID          string `json:"id"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		Priority    string `json:"priority"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil || strings.TrimSpace(a.ID) == "" {
+		return toolErr("id is required")
+	}
+	status, body, err := s.cl().AcceptMail(a.ID, a.Title, a.Description, a.Priority)
+	if err != nil {
+		return toolErr(err.Error())
+	}
+	if status != 200 {
+		return toolErr(fmt.Sprintf("accept_mail failed (%d): %s", status, strings.TrimSpace(string(body))))
+	}
+	return toolText(string(body))
+}
+
+func (s *server) toolArchiveMail(args json.RawMessage) map[string]any {
+	var a struct {
+		ID     string `json:"id"`
+		Reason string `json:"reason"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil || strings.TrimSpace(a.ID) == "" {
+		return toolErr("id is required")
+	}
+	status, body, err := s.cl().ArchiveMail(a.ID)
+	if err != nil {
+		return toolErr(err.Error())
+	}
+	if status != 200 {
+		return toolErr(fmt.Sprintf("archive_mail failed (%d): %s", status, strings.TrimSpace(string(body))))
+	}
+	if strings.TrimSpace(a.Reason) == "" {
+		return toolText(string(body))
+	}
+	return toolJSON(map[string]any{
+		"item":   json.RawMessage(body),
+		"reason": a.Reason,
+	})
+}
+
+func (s *server) toolListMailTargets() map[string]any {
+	status, body, err := s.cl().ListMailTargets()
+	if err != nil {
+		return toolErr(err.Error())
+	}
+	if status != 200 {
+		return toolErr(fmt.Sprintf("list_mail_targets failed (%d): %s", status, strings.TrimSpace(string(body))))
+	}
+	return toolText(string(body))
+}
+
+func (s *server) toolSendMail(args json.RawMessage) map[string]any {
+	var a SendMailArgs
+	if err := json.Unmarshal(args, &a); err != nil {
+		return toolErr("invalid arguments: " + err.Error())
+	}
+	if strings.TrimSpace(a.ToWorkspaceID) == "" {
+		return toolErr("toWorkspaceId is required")
+	}
+	if strings.TrimSpace(a.Title) == "" && strings.TrimSpace(a.Content) == "" && strings.TrimSpace(a.URL) == "" {
+		return toolErr("title, content or url is required")
+	}
+	// Client.SendMail forces fromWorkspaceId=current and source=agent.
+	status, body, err := s.cl().SendMail(a)
+	if err != nil {
+		return toolErr(err.Error())
+	}
+	if status != 200 {
+		return toolErr(fmt.Sprintf("send_mail failed (%d): %s", status, strings.TrimSpace(string(body))))
+	}
+	return toolText(string(body))
 }

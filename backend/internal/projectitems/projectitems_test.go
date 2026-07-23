@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -75,8 +76,21 @@ func TestInitializeAndToolsList(t *testing.T) {
 	env = call(t, s, buf, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
 	res, _ = env["result"].(map[string]any)
 	tools, _ := res["tools"].([]any)
-	if len(tools) != 10 {
-		t.Fatalf("expected 10 tools, got %d", len(tools))
+	// 10 legacy + 6 Workspace Inbox mail tools (#205)
+	if len(tools) != 16 {
+		t.Fatalf("expected 16 tools, got %d", len(tools))
+	}
+	got := map[string]bool{}
+	for _, tl := range tools {
+		name, _ := tl.(map[string]any)["name"].(string)
+		got[name] = true
+	}
+	for _, want := range []string{
+		"check_inbox", "get_mail", "accept_mail", "archive_mail", "list_mail_targets", "send_mail",
+	} {
+		if !got[want] {
+			t.Errorf("PM tools/list missing mail tool %q; got %v", want, got)
+		}
 	}
 }
 
@@ -465,6 +479,96 @@ func TestVerifierScopeToolsList(t *testing.T) {
 	}
 	if got["update_project_item"] {
 		t.Error("update_project_item must NOT be advertised to a verifier (hard read-only)")
+	}
+	// #205: verifier must not see write-class mail tools
+	for _, deny := range []string{"send_mail", "accept_mail", "archive_mail"} {
+		if got[deny] {
+			t.Errorf("verifier must NOT have write mail tool %q", deny)
+		}
+	}
+}
+
+// ── Workspace Inbox mail tools (#205) ───────────────────────────────────────
+
+func TestMailToolsSendCheckAccept(t *testing.T) {
+	// Simulate A (ws1) send_mail → deliver to B (ws-b); B would check/accept via
+	// separate sessions. Here we assert wire shapes on one MCP server locked to ws1.
+	var deliverBody map[string]any
+	s, buf, _ := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/inbox/deliver":
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &deliverBody)
+			w.Write([]byte(`{"id":"m1","workspaceId":"ws-b","source":"agent","fromWorkspaceId":"ws1","title":"竞品摘要","status":"unread"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/inbox":
+			if r.URL.Query().Get("workspaceId") != "ws1" {
+				http.Error(w, "wrong workspace", 400)
+				return
+			}
+			w.Write([]byte(`{"items":[{"id":"m0","workspaceId":"ws1","title":"本箱信","status":"unread"}],"unread":1}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/api/inbox/m0/accept":
+			var acc map[string]any
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &acc)
+			if acc["workspaceId"] != "ws1" {
+				http.Error(w, "accept must pin current workspace", 400)
+				return
+			}
+			w.Write([]byte(`{"task":{"id":"req1","type":"requirement","title":"本箱信","labels":["dispatched-from:m0"]}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/inbox/targets":
+			w.Write([]byte(`{"targets":[{"projectId":"ws-b","name":"判定助理"}]}`))
+		default:
+			http.Error(w, "unexpected "+r.Method+" "+r.URL.Path, 400)
+		}
+	})
+
+	// list targets
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_mail_targets","arguments":{}}}`)
+	if text, isErr := resultText(t, env); isErr {
+		t.Fatalf("list_mail_targets: %s", text)
+	}
+
+	// send: from must be forced to ws1, source=agent
+	env = call(t, s, buf, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"send_mail","arguments":{"toWorkspaceId":"ws-b","title":"竞品摘要","content":"对方上了 X","fromRef":"collector"}}}`)
+	if text, isErr := resultText(t, env); isErr {
+		t.Fatalf("send_mail: %s", text)
+	}
+	if deliverBody["workspaceId"] != "ws-b" {
+		t.Fatalf("deliver target = %v, want ws-b", deliverBody["workspaceId"])
+	}
+	if deliverBody["fromWorkspaceId"] != "ws1" {
+		t.Fatalf("from forced to current ws, got %v", deliverBody["fromWorkspaceId"])
+	}
+	if deliverBody["source"] != "agent" {
+		t.Fatalf("source = %v, want agent", deliverBody["source"])
+	}
+
+	// check own inbox
+	env = call(t, s, buf, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"check_inbox","arguments":{}}}`)
+	text, isErr := resultText(t, env)
+	if isErr {
+		t.Fatalf("check_inbox: %s", text)
+	}
+	if !strings.Contains(text, "m0") {
+		t.Fatalf("check_inbox should list m0: %s", text)
+	}
+
+	// accept
+	env = call(t, s, buf, `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"accept_mail","arguments":{"id":"m0"}}}`)
+	if text, isErr := resultText(t, env); isErr {
+		t.Fatalf("accept_mail: %s", text)
+	} else if !strings.Contains(text, "requirement") {
+		t.Fatalf("accept should return requirement: %s", text)
+	}
+}
+
+func TestVerifierBlocksSendMail(t *testing.T) {
+	s, buf, _ := newVerifierScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("send_mail must not hit API in verifier scope: %s", r.URL.Path)
+	})
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"send_mail","arguments":{"toWorkspaceId":"x","title":"nope"}}}`)
+	if text, isErr := resultText(t, env); !isErr {
+		t.Fatalf("expected verifier send_mail rejection, got: %s", text)
 	}
 }
 

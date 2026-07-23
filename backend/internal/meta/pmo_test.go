@@ -2,6 +2,7 @@ package meta
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -116,5 +117,81 @@ func TestTargetsListsActiveProjects(t *testing.T) {
 	}
 	if len(targets) != 1 || targets[0].ProjectID != "p-active" {
 		t.Fatalf("targets should list the active project, got %+v", targets)
+	}
+}
+
+// TestAcceptInboxCreatesRequirement: Accept on B's mail produces a
+// type=requirement in B with dispatched-from label and marks the item read
+// (acceptance criterion #204).
+func TestAcceptInboxCreatesRequirement(t *testing.T) {
+	pmo, ts, inbox := newTestPMOStore(t)
+	wsPath := t.TempDir()
+	if err := ts.db.EnsureProject("ws-b", "项目 B", wsPath); err != nil {
+		t.Fatalf("ensure project: %v", err)
+	}
+	mail, err := inbox.Deliver(InboxItem{
+		WorkspaceID:     "ws-b",
+		Source:          InboxSourceAgent,
+		FromWorkspaceID: "ws-a",
+		Title:           "竞品上了导出",
+		Content:         "建议跟进导出体验",
+	})
+	if err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+
+	res, err := pmo.Accept("ws-b", mail.ID, "", "", "high")
+	if err != nil {
+		t.Fatalf("accept: %v", err)
+	}
+	if res.Project.ID != "ws-b" {
+		t.Fatalf("project = %q, want ws-b", res.Project.ID)
+	}
+	req := res.Requirement
+	if req.Type != ItemTypeRequirement {
+		t.Fatalf("type = %q, want requirement", req.Type)
+	}
+	if req.Title != "竞品上了导出" {
+		t.Fatalf("title = %q, want item title", req.Title)
+	}
+	if !strings.Contains(req.Description, "建议跟进导出体验") {
+		t.Fatalf("description = %q, want content", req.Description)
+	}
+	found := false
+	for _, l := range req.Labels {
+		if l == dispatchedFromLabel+mail.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("labels missing dispatched-from: %v", req.Labels)
+	}
+
+	got, ok, err := inbox.Get(mail.ID)
+	if err != nil || !ok {
+		t.Fatalf("inbox get: ok=%v err=%v", ok, err)
+	}
+	if got.Status != InboxStatusRead {
+		t.Fatalf("status after accept = %q, want read", got.Status)
+	}
+
+	cfg, err := ts.Load(wsPath)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(cfg.Tasks) != 1 || cfg.Tasks[0].ID != req.ID {
+		t.Fatalf("requirement not in B pool: %+v", cfg.Tasks)
+	}
+
+	// Wrong workspace ownership must not accept.
+	if _, err := pmo.Accept("ws-a", mail.ID, "", "", ""); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("cross-workspace accept err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestAcceptUnknownInboxItem(t *testing.T) {
+	pmo, _, _ := newTestPMOStore(t)
+	if _, err := pmo.Accept("ws-b", "missing", "t", "", ""); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
 	}
 }

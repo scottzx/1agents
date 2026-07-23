@@ -251,3 +251,120 @@ func (c *Client) InWorkspace(id string) (bool, error) {
 	}
 	return false, nil
 }
+
+// ── Workspace Inbox (#202 / #205) ───────────────────────────────────────────
+// Mail tools proxy /api/inbox*. The Client always injects the locked workspace
+// as the current box (list/get/accept/archive) or as fromWorkspaceId (send).
+
+// ListInbox returns this workspace's inbox items. includeArchived=true includes
+// archived rows (maps to ?archived=1).
+func (c *Client) ListInbox(includeArchived bool) (int, []byte, error) {
+	q := url.Values{"workspaceId": {c.workspaceID}}
+	if includeArchived {
+		q.Set("archived", "1")
+	}
+	return c.api.do("GET", "/api/inbox", q, nil)
+}
+
+// GetInboxItem returns one mail, scoped so the daemon rejects rows not owned
+// by this workspace.
+func (c *Client) GetInboxItem(id string) (int, []byte, error) {
+	q := url.Values{"workspaceId": {c.workspaceID}}
+	return c.api.do("GET", "/api/inbox/"+url.PathEscape(id), q, nil)
+}
+
+// AcceptMail adopts an inbox item as a requirement in this workspace.
+func (c *Client) AcceptMail(id, title, description, priority string) (int, []byte, error) {
+	body := map[string]any{"workspaceId": c.workspaceID}
+	if title != "" {
+		body["title"] = title
+	}
+	if description != "" {
+		body["description"] = description
+	}
+	if priority != "" {
+		body["priority"] = priority
+	}
+	return c.api.do("POST", "/api/inbox/"+url.PathEscape(id)+"/accept", nil, body)
+}
+
+// ArchiveMail archives an inbox item in this workspace.
+func (c *Client) ArchiveMail(id string) (int, []byte, error) {
+	q := url.Values{"workspaceId": {c.workspaceID}}
+	return c.api.do("POST", "/api/inbox/"+url.PathEscape(id)+"/archive", q, nil)
+}
+
+// ListMailTargets returns workspaces that can receive mail.
+func (c *Client) ListMailTargets() (int, []byte, error) {
+	return c.api.do("GET", "/api/inbox/targets", nil, nil)
+}
+
+// SendMailArgs is the agent-facing send payload. From is forced by Client.
+type SendMailArgs struct {
+	ToWorkspaceID string   `json:"toWorkspaceId"`
+	Title         string   `json:"title"`
+	Content       string   `json:"content"`
+	URL           string   `json:"url"`
+	Summary       string   `json:"summary"`
+	Tags          []string `json:"tags"`
+	FromRef       string   `json:"fromRef"`
+}
+
+// SendMail delivers an envelope to target workspace. fromWorkspaceId is always
+// this Client's workspace; source is always "agent". Callers cannot override.
+func (c *Client) SendMail(a SendMailArgs) (int, []byte, error) {
+	body := map[string]any{
+		"workspaceId":     a.ToWorkspaceID,
+		"source":          "agent",
+		"fromWorkspaceId": c.workspaceID,
+		"title":           a.Title,
+		"content":         a.Content,
+		"url":             a.URL,
+		"summary":         a.Summary,
+		"tags":            a.Tags,
+		"fromRef":         a.FromRef,
+	}
+	return c.api.do("POST", "/api/inbox/deliver", nil, body)
+}
+
+// DeliverEnvelopeArgs is the function/data_source deliver path (#206): full
+// envelope write via POST /api/inbox/deliver. Unlike SendMail, source is free
+// (function|data_source|email|…) and fromWorkspaceId is optional.
+type DeliverEnvelopeArgs struct {
+	ToWorkspaceID   string   `json:"toWorkspaceId"`
+	Source          string   `json:"source"`
+	FromWorkspaceID string   `json:"fromWorkspaceId"`
+	FromRef         string   `json:"fromRef"`
+	Title           string   `json:"title"`
+	Content         string   `json:"content"`
+	URL             string   `json:"url"`
+	Summary         string   `json:"summary"`
+	Tags            []string `json:"tags"`
+}
+
+// DeliverEnvelope POSTs a full envelope (function / data_source / email producers).
+// Empty ToWorkspaceID defaults to the Client's locked workspace.
+func (c *Client) DeliverEnvelope(a DeliverEnvelopeArgs) (int, []byte, error) {
+	to := strings.TrimSpace(a.ToWorkspaceID)
+	if to == "" {
+		to = c.workspaceID
+	}
+	body := map[string]any{
+		"workspaceId":     to,
+		"source":          a.Source,
+		"fromWorkspaceId": a.FromWorkspaceID,
+		"fromRef":         a.FromRef,
+		"title":           a.Title,
+		"content":         a.Content,
+		"url":             a.URL,
+		"summary":         a.Summary,
+		"tags":            a.Tags,
+	}
+	return c.api.do("POST", "/api/inbox/deliver", nil, body)
+}
+
+// SetMailStatus flips inbox item status: archive | read | unread.
+func (c *Client) SetMailStatus(id, action string) (int, []byte, error) {
+	q := url.Values{"workspaceId": {c.workspaceID}}
+	return c.api.do("POST", "/api/inbox/"+url.PathEscape(id)+"/"+url.PathEscape(action), q, nil)
+}

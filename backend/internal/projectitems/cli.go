@@ -56,6 +56,8 @@ const cliUsage = `usage: 1agents project-items <verb> [flags]   (run inside a pr
   milestones create    --name N [--description D] [--target-date RFC3339] [--predecessor ID]
   milestones update <id> [--name N] [--description D] [--target-date RFC3339] [--predecessor ID]
   pdf                  [--out PATH] [--font TTF] (导出当前项目看板为 PDF 报告)
+  mail                 list|check|get|send|deliver|accept|archive|read|unread|targets|import-agentmail
+                       (Workspace Inbox — same ops as MCP check_inbox/send_mail/…; see mail --help)
 
 <id> accepts the item UUID or the short #N shown by list (e.g. #3).
 common: --project <id|name|path> overrides cwd-based project resolution; --json prints machine output.
@@ -91,6 +93,8 @@ func RunCLI(args []string) int {
 		return cliMilestones(args[1:])
 	case "pdf":
 		return cliPDF(args[1:])
+	case "mail":
+		return cliMail(args[1:])
 	default:
 		return cliFail("unknown verb %q\n%s", args[0], cliUsage)
 	}

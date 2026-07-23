@@ -35,11 +35,13 @@ func TestInboxCaptureDefaults(t *testing.T) {
 func TestInboxSourceNormalization(t *testing.T) {
 	s := newTestInboxStore(t)
 	cases := map[string]string{
-		"manual":  InboxSourceManual,
-		"im":      InboxSourceIM,
-		"rss":     InboxSourceRSS,
-		"":        InboxSourceMisc,
-		"unknown": InboxSourceMisc,
+		"manual":      InboxSourceManual,
+		"agent":       InboxSourceAgent,
+		"function":    InboxSourceFunction,
+		"data_source": InboxSourceDataSource,
+		"im":          InboxSourceIM,
+		"rss":         InboxSourceRSS,
+		"unknown":     InboxSourceMisc,
 	}
 	for in, want := range cases {
 		got, err := s.Capture(InboxItem{Source: in, Title: "x"})
@@ -49,6 +51,124 @@ func TestInboxSourceNormalization(t *testing.T) {
 		if got.Source != want {
 			t.Errorf("source %q normalized to %q, want %q", in, got.Source, want)
 		}
+	}
+	// Capture treats empty source as manual; Deliver normalizes empty to misc.
+	cap, err := s.Capture(InboxItem{Title: "manual default source"})
+	if err != nil {
+		t.Fatalf("capture empty source: %v", err)
+	}
+	if cap.Source != InboxSourceManual {
+		t.Errorf("Capture empty source = %q, want manual", cap.Source)
+	}
+	del, err := s.Deliver(InboxItem{WorkspaceID: "ws", Title: "deliver empty source", Source: ""})
+	if err != nil {
+		t.Fatalf("deliver empty source: %v", err)
+	}
+	if del.Source != InboxSourceMisc {
+		t.Errorf("Deliver empty source = %q, want misc", del.Source)
+	}
+}
+
+// TestInboxDeliverListByWorkspaceIsolation: A deliver → B list sees only that
+// mail; A list does not (acceptance criterion #204).
+func TestInboxDeliverListByWorkspaceIsolation(t *testing.T) {
+	s := newTestInboxStore(t)
+	delivered, err := s.Deliver(InboxItem{
+		WorkspaceID:     "ws-b",
+		Source:          InboxSourceAgent,
+		FromWorkspaceID: "ws-a",
+		FromRef:         "collector",
+		Title:           "handoff for B",
+		Content:         "please triage",
+		Payload:         []byte(`{"score":1}`),
+	})
+	if err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+	if delivered.WorkspaceID != "ws-b" || delivered.FromWorkspaceID != "ws-a" {
+		t.Fatalf("envelope fields: workspace=%q from=%q", delivered.WorkspaceID, delivered.FromWorkspaceID)
+	}
+	if string(delivered.Payload) != `{"score":1}` {
+		t.Fatalf("payload = %s", delivered.Payload)
+	}
+
+	// Noise in A must not leak into B's list.
+	if _, err := s.Deliver(InboxItem{
+		WorkspaceID: "ws-a",
+		Source:      InboxSourceFunction,
+		Title:       "only for A",
+	}); err != nil {
+		t.Fatalf("deliver to A: %v", err)
+	}
+
+	listB, err := s.ListByWorkspace("ws-b", false)
+	if err != nil {
+		t.Fatalf("list B: %v", err)
+	}
+	if len(listB) != 1 || listB[0].ID != delivered.ID {
+		t.Fatalf("B list = %+v, want only delivered id %s", listB, delivered.ID)
+	}
+
+	listA, err := s.ListByWorkspace("ws-a", false)
+	if err != nil {
+		t.Fatalf("list A: %v", err)
+	}
+	if len(listA) != 1 || listA[0].Title != "only for A" {
+		t.Fatalf("A list = %+v, want only A's item", listA)
+	}
+	for _, it := range listA {
+		if it.ID == delivered.ID {
+			t.Fatal("A must not see B's delivered item")
+		}
+	}
+
+	unreadB, err := s.UnreadCountByWorkspace("ws-b")
+	if err != nil || unreadB != 1 {
+		t.Fatalf("unread B = %d err=%v, want 1", unreadB, err)
+	}
+}
+
+func TestInboxDeliverRequiresWorkspace(t *testing.T) {
+	s := newTestInboxStore(t)
+	if _, err := s.Deliver(InboxItem{Title: "no workspace"}); err == nil {
+		t.Fatal("Deliver without workspaceId should fail")
+	}
+}
+
+// TestInboxLegacyBackfillWorkspaceID: rows written without workspace_id (or
+// empty after column add) are backfilled to the builtin default assistant on
+// Open / ensureInboxItemsColumns.
+func TestInboxLegacyBackfillWorkspaceID(t *testing.T) {
+	db := newTestDB(t)
+	// Simulate a pre-#202 row: blank workspace_id (column exists with DEFAULT '').
+	id := "legacy-inbox-1"
+	if _, err := db.sql.Exec(`
+		INSERT INTO inbox_items (id, workspace_id, source, title, content, url, summary, tags, status, created_at, updated_at)
+		VALUES (?, '', 'manual', 'old global item', '', '', '', '[]', 'unread', ?, ?)`,
+		id, "2020-01-01T00:00:00Z", "2020-01-01T00:00:00Z"); err != nil {
+		t.Fatalf("seed legacy row: %v", err)
+	}
+	if err := db.ensureInboxItemsColumns(); err != nil {
+		t.Fatalf("ensure/backfill: %v", err)
+	}
+	s := NewInboxStore(db)
+	got, ok, err := s.Get(id)
+	if err != nil || !ok {
+		t.Fatalf("get: ok=%v err=%v", ok, err)
+	}
+	if got.WorkspaceID != DefaultInboxWorkspaceID {
+		t.Fatalf("workspace_id = %q, want %q after backfill", got.WorkspaceID, DefaultInboxWorkspaceID)
+	}
+}
+
+func TestInboxCaptureDefaultsWorkspace(t *testing.T) {
+	s := newTestInboxStore(t)
+	item, err := s.Capture(InboxItem{Title: "no ws"})
+	if err != nil {
+		t.Fatalf("capture: %v", err)
+	}
+	if item.WorkspaceID != DefaultInboxWorkspaceID {
+		t.Fatalf("workspace_id = %q, want default", item.WorkspaceID)
 	}
 }
 

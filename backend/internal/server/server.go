@@ -144,10 +144,10 @@ func NewRouter(cfg *config.Config) http.Handler {
 			mux.HandleFunc("/api/search", meta.SearchHandler(db))           // GET ?q=xxx — 对话历史 quick search over tasks + sessions
 			mux.HandleFunc("/api/projects/", meta.ProjectActionHandler(db)) // POST {id}/archive|close|reopen
 
-			// Inbox 统一信息收口层 (#60): multi-source intake + archive.
-			inboxStore := meta.NewInboxStore(db)
-			mux.HandleFunc("/api/inbox", meta.InboxHandler(inboxStore))      // GET (?archived=1), POST capture
-			mux.HandleFunc("/api/inbox/", meta.InboxItemHandler(inboxStore)) // POST /{id}/archive|read|unread
+			// Workspace Inbox (#202 / #60): list + manual capture. Item actions
+			// (archive/read/accept) and deliver register with PMO below so Accept
+			// can share the TaskStore write lock.
+			mux.HandleFunc("/api/inbox", meta.InboxHandler(meta.NewInboxStore(db))) // GET ?workspaceId=, POST capture
 		}
 
 		tasksStore, tsErr := agent.NewTasksStore()
@@ -420,13 +420,16 @@ func NewRouter(cfg *config.Config) http.Handler {
 				}
 			}
 
-			// PMO 跨项目对话式需求分发层 (#61): dispatch a clarified requirement into
-			// a target project's pool (and close the originating inbox item). Shares
-			// the task store (#N numbering / write lock) and the inbox store (over
-			// the same cached DB handle) so dispatching marks the source item read.
+			// PMO 跨项目对话式需求分发层 (#61) + Workspace Inbox item/deliver routes
+			// (#202): Accept reuses Dispatch; deliver is the unified envelope write.
+			// Shares the task store (#N numbering / write lock) and one InboxStore.
 			if db, dbErr := meta.OpenDefault(); dbErr == nil {
-				pmoStore := meta.NewPMOStore(tasksStore, meta.NewInboxStore(db))
-				mux.HandleFunc("/api/pmo/dispatch", meta.PMODispatchHandler(pmoStore)) // GET targets, POST dispatch
+				inboxStore := meta.NewInboxStore(db)
+				pmoStore := meta.NewPMOStore(tasksStore, inboxStore)
+				mux.HandleFunc("/api/inbox/deliver", meta.InboxDeliverHandler(inboxStore))  // POST deliver
+				mux.HandleFunc("/api/inbox/targets", meta.InboxTargetsHandler(pmoStore))    // GET mail targets
+				mux.HandleFunc("/api/inbox/", meta.InboxItemHandler(inboxStore, pmoStore))  // GET /{id}; POST /{id}/archive|read|unread|accept
+				mux.HandleFunc("/api/pmo/dispatch", meta.PMODispatchHandler(pmoStore))      // GET targets, POST dispatch
 			}
 		}
 	}

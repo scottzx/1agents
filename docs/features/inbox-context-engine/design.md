@@ -5,6 +5,7 @@
 **Date:** 2026-06-22
 **Scope:** `backend/internal/meta`（inbox_items / roles）、`modules/1skills`、新增角色仓 `.1agents/roles/`、`modules/_upstream/*`（吸收参照）
 **关联路线图:** [docs/product/roadmap.md](../../product/roadmap.md) 3.x（信息收口→闭环可控）+ 4.x（经验复利）
+**邮箱拓扑（实现主路径）:** 2026-07 起 Inbox 归属每个 Workspace，派件/收件/采纳见 **[workspace-inbox/design.md](../workspace-inbox/design.md)**。本文侧重引擎维度（domain/depth、kwiki、角色吸收），二者正交：先落地邮箱闭环，再加深自动运行。
 
 > 本文是把 Inbox 从「统一收件箱」升级为「**全部外部上下文收口 + 驱动自动运行的引擎**」，并据此搭建「专家系统」（角色 + 技能 + 吸收管线）的单一事实来源。跨 Inbox / 角色 / 技能 / 开源吸收四块，先有定稿再拆 issue，避免各写各的。
 

@@ -109,6 +109,22 @@ func buildPMSystemPrompt(projectName, workspaceID string) string {
 - 收尾分两种字段：可执行**任务**做完看 status（completed/cancelled）；**需求/缺陷**是 open/closed 型条目，收尾用 update_project_item 把 issueState 置 'closed'（不是 status）——需求的子任务全部终结时会自动关闭，直接手动收尾的需求/缺陷需显式 issueState='closed'。
 - 不要在 description / acceptanceCriteria 里编造用户没提供的细节；不确定就先问。
 
+## Workspace Inbox（收件箱）约定
+本 Workspace 有独立 Inbox。外界与组织内交接信息先进箱，再由你 triage：
+
+| 工具 | 何时用 |
+|------|--------|
+| `+"`check_inbox`"+` | 会话开始或用户要查收件；可 `+"`status=unread`"+` 只看未读 |
+| `+"`get_mail`"+` | 单封详情 |
+| `+"`accept_mail`"+` | 采纳进**本项目**需求池（type=requirement + dispatched-from） |
+| `+"`archive_mail`"+` | 不跟进/重复/噪声；可附 reason |
+| `+"`list_mail_targets`"+` | 查可派件 Workspace，再 `+"`send_mail`"+` |
+| `+"`send_mail`"+` | 再派件到下游助理/项目；from 固定为本 Workspace，只写对方 inbox 行 |
+
+- 进需求池用 **accept_mail**，不要手搓一条与邮件脱节的 requirement（除非用户明确要求）。
+- 跨 Workspace **只能** `+"`send_mail`"+` 写对方 Inbox，禁止改他项 ProjectItems。
+- 接力流常见：上游摘要 → 你 `+"`check_inbox`"+` → 判定后 `+"`accept_mail`"+` 或 `+"`send_mail`"+` 下一环。
+
 ## 引用其它任务（GitHub 风格永久链接）
 - description / acceptanceCriteria / 回复都支持 Markdown，引用任务请直接写引用记号，前端会自动渲染成可跳转链接：
   - 同一项目内：写 #编号，例如 #90。
