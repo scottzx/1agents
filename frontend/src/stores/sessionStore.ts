@@ -11,6 +11,7 @@ import {
     type AgentType,
 } from '../components/types';
 import type { AuthState, ConnectionState } from '@1agents/core/protocol/types';
+import { normalizeAgentStatus, type AgentRunStatus } from '../components/chat/AgentAvatar';
 import { terminalService } from '../services/terminalService';
 import { agentService, DEFAULT_AGENT_TYPE } from '../services/agentService';
 import { globalBridgeManager } from '../components/chat/hooks';
@@ -24,6 +25,7 @@ import type { SessionSetupOpenOpts } from './modalStore';
 import { sessionSetupDefaults } from './sessionSetupDefaults';
 import { AGENT_TYPE_LABELS } from '../components/types';
 import * as stage from './stageStore';
+import * as taskNav from './taskNavStore';
 
 /**
  * Session state (tmux terminal windows, chat session index, active session)
@@ -166,11 +168,113 @@ export const lockedNewChatWorkspaceId = signal<string | null>(null);
  * bridge, so only those get overrides; backgrounded sessions keep their
  * snapshot until reselected.
  */
+// ── Session Read / Unread Indicator State ──
+const STORAGE_KEY_READ_TIMES = '1agents_session_read_times';
+const STORAGE_KEY_COMPLETED_TIMES = '1agents_session_completed_times';
+
+const loadStoredTimes = (key: string): Record<string, number> => {
+    try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : {};
+    } catch {
+        return {};
+    }
+};
+
+const saveStoredTimes = (key: string, data: Record<string, number>) => {
+    try {
+        localStorage.setItem(key, JSON.stringify(data));
+    } catch {
+        // ignore
+    }
+};
+
+export const sessionReadTimes = signal<Record<string, number>>(loadStoredTimes(STORAGE_KEY_READ_TIMES));
+export const sessionCompletedTimes = signal<Record<string, number>>(loadStoredTimes(STORAGE_KEY_COMPLETED_TIMES));
+
+// 5-second tick to trigger reactive re-evaluation of 5-minute timeout status
+export const readStateTick = signal<number>(Date.now());
+if (typeof window !== 'undefined') {
+    setInterval(() => {
+        readStateTick.value = Date.now();
+    }, 5_000);
+}
+
+export const markSessionRead = (sessionId: string) => {
+    if (!sessionId) return;
+    const now = Date.now();
+    const cur = sessionReadTimes.value[sessionId];
+    if (cur && now - cur < 1000) return;
+    const next = { ...sessionReadTimes.value, [sessionId]: now };
+    sessionReadTimes.value = next;
+    saveStoredTimes(STORAGE_KEY_READ_TIMES, next);
+};
+
+export const markSessionCompleted = (sessionId: string) => {
+    if (!sessionId) return;
+    const now = Date.now();
+    const next = { ...sessionCompletedTimes.value, [sessionId]: now };
+    sessionCompletedTimes.value = next;
+    saveStoredTimes(STORAGE_KEY_COMPLETED_TIMES, next);
+};
+
+/**
+ * Computes effective visual avatar status key for a session, implementing Read/Unread
+ * mode and 5-minute timeout logic for completed (idle) status.
+ */
+export function computeSessionAvatarStatus(
+    session: Session | null | undefined,
+    liveStatus?: ChatStatus
+): AgentRunStatus {
+    if (!session) return 'none';
+
+    const chat = isChat(session);
+    const effectiveStatus = chat ? liveStatus ?? session.status : session.status;
+
+    // Brand-new chat sessions with no acpSessionId show hollow indicator
+    if (chat && effectiveStatus === 'idle' && !(session as ChatSession).acpSessionId) {
+        return 'none';
+    }
+
+    const baseStatus = normalizeAgentStatus(String(effectiveStatus ?? 'none')) ?? 'none';
+
+    // Non-idle statuses (busy, waiting, error, shell, none) keep their standard behavior
+    if (baseStatus !== 'idle') {
+        return baseStatus;
+    }
+
+    // --- Idle (Completed) Session Handling ---
+    let completedAt = sessionCompletedTimes.value[session.id];
+    if (!completedAt) {
+        const chatSess = session as ChatSession;
+        if (chat && chatSess.lastEventAt) {
+            completedAt = Date.parse(chatSess.lastEventAt);
+        } else if (chat && chatSess.createdAt) {
+            completedAt = Date.parse(chatSess.createdAt);
+        } else {
+            completedAt = 0;
+        }
+    }
+
+    const readAt = sessionReadTimes.value[session.id];
+
+    // Unread: user has not clicked session card since completion -> flashing green light
+    if (!readAt || readAt < completedAt) {
+        return 'idle';
+    }
+
+    // Read: user clicked session card after completion -> turns transparent immediately
+    return 'transparent';
+}
+
 export const liveSessionStatus = signal<Record<string, ChatStatus>>({});
 
 /** Set or clear a session's live status override (no-op when unchanged). */
 export const setLiveSessionStatus = (sessionId: string, status: ChatStatus | null) => {
     const cur = liveSessionStatus.value[sessionId];
+    if (status === 'idle' && cur !== 'idle' && cur !== undefined) {
+        markSessionCompleted(sessionId);
+    }
     if (status === null || status === undefined) {
         if (cur === undefined) return;
         const next = { ...liveSessionStatus.value };
@@ -933,6 +1037,14 @@ export const toggleTmuxMouse = async () => {
 };
 
 export const selectSession = async (session: Session) => {
+    if (session && session.id) {
+        markSessionRead(session.id);
+    }
+    // A module-owned drill trail is only valid for the surface that published
+    // it. Callers that need session-specific context (e.g. 圆桌) republish
+    // their L3 trail after this generic session switch completes.
+    taskNav.headerCrumbs.value = null;
+    taskNav.clearHeaderBackActions();
     if (isFullPageTab(tabsStore.activeDrawerTab.value)) {
         tabsStore.activeDrawerTab.value = 'none';
     }

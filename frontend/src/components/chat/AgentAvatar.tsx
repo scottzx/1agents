@@ -7,7 +7,7 @@ import openclawLogo from '../../assets/harness-logos/openclaw-logo.svg';
 import opencodeLogo from '../../assets/harness-logos/opencode-logo.svg';
 
 /** Visual run-status keys for the composite agent avatar indicator. */
-export type AgentRunStatus = 'none' | 'idle' | 'busy' | 'waiting' | 'error' | 'shell';
+export type AgentRunStatus = 'none' | 'idle' | 'busy' | 'waiting' | 'error' | 'shell' | 'transparent';
 
 interface AgentAvatarProps {
     /** Known agent type, or a free string (e.g. a terminal's detected agent). */
@@ -48,6 +48,7 @@ export function normalizeAgentStatus(status?: string | null): AgentRunStatus | u
         case 'waiting':
         case 'error':
         case 'shell':
+        case 'transparent':
             return status;
         default:
             return 'none';

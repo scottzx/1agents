@@ -229,8 +229,13 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 sessionName={activeSession?.name || ''}
                                 agentType={activeSession && isChat(activeSession) ? activeSession.agentType : undefined}
                                 sessionStatus={
-                                    activeSession && isChat(activeSession)
-                                        ? sess.liveSessionStatus.value[activeSession.id] ?? activeSession.status
+                                    activeSession
+                                        ? sess.computeSessionAvatarStatus(
+                                              activeSession,
+                                              isChat(activeSession)
+                                                  ? sess.liveSessionStatus.value[activeSession.id]
+                                                  : undefined
+                                          )
                                         : undefined
                                 }
                                 connection={

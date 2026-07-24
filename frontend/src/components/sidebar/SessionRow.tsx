@@ -2,7 +2,13 @@ import { h } from 'preact';
 import { Session, isChat } from '../types';
 import { t, type Lang } from '../i18n';
 import { AgentAvatar, normalizeAgentStatus } from '../chat/AgentAvatar';
-import { liveSessionStatus, requestForkSession, requestDeleteSession } from '../../stores/sessionStore';
+import {
+    liveSessionStatus,
+    computeSessionAvatarStatus,
+    markSessionRead,
+    requestForkSession,
+    requestDeleteSession,
+} from '../../stores/sessionStore';
 import { FsRowActionsMenu, type FsRowAction } from '../drawer/FsRowActionsMenu';
 
 interface SessionRowProps {
@@ -251,17 +257,10 @@ export function SessionRow({
     const useAssistantLogo = chat && !!assistantName;
 
     // Live bridge status (streaming / awaiting_permission) overrides the stale
-    // persisted snapshot; reading the signal's .value here subscribes the row
-    // so it repaints the moment the bridge publishes a change.
+    // persisted snapshot; reading readStateTick.value subscribes the row so it
+    // repaints when read/unread 5-min timeout fires.
     const liveStatus = chat ? liveSessionStatus.value[session.id] : undefined;
-    const effectiveStatus = liveStatus ?? session.status;
-    // Brand-new chat sessions (idle + no acpSessionId) show a hollow indicator.
-    const avatarStatus =
-        chat && effectiveStatus === 'idle' && !session.acpSessionId
-            ? 'none'
-            : chat
-              ? String(effectiveStatus ?? 'none')
-              : String(session.status || 'none');
+    const avatarStatus = computeSessionAvatarStatus(session, liveStatus);
     const statusKey = normalizeAgentStatus(avatarStatus) ?? 'none';
 
     // Leading icon: assistant avatar (task list) / agent harness logo (project
@@ -315,6 +314,7 @@ export function SessionRow({
             }`}
             onClick={(e: MouseEvent) => {
                 e.stopPropagation();
+                markSessionRead(session.id);
                 onSelect(session);
             }}
         >
