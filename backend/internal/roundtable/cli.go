@@ -62,10 +62,18 @@ func formatUsage() string {
 usage:
   %s help
   %s get [--room ID] [--json]
+  %s propose-brief [--room ID] [--expected-version N]
+      --title T --question Q --constraints C --success-criteria S
+      [--product-kind software|hardware|hybrid] [--source-turn ID] [--json]
+  %s propose-brief [--room ID] --from-json '{...}' [--json]
+
+compatibility / administration only (deprecated for agents):
   %s set-brief [--room ID]
       --title T --question Q --constraints C --success-criteria S
       [--product-kind software|hardware|hybrid] [--json]
   %s set-brief [--room ID] --from-json '{...}' [--json]
+  set-brief preserves the pre-versioning one-shot set+confirm behavior. Agents
+  must migrate to propose-brief; only a user may call the confirm API.
 
 binary: %s
   Dev tip: local builds often have no "1agents" on PATH. Prefer the absolute
@@ -79,7 +87,7 @@ room_id resolution (first match wins):
   4. reverse-lookup seat by workspace path matching cwd
 
 Writes go directly to ~/.1agents/meta.db (daemon not required).
-`, rt, rt, rt, rt, bin, EnvCLI, EnvRoundtableRoomID, SeatSidecarFile))
+`, rt, rt, rt, rt, rt, rt, bin, EnvCLI, EnvRoundtableRoomID, SeatSidecarFile))
 }
 
 // RunCLI dispatches `1agents roundtable …` verbs. Returns process exit code.
@@ -94,8 +102,10 @@ func RunCLI(args []string) int {
 		return 0
 	case "get":
 		return cliGet(args[1:])
+	case "propose-brief":
+		return cliWriteBrief(args[1:], true)
 	case "set-brief":
-		return cliSetBrief(args[1:])
+		return cliWriteBrief(args[1:], false)
 	default:
 		fmt.Fprintf(os.Stderr, "error: unknown roundtable verb %q\n\n%s\n", args[0], formatUsage())
 		return 1
@@ -153,8 +163,12 @@ func cliGet(args []string) int {
 	return 0
 }
 
-func cliSetBrief(args []string) int {
-	fs := flag.NewFlagSet("roundtable set-brief", flag.ContinueOnError)
+func cliWriteBrief(args []string, propose bool) int {
+	verb := "set-brief"
+	if propose {
+		verb = "propose-brief"
+	}
+	fs := flag.NewFlagSet("roundtable "+verb, flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	roomFlag := fs.String("room", "", "room id (optional if env/sidecar/cwd resolve)")
 	title := fs.String("title", "", "brief title")
@@ -163,6 +177,8 @@ func cliSetBrief(args []string) int {
 	success := fs.String("success-criteria", "", "brief success_criteria")
 	productKind := fs.String("product-kind", "", "optional software|hardware|hybrid")
 	fromJSON := fs.String("from-json", "", "JSON object with title/question/constraints/success_criteria[/product_kind]")
+	expectedVersion := fs.Int("expected-version", -1, "current version this write is based on (defaults to a fresh read)")
+	sourceTurnID := fs.String("source-turn", "", "optional referee source turn id")
 	asJSON := fs.Bool("json", false, "print updated room as JSON")
 	if err := fs.Parse(args); err != nil {
 		return 1
@@ -182,6 +198,8 @@ func cliSetBrief(args []string) int {
 			Constraints     string      `json:"constraints"`
 			SuccessCriteria string      `json:"success_criteria"`
 			ProductKind     ProductKind `json:"product_kind"`
+			ExpectedVersion *int        `json:"expected_version"`
+			SourceTurnID    string      `json:"source_turn_id"`
 		}
 		if err := json.Unmarshal([]byte(*fromJSON), &body); err != nil {
 			return cliFail("parse --from-json: %v", err)
@@ -202,6 +220,12 @@ func cliSetBrief(args []string) int {
 		if req.ProductKind == "" {
 			req.ProductKind = body.ProductKind
 		}
+		if *expectedVersion < 0 && body.ExpectedVersion != nil {
+			*expectedVersion = *body.ExpectedVersion
+		}
+		if *sourceTurnID == "" {
+			*sourceTurnID = body.SourceTurnID
+		}
 	}
 	if req.Title == "" || req.Question == "" || req.Constraints == "" || req.SuccessCriteria == "" {
 		return cliFail("requires --title --question --constraints --success-criteria (or --from-json with those fields)\n%s", formatUsage())
@@ -217,14 +241,46 @@ func cliSetBrief(args []string) int {
 	}
 
 	svc := NewService(store, nil, &StaticSeatPrompter{})
-	room, err := svc.ConfirmBrief(roomID, req)
+	var room *Room
+	if propose {
+		if *expectedVersion < 0 {
+			current, getErr := store.GetRoom(roomID)
+			if getErr != nil {
+				return cliFail("get room: %v", getErr)
+			}
+			*expectedVersion = current.CurrentBriefVersion
+		}
+		room, err = svc.ProposeBrief(roomID, ProposeBriefRequest{
+			ConfirmBriefRequest: req,
+			ExpectedVersion:     *expectedVersion,
+			SourceTurnID:        *sourceTurnID,
+		})
+	} else {
+		room, err = svc.ConfirmBrief(roomID, req)
+	}
 	if err != nil {
 		return cliFail("%v", err)
 	}
 	if *asJSON {
 		return cliPrintJSON(room)
 	}
-	fmt.Printf("brief set: room=%s state=%s title=%q\n", room.ID, room.State, room.Brief.Title)
+	if propose {
+		fmt.Printf(
+			"brief proposed: room=%s version=%d status=%s title=%q\n",
+			room.ID,
+			room.CurrentBriefVersion,
+			room.CurrentBrief.Status,
+			room.CurrentBrief.Content.Title,
+		)
+	} else {
+		fmt.Printf(
+			"brief set by compatibility/admin path: room=%s version=%d state=%s title=%q\n",
+			room.ID,
+			room.ConfirmedBriefVersion,
+			room.State,
+			room.Brief.Title,
+		)
+	}
 	return 0
 }
 

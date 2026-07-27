@@ -232,7 +232,7 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
         setBusy(true);
         setError(null);
         try {
-            await roundtableService.confirmBrief(roomId, {
+            await roundtableService.setBriefLegacy(roomId, {
                 title,
                 question,
                 constraints,

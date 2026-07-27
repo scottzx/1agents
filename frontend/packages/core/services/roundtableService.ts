@@ -31,6 +31,22 @@ export interface RoundtableBrief {
     product_kind?: ProductKind;
 }
 
+export type BriefStatus = 'draft' | 'proposed' | 'confirmed' | 'superseded';
+
+export type BriefProposer = 'user' | 'referee';
+
+export interface RoundtableBriefVersion {
+    room_id: string;
+    version: number;
+    status: BriefStatus;
+    content: RoundtableBrief;
+    proposed_by: BriefProposer;
+    source_turn_id?: string;
+    created_at: string;
+    updated_at: string;
+    confirmed_at?: string;
+}
+
 export interface RoundtableSeat {
     id: string;
     room_id: string;
@@ -58,7 +74,14 @@ export interface RoundtableRoom {
     id: string;
     title: string;
     state: RoomState;
+    /** Compatibility projection of current_brief.content. */
     brief?: RoundtableBrief | null;
+    current_brief_version?: number;
+    confirmed_brief_version?: number;
+    r2_brief_version?: number;
+    current_brief?: RoundtableBriefVersion | null;
+    confirmed_brief?: RoundtableBriefVersion | null;
+    r2_brief?: RoundtableBriefVersion | null;
     summary_r2?: string;
     summary_r3?: string;
     created_at: string;
@@ -83,7 +106,7 @@ export interface ChatResponse {
     [key: string]: unknown;
 }
 
-export interface ConfirmBriefRequest {
+export interface BriefContentRequest {
     title: string;
     question: string;
     constraints: string;
@@ -91,9 +114,60 @@ export interface ConfirmBriefRequest {
     product_kind?: ProductKind;
 }
 
+export interface SaveBriefDraftRequest extends BriefContentRequest {
+    expected_version: number;
+}
+
+export interface ProposeBriefRequest extends BriefContentRequest {
+    expected_version: number;
+    source_turn_id?: string;
+}
+
+export interface ConfirmBriefRequest {
+    version: number;
+    expected_version: number;
+}
+
+/** Deprecated one-shot management contract; agents must use proposeBrief. */
+export type LegacySetBriefRequest = BriefContentRequest;
+
+export class BriefVersionConflictError extends Error {
+    readonly status = 409;
+
+    constructor(
+        message: string,
+        readonly expectedVersion: number,
+        readonly currentVersion: number
+    ) {
+        super(message);
+        this.name = 'BriefVersionConflictError';
+    }
+}
+
 async function readError(res: Response): Promise<string> {
     const t = await res.text();
     return t || res.statusText || `HTTP ${res.status}`;
+}
+
+async function readBriefMutationError(res: Response): Promise<Error> {
+    const text = await res.text();
+    if (res.status === 409) {
+        try {
+            const payload = JSON.parse(text) as {
+                message?: string;
+                expected_version?: number;
+                current_version?: number;
+            };
+            return new BriefVersionConflictError(
+                payload.message || 'Brief has been updated; reload the current version.',
+                payload.expected_version ?? -1,
+                payload.current_version ?? -1
+            );
+        } catch {
+            return new BriefVersionConflictError(text || 'Brief version conflict.', -1, -1);
+        }
+    }
+    return new Error(text || res.statusText || `HTTP ${res.status}`);
 }
 
 export const roundtableService = {
@@ -159,14 +233,47 @@ export const roundtableService = {
         return (await res.json()) as ChatResponse;
     },
 
-    /** POST /api/roundtable/rooms/{id}/brief — confirm Brief → waiting_r2 */
+    /** Save a user-authored draft; stale expected_version returns BriefVersionConflictError. */
+    async saveBriefDraft(id: string, req: SaveBriefDraftRequest): Promise<RoundtableRoom> {
+        const res = await apiFetch(`/roundtable/rooms/${encodeURIComponent(id)}/brief/draft`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(req),
+        });
+        if (!res.ok) throw await readBriefMutationError(res);
+        return (await res.json()) as RoundtableRoom;
+    },
+
+    /** Agent/referee proposal path. This endpoint cannot confirm a Brief. */
+    async proposeBrief(id: string, req: ProposeBriefRequest): Promise<RoundtableRoom> {
+        const res = await apiFetch(`/roundtable/rooms/${encodeURIComponent(id)}/brief/propose`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(req),
+        });
+        if (!res.ok) throw await readBriefMutationError(res);
+        return (await res.json()) as RoundtableRoom;
+    },
+
+    /** User-only confirmation of an existing current Brief version. */
     async confirmBrief(id: string, req: ConfirmBriefRequest): Promise<RoundtableRoom> {
+        const res = await apiFetch(`/roundtable/rooms/${encodeURIComponent(id)}/brief/confirm`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(req),
+        });
+        if (!res.ok) throw await readBriefMutationError(res);
+        return (await res.json()) as RoundtableRoom;
+    },
+
+    /** @deprecated Compatibility/admin one-shot set+confirm path. */
+    async setBriefLegacy(id: string, req: LegacySetBriefRequest): Promise<RoundtableRoom> {
         const res = await apiFetch(`/roundtable/rooms/${encodeURIComponent(id)}/brief`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(req),
         });
-        if (!res.ok) throw new Error(await readError(res));
+        if (!res.ok) throw await readBriefMutationError(res);
         return (await res.json()) as RoundtableRoom;
     },
 

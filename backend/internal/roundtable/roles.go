@@ -89,8 +89,8 @@ func roleRefereeContract() string {
 - 每轮优先询问 1–3 个最影响决策的问题，不一次抛出长问卷。
 - 持续维护「已确认 / 待确认」，发现模糊词时追问可观测的口径。
 - 必须形成 title / question / constraints / success_criteria 四个真实字段；product_kind 仅在适用时填 software / hardware / hybrid。
-- 用户明确确认前，只能称为「Brief 草案」，不得擅自出站。
-- **R1 出站（必须）**：用户确认完整 Brief 后，立刻用 CLI 写入 app，否则 R2 五席无法获得有效输入。
+- 用户明确确认前，只能称为「Brief 草案」，不得擅自确认或出站。
+- 信息足够时必须用 CLI 提交 proposal；proposal 只更新草案，用户仍需在 app 中确认指定版本。
 
 ### R2：Summary₂
 
@@ -110,13 +110,13 @@ func roleRefereeContract() string {
 - R2：各席要点 → 共识 → 分歧 → R3 待解问题。
 - R3：最终判断 → 取舍与条件 → 行动项 → 未决风险。
 
-## R1 写 Brief（跨 cwd CLI）
+## R1 写 Brief 提案（跨 cwd CLI）
 
 本目录是独立 seat cwd，**对话正文不会自动回写 app**。本目录有侧车文件 .1agents-roundtable.json（含 room_id 与 cli_bin）；也可依赖环境变量 ONEAGENTS_ROUNDTABLE_ROOM_ID。
 
-在 R1 与用户对齐完整 Brief 后，执行（字段必须是真实内容，禁止「—」/ 空）：
+在信息足够形成完整 Brief 草案后，执行（字段必须是真实内容，禁止「—」/ 空）：
 
-`) + "```bash\n" + `1agents roundtable set-brief \
+`) + "```bash\n" + `1agents roundtable propose-brief \
   --title "议题标题" \
   --question "要回答的核心问题" \
   --constraints "约束与边界" \
@@ -124,8 +124,9 @@ func roleRefereeContract() string {
   --product-kind software
 ` + "```\n\n" + strings.TrimSpace(`
 - **二进制（开发环境重点）**：本地/dev 经常没有 PATH 上的 1agents。优先用 seed 已写好的绝对路径（WriteRoleSeed 会把上面命令改成当前 daemon 路径）；或读侧车 cli_bin；或 export ONEAGENTS_CLI=/abs/path/to/1agents（与 project-items 相同）。
-- 校验：1agents roundtable get --json（同样用绝对路径）应显示 brief 四字段与 state=waiting_r2。
-- 不要把 Brief 只写在对话里而不跑 CLI。
+- 校验：1agents roundtable get --json（同样用绝对路径）应显示 current_brief.status=proposed 与新 version；房间仍处于 R1，等待用户确认。
+- 不要调用兼容/管理命令 roundtable set-brief；Agent 无权确认 Brief。
+- 不要把 Brief 只写在对话里而不跑 propose-brief。
 
 ## 不做什么
 

@@ -117,6 +117,24 @@ func (h *Handler) HandleRoomsItem(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			h.confirmBrief(w, r, id)
+		case "brief/draft":
+			if r.Method != http.MethodPost {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			h.saveBriefDraft(w, r, id)
+		case "brief/propose":
+			if r.Method != http.MethodPost {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			h.proposeBrief(w, r, id)
+		case "brief/confirm":
+			if r.Method != http.MethodPost {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			h.confirmBriefVersion(w, r, id)
 		case "r2":
 			if r.Method != http.MethodPost {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -243,20 +261,92 @@ func (h *Handler) confirmBrief(w http.ResponseWriter, r *http.Request, id string
 	}
 	room, err := h.svc.ConfirmBrief(id, req)
 	if err != nil {
-		if errors.Is(err, meta.ErrNotFound) {
-			http.Error(w, "room not found", http.StatusNotFound)
-			return
-		}
-		msg := err.Error()
-		if strings.Contains(msg, "required") || strings.Contains(msg, "must be") ||
-			strings.Contains(msg, "only in") || strings.Contains(msg, "illegal") {
-			http.Error(w, msg, http.StatusBadRequest)
-			return
-		}
-		http.Error(w, msg, http.StatusInternalServerError)
+		writeBriefMutationErr(w, err)
 		return
 	}
 	writeJSON(w, room)
+}
+
+func (h *Handler) saveBriefDraft(w http.ResponseWriter, r *http.Request, id string) {
+	var req SaveBriefDraftRequest
+	if r.Body != nil {
+		defer r.Body.Close()
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+	}
+	room, err := h.svc.SaveBriefDraft(id, req)
+	if err != nil {
+		writeBriefMutationErr(w, err)
+		return
+	}
+	writeJSON(w, room)
+}
+
+func (h *Handler) proposeBrief(w http.ResponseWriter, r *http.Request, id string) {
+	var req ProposeBriefRequest
+	if r.Body != nil {
+		defer r.Body.Close()
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+	}
+	room, err := h.svc.ProposeBrief(id, req)
+	if err != nil {
+		writeBriefMutationErr(w, err)
+		return
+	}
+	writeJSON(w, room)
+}
+
+func (h *Handler) confirmBriefVersion(w http.ResponseWriter, r *http.Request, id string) {
+	var req ConfirmBriefVersionRequest
+	if r.Body != nil {
+		defer r.Body.Close()
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+	}
+	room, err := h.svc.ConfirmBriefVersion(id, req)
+	if err != nil {
+		writeBriefMutationErr(w, err)
+		return
+	}
+	writeJSON(w, room)
+}
+
+func writeBriefMutationErr(w http.ResponseWriter, err error) {
+	if errors.Is(err, meta.ErrNotFound) {
+		http.Error(w, "room or brief version not found", http.StatusNotFound)
+		return
+	}
+	if errors.Is(err, ErrBriefVersionConflict) {
+		payload := map[string]any{
+			"code":    "brief_version_conflict",
+			"message": err.Error(),
+		}
+		var conflict *BriefVersionConflictError
+		if errors.As(err, &conflict) {
+			payload["expected_version"] = conflict.Expected
+			payload["current_version"] = conflict.Current
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		writeJSON(w, payload)
+		return
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "required") || strings.Contains(msg, "must be") ||
+		strings.Contains(msg, "only in") || strings.Contains(msg, "cannot") ||
+		strings.Contains(msg, "running") || strings.Contains(msg, "status=") ||
+		strings.Contains(msg, "illegal") {
+		http.Error(w, msg, http.StatusBadRequest)
+		return
+	}
+	http.Error(w, msg, http.StatusInternalServerError)
 }
 
 func (h *Handler) runR2(w http.ResponseWriter, r *http.Request, id string) {

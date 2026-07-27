@@ -142,17 +142,56 @@ type Brief struct {
 	ProductKind     ProductKind `json:"product_kind,omitempty"`
 }
 
+// BriefStatus is the lifecycle of an immutable BriefVersion.
+type BriefStatus string
+
+const (
+	BriefStatusDraft      BriefStatus = "draft"
+	BriefStatusProposed   BriefStatus = "proposed"
+	BriefStatusConfirmed  BriefStatus = "confirmed"
+	BriefStatusSuperseded BriefStatus = "superseded"
+)
+
+// BriefProposer identifies who authored a BriefVersion. Referee versions are
+// proposals only; confirmation is a separate user-only operation.
+type BriefProposer string
+
+const (
+	BriefProposerUser    BriefProposer = "user"
+	BriefProposerReferee BriefProposer = "referee"
+)
+
+// BriefVersion is one immutable content snapshot. Lifecycle metadata may
+// change when the version is confirmed or superseded; Content never changes.
+type BriefVersion struct {
+	RoomID       string        `json:"room_id"`
+	Version      int           `json:"version"`
+	Status       BriefStatus   `json:"status"`
+	Content      Brief         `json:"content"`
+	ProposedBy   BriefProposer `json:"proposed_by"`
+	SourceTurnID string        `json:"source_turn_id,omitempty"`
+	CreatedAt    time.Time     `json:"created_at"`
+	UpdatedAt    time.Time     `json:"updated_at"`
+	ConfirmedAt  *time.Time    `json:"confirmed_at,omitempty"`
+}
+
 // Room is one roundtable session (design §5.3).
 type Room struct {
-	ID        string    `json:"id"`
-	Title     string    `json:"title"`
-	State     RoomState `json:"state"`
-	Brief     *Brief    `json:"brief,omitempty"`
-	SummaryR2 string    `json:"summary_r2,omitempty"`
-	SummaryR3 string    `json:"summary_r3,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Seats     []Seat    `json:"seats,omitempty"`
+	ID                    string        `json:"id"`
+	Title                 string        `json:"title"`
+	State                 RoomState     `json:"state"`
+	Brief                 *Brief        `json:"brief,omitempty"` // legacy projection of CurrentBrief.Content
+	CurrentBriefVersion   int           `json:"current_brief_version,omitempty"`
+	ConfirmedBriefVersion int           `json:"confirmed_brief_version,omitempty"`
+	R2BriefVersion        int           `json:"r2_brief_version,omitempty"`
+	CurrentBrief          *BriefVersion `json:"current_brief,omitempty"`
+	ConfirmedBrief        *BriefVersion `json:"confirmed_brief,omitempty"`
+	R2Brief               *BriefVersion `json:"r2_brief,omitempty"`
+	SummaryR2             string        `json:"summary_r2,omitempty"`
+	SummaryR3             string        `json:"summary_r3,omitempty"`
+	CreatedAt             time.Time     `json:"created_at"`
+	UpdatedAt             time.Time     `json:"updated_at"`
+	Seats                 []Seat        `json:"seats,omitempty"`
 	// Turns is the main timeline (content_text only); loaded on GetRoom / ListTurns.
 	Turns []Turn `json:"turns,omitempty"`
 }

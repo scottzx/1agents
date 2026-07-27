@@ -402,14 +402,34 @@ func (svc *Service) ChatWithReferee(roomID string, req ChatRequest) (*ChatRespon
 	}, nil
 }
 
-// ConfirmBriefRequest is the body for POST /api/roundtable/rooms/{id}/brief.
-// Accepts flat Brief fields (and nested "brief" is handled at HTTP layer if needed).
+// ConfirmBriefRequest is the legacy management body for POST .../{id}/brief
+// and `set-brief`. New clients create a version and confirm it separately.
 type ConfirmBriefRequest struct {
 	Title           string      `json:"title"`
 	Question        string      `json:"question"`
 	Constraints     string      `json:"constraints"`
 	SuccessCriteria string      `json:"success_criteria"`
 	ProductKind     ProductKind `json:"product_kind,omitempty"`
+}
+
+// SaveBriefDraftRequest creates a user-authored draft version.
+type SaveBriefDraftRequest struct {
+	ConfirmBriefRequest
+	ExpectedVersion int `json:"expected_version"`
+}
+
+// ProposeBriefRequest is the only Brief write exposed to referee agents.
+type ProposeBriefRequest struct {
+	ConfirmBriefRequest
+	ExpectedVersion int    `json:"expected_version"`
+	SourceTurnID    string `json:"source_turn_id,omitempty"`
+}
+
+// ConfirmBriefVersionRequest confirms an existing current version. It carries
+// no content, so confirmation cannot silently overwrite a newer proposal.
+type ConfirmBriefVersionRequest struct {
+	Version         int `json:"version"`
+	ExpectedVersion int `json:"expected_version"`
 }
 
 // isPlaceholderBriefField reports empty or pure placeholder values that must
@@ -454,58 +474,131 @@ func ValidateBrief(b *Brief) error {
 	return nil
 }
 
-// ConfirmBrief persists the user-confirmed Brief and transitions drafting_brief → waiting_r2.
-func (svc *Service) ConfirmBrief(roomID string, req ConfirmBriefRequest) (*Room, error) {
-	if svc == nil || svc.store == nil {
-		return nil, fmt.Errorf("roundtable: service not configured")
-	}
-	brief := &Brief{
+func briefFromRequest(req ConfirmBriefRequest) *Brief {
+	return &Brief{
 		Title:           strings.TrimSpace(req.Title),
 		Question:        strings.TrimSpace(req.Question),
 		Constraints:     strings.TrimSpace(req.Constraints),
 		SuccessCriteria: strings.TrimSpace(req.SuccessCriteria),
 		ProductKind:     ProductKind(strings.TrimSpace(string(req.ProductKind))),
 	}
+}
+
+// SaveBriefDraft appends a user-authored draft using optimistic versioning.
+func (svc *Service) SaveBriefDraft(roomID string, req SaveBriefDraftRequest) (*Room, error) {
+	if svc == nil || svc.store == nil {
+		return nil, fmt.Errorf("roundtable: service not configured")
+	}
+	brief := briefFromRequest(req.ConfirmBriefRequest)
 	if err := ValidateBrief(brief); err != nil {
 		return nil, err
 	}
+	if _, err := svc.store.CreateBriefVersion(
+		roomID,
+		req.ExpectedVersion,
+		BriefStatusDraft,
+		*brief,
+		BriefProposerUser,
+		"",
+	); err != nil {
+		return nil, err
+	}
+	return svc.GetRoom(roomID)
+}
 
-	room, err := svc.store.GetRoom(roomID)
+// ProposeBrief appends a referee proposal. The request has no status or
+// confirmation field, so an agent cannot turn its proposal into confirmation.
+func (svc *Service) ProposeBrief(roomID string, req ProposeBriefRequest) (*Room, error) {
+	if svc == nil || svc.store == nil {
+		return nil, fmt.Errorf("roundtable: service not configured")
+	}
+	brief := briefFromRequest(req.ConfirmBriefRequest)
+	if err := ValidateBrief(brief); err != nil {
+		return nil, err
+	}
+	version, err := svc.store.CreateBriefVersion(
+		roomID,
+		req.ExpectedVersion,
+		BriefStatusProposed,
+		*brief,
+		BriefProposerReferee,
+		req.SourceTurnID,
+	)
 	if err != nil {
 		return nil, err
 	}
-	if room.State != StateDraftingBrief {
-		return nil, fmt.Errorf("roundtable: confirm brief only in drafting_brief (state=%s)", room.State)
-	}
-	if err := Transition(room, StateWaitingR2); err != nil {
-		return nil, err
-	}
-	room.Brief = brief
-	if err := svc.store.UpdateRoomBriefAndState(room); err != nil {
-		return nil, err
-	}
-
-	// System turn on main timeline: brief confirmed (content_text bound).
 	sys := Turn{
-		ID:     meta.NewID(),
-		RoomID: roomID,
-		Round:  1,
-		SeatID: TurnSeatUser,
-		Kind:   TurnKindSystem,
-		ContentText: fmt.Sprintf(
-			"Brief 已确认，进入 R2。\ntitle: %s\nquestion: %s\nconstraints: %s\nsuccess_criteria: %s",
-			brief.Title, brief.Question, brief.Constraints, brief.SuccessCriteria,
-		),
-		CreatedAt: time.Now().UTC(),
-	}
-	if brief.ProductKind != "" {
-		sys.ContentText += "\nproduct_kind: " + string(brief.ProductKind)
+		ID:          meta.NewID(),
+		RoomID:      roomID,
+		Round:       1,
+		Kind:        TurnKindSystem,
+		ContentText: fmt.Sprintf("Brief 草案已更新至 v%d，等待用户确认。", version.Version),
+		ProcessRef:  strings.TrimSpace(req.SourceTurnID),
+		CreatedAt:   time.Now().UTC(),
 	}
 	if err := svc.store.InsertTurn(&sys); err != nil {
 		return nil, err
 	}
-
 	return svc.GetRoom(roomID)
+}
+
+// ConfirmBriefVersion is the user confirmation path. It confirms exactly the
+// current version and rejects stale expected_version values.
+func (svc *Service) ConfirmBriefVersion(roomID string, req ConfirmBriefVersionRequest) (*Room, error) {
+	if svc == nil || svc.store == nil {
+		return nil, fmt.Errorf("roundtable: service not configured")
+	}
+	if req.Version <= 0 {
+		return nil, fmt.Errorf("brief.version is required")
+	}
+	version, err := svc.store.ConfirmBriefVersion(roomID, req.Version, req.ExpectedVersion)
+	if err != nil {
+		return nil, err
+	}
+	sys := Turn{
+		ID:          meta.NewID(),
+		RoomID:      roomID,
+		Round:       1,
+		SeatID:      TurnSeatUser,
+		Kind:        TurnKindSystem,
+		ContentText: fmt.Sprintf("你已确认 Brief v%d，进入 R2。", version.Version),
+		CreatedAt:   time.Now().UTC(),
+	}
+	if err := svc.store.InsertTurn(&sys); err != nil {
+		return nil, err
+	}
+	return svc.GetRoom(roomID)
+}
+
+// ConfirmBrief preserves the old one-shot management contract. It creates a
+// user proposal and confirms that exact version; agents use ProposeBrief.
+func (svc *Service) ConfirmBrief(roomID string, req ConfirmBriefRequest) (*Room, error) {
+	if svc == nil || svc.store == nil {
+		return nil, fmt.Errorf("roundtable: service not configured")
+	}
+	brief := briefFromRequest(req)
+	if err := ValidateBrief(brief); err != nil {
+		return nil, err
+	}
+	room, err := svc.store.GetRoom(roomID)
+	if err != nil {
+		return nil, err
+	}
+	version, err := svc.store.CreateBriefVersion(
+		roomID,
+		room.CurrentBriefVersion,
+		BriefStatusProposed,
+		*brief,
+		BriefProposerUser,
+		"",
+	)
+	if err != nil {
+		return nil, err
+	}
+	return svc.ConfirmBriefVersion(roomID, ConfirmBriefVersionRequest{
+		Version:         version.Version,
+		ExpectedVersion: version.Version,
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -614,12 +707,16 @@ func (svc *Service) RunR2(roomID string) (*RunR2Response, error) {
 	if room.State != StateWaitingR2 {
 		return nil, fmt.Errorf("roundtable: r2 only allowed in waiting_r2 (state=%s)", room.State)
 	}
-	if room.Brief == nil {
-		return nil, fmt.Errorf("roundtable: brief required before r2")
+	briefVersion, err := svc.store.CaptureConfirmedBriefForR2(roomID)
+	if err != nil {
+		return nil, err
 	}
-	if err := ValidateBrief(room.Brief); err != nil {
+	briefSnapshot := briefVersion.Content
+	if err := ValidateBrief(&briefSnapshot); err != nil {
 		return nil, fmt.Errorf("roundtable: %w", err)
 	}
+	room.R2BriefVersion = briefVersion.Version
+	room.R2Brief = briefVersion
 
 	seats, err := svc.store.ListSeats(roomID)
 	if err != nil {
@@ -676,7 +773,7 @@ func (svc *Service) RunR2(roomID string) (*RunR2Response, error) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			results[i] = svc.runR2PanelistPrompt(room.Brief, prepared[i], cwds[i])
+			results[i] = svc.runR2PanelistPrompt(&briefSnapshot, prepared[i], cwds[i])
 		}(i)
 	}
 	wg.Wait()
@@ -760,7 +857,7 @@ func (svc *Service) RunR2(roomID string) (*RunR2Response, error) {
 	}
 
 	// --- Referee Summary₂ ---
-	summaryTurn, summaryText, err := svc.runR2RefereeSummary(room, referee, items)
+	summaryTurn, summaryText, err := svc.runR2RefereeSummary(room, &briefSnapshot, referee, items)
 	if err != nil {
 		// Room-level failure only if summary cannot complete after speeches.
 		_ = Transition(room, StateFailed)
@@ -822,7 +919,7 @@ func (svc *Service) runR2PanelistPrompt(brief *Brief, seat Seat, cwd string) pan
 }
 
 // runR2RefereeSummary prompts the referee with all available Speech₂ texts.
-func (svc *Service) runR2RefereeSummary(room *Room, referee *Seat, items []r2SpeechItem) (Turn, string, error) {
+func (svc *Service) runR2RefereeSummary(room *Room, brief *Brief, referee *Seat, items []r2SpeechItem) (Turn, string, error) {
 	if strings.TrimSpace(referee.SessionID) == "" {
 		cwd, err := svc.resolveCwd(referee.WorkspaceID)
 		if err != nil {
@@ -843,7 +940,7 @@ func (svc *Service) runR2RefereeSummary(room *Room, referee *Seat, items []r2Spe
 	referee.Status = SeatSpeaking
 	_ = svc.store.UpdateSeatSession(referee)
 
-	promptText := BuildR2SummaryPrompt(room.Brief, items)
+	promptText := BuildR2SummaryPrompt(brief, items)
 	// Resume R1 referee session when possible; system context only if fresh.
 	sysCtx := ""
 	if referee.AcpSessionID == "" {
@@ -1061,10 +1158,15 @@ func (svc *Service) RunR3(roomID string) (*RunR3Response, error) {
 	if room.State != StateWaitingR3 {
 		return nil, fmt.Errorf("roundtable: r3 only allowed in waiting_r3 (state=%s)", room.State)
 	}
-	if room.Brief == nil {
-		return nil, fmt.Errorf("roundtable: brief required before r3")
+	if room.R2BriefVersion <= 0 {
+		return nil, fmt.Errorf("roundtable: r2 brief snapshot required before r3")
 	}
-	if err := ValidateBrief(room.Brief); err != nil {
+	r2BriefVersion, err := svc.store.GetBriefVersion(roomID, room.R2BriefVersion)
+	if err != nil {
+		return nil, fmt.Errorf("roundtable: load r2 brief snapshot: %w", err)
+	}
+	briefSnapshot := r2BriefVersion.Content
+	if err := ValidateBrief(&briefSnapshot); err != nil {
 		return nil, fmt.Errorf("roundtable: %w", err)
 	}
 	if strings.TrimSpace(room.SummaryR2) == "" {
@@ -1130,7 +1232,7 @@ func (svc *Service) RunR3(roomID string) (*RunR3Response, error) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			results[i] = svc.runR3PanelistPrompt(room.Brief, room.SummaryR2, r2Items, prepared[i], cwds[i])
+			results[i] = svc.runR3PanelistPrompt(&briefSnapshot, room.SummaryR2, r2Items, prepared[i], cwds[i])
 		}(i)
 	}
 	wg.Wait()
@@ -1216,7 +1318,7 @@ func (svc *Service) RunR3(roomID string) (*RunR3Response, error) {
 	}
 
 	// --- Referee Summary₃ (终稿) ---
-	summaryTurn, summaryText, err := svc.runR3RefereeSummary(room, referee, r2Items, r3Items)
+	summaryTurn, summaryText, err := svc.runR3RefereeSummary(room, &briefSnapshot, referee, r2Items, r3Items)
 	if err != nil {
 		_ = Transition(room, StateFailed)
 		_ = svc.store.UpdateRoomState(room)
@@ -1288,7 +1390,7 @@ func (svc *Service) runR3PanelistPrompt(brief *Brief, summaryR2 string, r2Items 
 }
 
 // runR3RefereeSummary resumes the referee session and produces Summary₃ 终稿.
-func (svc *Service) runR3RefereeSummary(room *Room, referee *Seat, r2Items, r3Items []r2SpeechItem) (Turn, string, error) {
+func (svc *Service) runR3RefereeSummary(room *Room, brief *Brief, referee *Seat, r2Items, r3Items []r2SpeechItem) (Turn, string, error) {
 	if strings.TrimSpace(referee.SessionID) == "" {
 		cwd, err := svc.resolveCwd(referee.WorkspaceID)
 		if err != nil {
@@ -1309,7 +1411,7 @@ func (svc *Service) runR3RefereeSummary(room *Room, referee *Seat, r2Items, r3It
 	referee.Status = SeatSpeaking
 	_ = svc.store.UpdateSeatSession(referee)
 
-	promptText := BuildR3SummaryPrompt(room.Brief, r2Items, room.SummaryR2, r3Items)
+	promptText := BuildR3SummaryPrompt(brief, r2Items, room.SummaryR2, r3Items)
 	sysCtx := ""
 	if referee.AcpSessionID == "" {
 		sysCtx = "当前阶段：R3 末裁判终稿。只输出 Summary₃ 正文。"

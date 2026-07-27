@@ -26,6 +26,11 @@ func TestFormatUsage_UsesResolvedBinary(t *testing.T) {
 	if strings.Contains(out, "\n  1agents roundtable help\n") {
 		t.Fatalf("help should not lead with bare 1agents when ONEAGENTS_CLI is set:\n%s", out)
 	}
+	if !strings.Contains(out, "propose-brief") ||
+		!strings.Contains(out, "compatibility / administration only") ||
+		!strings.Contains(out, "Agents\n  must migrate to propose-brief") {
+		t.Fatalf("help should document propose-brief migration and legacy set-brief:\n%s", out)
+	}
 }
 
 func captureRoundtableHelp(t *testing.T) string {
@@ -151,8 +156,11 @@ func TestCreateRoom_WritesSidecarAndRefereeCLISeed(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := string(agents)
-	if !strings.Contains(body, "roundtable set-brief") {
-		t.Fatal("referee AGENTS.md missing set-brief usage")
+	if !strings.Contains(body, "roundtable propose-brief") {
+		t.Fatal("referee AGENTS.md missing propose-brief usage")
+	}
+	if !strings.Contains(body, "不要调用兼容/管理命令 roundtable set-brief") {
+		t.Fatal("referee AGENTS.md missing set-brief migration warning")
 	}
 	if !strings.Contains(body, ".1agents-roundtable.json") {
 		t.Fatal("referee AGENTS.md missing sidecar mention")
@@ -165,6 +173,54 @@ func TestCreateRoom_WritesSidecarAndRefereeCLISeed(t *testing.T) {
 	}
 	if sc.CLIBin == "" {
 		t.Fatal("sidecar should store cli_bin")
+	}
+}
+
+func TestCLI_ProposeBriefUsesVersionedAgentPath(t *testing.T) {
+	svc, _ := testRig(t)
+	room, err := svc.CreateRoom(roundtable.CreateRoomRequest{Title: "Agent 提案"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := runRoundtableCLI(t, ".", nil,
+		"propose-brief",
+		"--room", room.ID,
+		"--expected-version", "0",
+		"--title", "提案标题",
+		"--question", "提案问题",
+		"--constraints", "提案约束",
+		"--success-criteria", "提案标准",
+		"--source-turn", "turn-1",
+		"--json",
+	)
+	if code != 0 {
+		t.Fatalf("propose-brief exit=%d stderr=%s stdout=%s", code, stderr, stdout)
+	}
+	var proposed roundtable.Room
+	if err := json.Unmarshal([]byte(stdout), &proposed); err != nil {
+		t.Fatal(err)
+	}
+	if proposed.State != roundtable.StateDraftingBrief ||
+		proposed.CurrentBriefVersion != 1 ||
+		proposed.ConfirmedBriefVersion != 0 ||
+		proposed.CurrentBrief == nil ||
+		proposed.CurrentBrief.Status != roundtable.BriefStatusProposed ||
+		proposed.CurrentBrief.ProposedBy != roundtable.BriefProposerReferee ||
+		proposed.CurrentBrief.SourceTurnID != "turn-1" {
+		t.Fatalf("proposal=%+v current=%+v", proposed, proposed.CurrentBrief)
+	}
+
+	code, _, stderr = runRoundtableCLI(t, ".", nil,
+		"propose-brief",
+		"--room", room.ID,
+		"--expected-version", "0",
+		"--title", "过期提案",
+		"--question", "Q",
+		"--constraints", "C",
+		"--success-criteria", "S",
+	)
+	if code == 0 || !strings.Contains(stderr, "stale brief version") {
+		t.Fatalf("stale propose should fail: code=%d stderr=%s", code, stderr)
 	}
 }
 
