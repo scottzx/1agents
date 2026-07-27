@@ -147,13 +147,21 @@ Core objects:
 Main code structure:
 
 ```text
-frontend/        Web frontend: workbench, Chat, tasks, files, data sources, settings
-backend/         1agents backend service
-modules/ttyd/    Web terminal service
-modules/cc-connect/  Messaging platform and agent bridge
-build/           Local build outputs
-docs/            Product, design, and architecture docs
+frontend/              Web frontend: workbench, Chat, tasks, files, data sources, settings
+backend/               1agents Go backend service
+modules/ttyd/          Web terminal service
+modules/cc-connect/    Messaging platform and agent bridge
+modules/cc-switch-cli/ Agent provider / model configuration switching sidecar
+modules/1skills/       Skills, Agents, Slash Commands, MCP, and Marketplace management
+modules/1acp/          Agent Client Protocol adapters, examples, and conformance tests
+modules/happy-cli/     Happy agent CLI and local launcher packaging source
+modules/gstack/        Built-in engineering skills, QA, release, and browser automation workflows
+modules/grok-build/    Grok-related agent, CLI, and build components
+build/                 Local build outputs
+docs/                  Product, design, and architecture docs
 ```
+
+The repository is organized as a main product plus replaceable execution components and distributable modules: the frontend and backend provide the 1agents workbench; `ttyd` provides terminal capability; `cc-connect`, `cc-switch`, `happy`, `1skills`, and `1acp` provide agent integration, skill marketplace, protocol adapters, and CLI sidecars; the npm distribution splits core / web / skills / cc-connect / cc-switch into platform or feature packages.
 
 Related docs:
 
@@ -224,9 +232,13 @@ Common build commands:
 
 ```bash
 make help
+make all
 make frontend
 make ttyd
 make cc-connect
+make cc-connect-noweb
+make cc-switch
+make happy
 make backend
 make package
 ```
@@ -258,6 +270,13 @@ cc-connect:
 cd modules/cc-connect
 make build
 go test ./...
+```
+
+Submodules:
+
+```bash
+git submodule update --init --recursive
+make submodules
 ```
 
 ---
