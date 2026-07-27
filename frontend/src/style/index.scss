@@ -1201,7 +1201,10 @@ body {
         }
       }
 
-      &.ws-active {
+      /* Active OR expanded: lift the delete-animation cap so long session
+         lists under a non-selected project are not clipped at 500px. */
+      &.ws-active,
+      &:has(> .project-folder.expanded) {
         max-height: none;
       }
 
