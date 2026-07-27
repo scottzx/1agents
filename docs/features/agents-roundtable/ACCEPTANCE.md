@@ -16,8 +16,8 @@
 ./scripts/roundtable-acceptance.sh
 
 # 或逐步：
-cd backend && go test ./internal/roundtable/ -count=1 -run 'TestE2E_Smoke_DesignSection7|TestAgentsRoundtableManifestRegistered'
-cd frontend && npx --yes tsx --test src/components/roundtable/stage.test.ts
+cd backend && go test ./internal/roundtable/ -count=1 -run 'TestE2E_Smoke_DesignSection7|TestAgentsRoundtableManifestRegistered|TestCLI_|TestResolve|TestValidateBrief|TestCreateRoom_WritesSidecar'
+cd frontend && npx --yes tsx --test src/components/roundtable/stage.test.ts src/components/roundtable/breadcrumbs.test.ts
 ```
 
 期望：全部 PASS；`TestE2E_Smoke_DesignSection7` 日志中出现 `§7.1`…`§7.8 PASS`。  
@@ -34,13 +34,16 @@ cd frontend && npx --yes tsx --test src/components/roundtable/stage.test.ts
 |---|--------|--------|---------|
 | 1 | 发现中心 → 应用（或更多）能打开圆桌并创建 room | Manifest `agents-roundtable` 注册 + `CreateRoom` | 见 §3 步骤 1–2 |
 | 2 | 一局 **6** 个 Grok Build session（1 裁判 + 5 职能） | R2 后 6×`session_id` + chat index | 侧栏可见 6 会话名 |
-| 3 | R1：与裁判多轮后确认 Brief（输入走底栏裁判 Composer） | 2×chat + `ConfirmBrief` → `waiting_r2` | 步骤 3–4 |
+| 3 | R1：与裁判多轮后确认 Brief（输入走底栏裁判 Composer；或裁判 CLI set-brief） | 2×chat + `ConfirmBrief` / CLI → `waiting_r2`；拒绝「—」 | 步骤 3–4、§3c |
 | 4 | R2：五席**隔离**各一条发言 + 裁判 Summary₂ | 隔离注入审计 + 5 speech + Summary₂ | 步骤 5 |
 | 5 | R3：各席 **resume**；上下文含 R2 全文 + Summary₂；Summary₃ | 同 `acp_session_id` + 公开包 + `done` | 步骤 6 |
 | 6 | 主 UI **默认只见正文**；过程可折叠 | turn `content_text` 绑定；前端 `TurnCard` 默认 `open=false` | 步骤 7 |
 | 7 | 刷新后 room 可恢复；未结束席位可继续 resume | `GetRoom` 恢复 state/brief/turns/acp | 步骤 8 |
 | 8 | Summary 能区分职能来源；研发与产品可区分 | Summary₃ 含「产品」「研发」；seed 契约不同 | 读终稿正文 |
 | 9 | **布局（#260）**：底栏=裁判嵌入 Chat；时间线不嵌裁判；无简易 `chatText` 底栏 | 见 §3b（前端布局） | 步骤 3、§3b |
+| 10 | 全局标题栏同时提供返回图标和列表 / 圆桌 / 会话路径；路径无「返回」文字节点 | 面包屑纯函数验证路径与点击目标 | 步骤 2a |
+| 11 | 裁判与五个职能席位的 workspace 全部为 `kind=app` | `CreateRoom` 逐席检查 project kind | 不出现在任务区 / 项目列表 |
+| 12 | 六个席位在创建时具有完整 role prompt 和明确行为设置 | 实际 workspace 的 `AGENTS.md` / `Claude.md` 完整性断言；R1/R2 `SystemContext` 注入断言 | 抽查六席 seed 的使命/框架/行为/边界/输出结构 |
 
 ---
 
@@ -55,12 +58,39 @@ cd frontend && npx --yes tsx --test src/components/roundtable/stage.test.ts
 |------|------|------|
 | 1 入口 | 打开发现中心 → **应用**（或「更多应用」）→ 卡片 **Agents 圆桌** | 进入启动向导；展示固定 6 席编制 |
 | 2 建房 | 填可选议题草稿 → **开始** | 创建 room，`state=drafting_brief`，进入 R1 |
+| 2a 面包屑 | 在列表、具体圆桌、席位完整会话间切换，并点左侧返回图标/各级目录 | 全局标题栏显示「返回图标」+ `圆桌列表 › <圆桌> › <会话>`；图标始终只退一级，路径中无「返回」文字 |
+| 2b 角色 seed | 抽查六个 seat workspace 中的 `AGENTS.md` 和 `Claude.md` | 每席均包含使命、职能分析框架、明确行为设置、输出边界、圆桌行为协议和默认输出结构 |
 | 3 R1 对话 | 在**底部固定裁判嵌入 Chat**的 Composer 中与裁判多轮澄清（至少 2 轮） | 底栏可见历史+实时流+typing；时间线可出现用户/裁判 `chat` 正文摘要；**无**旧版简易 `chatText` 底栏；**时间线不再**嵌第二份裁判 Chat 卡 |
-| 4 确认 Brief | 点确认 Brief / 开始圆桌，填 title/question/constraints/success_criteria | `state=waiting_r2`；侧栏显示 Brief |
+| 4 确认 Brief | 点确认 Brief，填**完整** title/question/constraints/success_criteria（不可空/「—」）；或裁判 CLI 写入后刷新 | `state=waiting_r2`；侧栏/主区显示真实 Brief 四字段 |
 | 5 R2 | 触发 R2（开始首轮） | 五职能各 1 条发言 + 裁判 Summary₂；席位条 done/error；裁判流仍在底栏（不在时间线再嵌裁判卡） |
 | 6 R3 | 触发 R3（次轮/终稿） | 各席 resume 后再发；终稿 Summary₃；`state=done` |
 | 7 正文 UI | 浏览时间线；有 process 的卡片点「查看过程」 | **默认**仅 `content_text`；过程折叠；展开后可见 process_ref |
 | 8 刷新恢复 | 浏览器刷新（或重开应用） | 回到同一 room（localStorage `oneagents.roundtable.activeRoomId`）；Brief/turns/总结仍在；底栏裁判会话可恢复 |
+
+### 3c. Brief CLI 同步（#264）
+
+裁判 seat 在独立 cwd，对话不会自动回写 app。R1 结束后应用 CLI 写入 Brief：
+
+```bash
+# 开发环境常无 PATH 上的 1agents：用 make backend 产物或 help 打印的绝对路径
+BIN=./build/1agents   # 或 help 输出的 binary: 行
+$BIN roundtable help
+$BIN roundtable get --json
+$BIN roundtable set-brief \
+  --title "…" --question "…" --constraints "…" --success-criteria "…" \
+  [--product-kind software|hardware|hybrid] [--json]
+# 也可：export ONEAGENTS_CLI=$PWD/build/1agents  （与 project-items 相同）
+```
+
+| # | 验收项 | 期望 |
+|---|--------|------|
+| C1 | CLI help / get | help 打印**已解析二进制绝对路径**（非仅 bare `1agents`）；`get --json` 含 id/state/brief；mention `ONEAGENTS_CLI` |
+| C2 | 跨 cwd 解析 | 裁判 app seat cwd 下可不传 `--room` 成功 set-brief |
+| C3 | 写入对齐 ConfirmBrief | set-brief 后 GetRoom.brief 一致、`state=waiting_r2`、system turn 存在 |
+| C4 | 拒绝占位 | constraints/success_criteria=`—` 时非 0 exit；UI 提交按钮在字段不全时禁用 |
+| C5 | 裁判 seed | 新建房间后裁判 AGENTS.md 含 set-brief 示例；cwd 有 `.1agents-roundtable.json` |
+
+自动化：`go test ./internal/roundtable/ -count=1 -run 'TestCLI_|TestResolve|TestValidateBrief|TestCreateRoom_WritesSidecar'`
 
 ### 3b. 布局清单（#260 · design §6）
 

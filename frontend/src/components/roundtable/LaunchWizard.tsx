@@ -21,8 +21,6 @@ export interface LaunchWizardProps {
     defaultTitle?: string;
     onStart: (title: string) => void | Promise<void>;
     onContinue?: (roomId: string) => void;
-    /** Return to topic list without creating. */
-    onBack?: () => void;
 }
 
 /**
@@ -36,7 +34,6 @@ export function LaunchWizard({
     defaultTitle = '',
     onStart,
     onContinue,
-    onBack,
 }: LaunchWizardProps) {
     const [title, setTitle] = useState(defaultTitle);
 
@@ -93,11 +90,6 @@ export function LaunchWizard({
                     >
                         {busy ? '创建中…' : '开始'}
                     </button>
-                    {onBack && (
-                        <button type="button" class="rt-btn rt-btn-ghost" disabled={busy} onClick={onBack}>
-                            返回列表
-                        </button>
-                    )}
                     {previousRoomId && onContinue && (
                         <button
                             type="button"

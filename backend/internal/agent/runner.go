@@ -86,7 +86,9 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 	}
 
 	// Index a chat session record so the run shows up in the sidebar (with
-	// the task badge) and the transcript is reachable afterwards.
+	// the task badge) and the transcript is reachable afterwards. Role "auto"
+	// marks headless runner provenance; the session list includes them so
+	// project execution is trackable without drilling into the task timeline.
 	sessionID := newID()
 	rec := ChatSessionRecord{
 		ID:          sessionID,
@@ -94,11 +96,7 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 		TaskID:      task.ID,
 		Name:        fmt.Sprintf("%s - 自动执行", task.Title),
 		AgentType:   agentType,
-		// Headless auto-runs are backend-silent: Role "auto" keeps this record
-		// out of the sidebar session list (see handler.list) so an AI-executed
-		// task doesn't spawn a chat box. The record still exists so "查看详情"
-		// can resume the transcript by id afterwards.
-		Role: SessionRoleAuto,
+		Role:        SessionRoleAuto,
 		// Unattended runs must not block on permission prompts: nobody is
 		// at the browser to approve, so a pending request would time out
 		// and fail the task (confirmed decision: approve-all).
@@ -406,7 +404,8 @@ func (r *TaskRunner) runVerifierPass(workspacePath, workspaceID string, task Tas
 		poolBefore = len(cur.ReviewPool)
 	}
 
-	// Headless verifier session, hidden from the sidebar like auto-runs.
+	// Headless verifier session (role=auto). Listed in sidebar/会话 like
+	// auto-exec runs so review activity is visible under the project.
 	sessionID := newID()
 	name := fmt.Sprintf("%s - 自动核验", task.Title)
 	if total > 1 {

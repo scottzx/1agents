@@ -30,9 +30,9 @@ import {
     chatsForAssistants,
     terminalsForFolderSessions,
 } from '../../stores/sessionStore';
-import { activeL1PageId } from '../../stores/appManifestStore';
+import { activeL1PageId, openL1Apps } from '../../stores/appManifestStore';
 import { getL1NavEntries, L1NavItem } from '../platform/L1Shell';
-import { enterL1App, exitL1App, layoutMode, projectOverview } from '../../stores/stageStore';
+import { enterL1App, exitL1App, archiveL1App, layoutMode, projectOverview } from '../../stores/stageStore';
 import { projectItemService } from '@1agents/core/services/taskService';
 import { openSearch } from '../../stores/searchStore';
 import type { ChatSession } from '../types';
@@ -55,11 +55,7 @@ function sessionActivityMs(c: ChatSession): number {
     return Number.isFinite(ts) ? ts : 0;
 }
 
-function timeBounds(
-    time: SessionTimeFilter,
-    customFrom: string,
-    customTo: string
-): { minTs: number; maxTs: number } {
+function timeBounds(time: SessionTimeFilter, customFrom: string, customTo: string): { minTs: number; maxTs: number } {
     let minTs = 0;
     let maxTs = Number.POSITIVE_INFINITY;
     if (time === '1h') minTs = Date.now() - 3_600_000;
@@ -598,7 +594,7 @@ export function LeftSidebar({
             if (b.id === 'default') return 1;
             return 0;
         });
-    // 任务区 = workforce ∪ tmp（临时/单次对话，有真实 workspace + path）
+    // 任务区 = workforce ∪ tmp（临时/单次对话）。kind=app（圆桌等应用席位）故意排除。
     const tmpWorkspaces = workspaces.filter(w => w.kind === 'tmp' && !w.deviceId);
     const taskWorkspaceIds = [
         ...assistantWorkspaces.map(w => w.id),
@@ -1404,27 +1400,81 @@ export function LeftSidebar({
                                 )}
                             </div>
                         )}
-                        {/* ── 应用 / L1 apps section (#332) ──────────────────────────────────
-                            Only shown when there are enabled L1-page mount points.
-                            Each entry switches the main pane to the app's full-page view. */}
+                        {/* ── 应用 / L1 apps (#332 + open shortcuts) ─────────────────────────
+                            Same stage level as sessions: open apps appear as shortcut cards
+                            (incl. discovery-only like 圆桌). Archive removes the shortcut
+                            and exits if active. Permanent L1 mounts still listed when not
+                            already open. */}
                         {(() => {
-                            const appEntries = getL1NavEntries();
-                            if (appEntries.length === 0) return null;
+                            const permanent = getL1NavEntries();
+                            const opened = openL1Apps.value;
+                            const openIds = new Set(opened.map(a => a.mountId));
+                            const permanentOnly = permanent.filter(e => !openIds.has(e.id));
+                            if (opened.length === 0 && permanentOnly.length === 0) return null;
                             const currentL1Id = activeL1PageId.value;
                             return (
                                 <div class="workspace-section">
                                     <div class="section-header">
-                                        <span>{language === 'zh-CN' ? '应用' : 'Apps'}</span>
+                                        <span>{t('sidebar.openApps', language)}</span>
                                     </div>
                                     <div class="l1-apps-nav">
-                                        {appEntries.map(entry => (
+                                        {opened.map(entry => (
+                                            <div
+                                                key={entry.mountId}
+                                                class={`l1-open-app-row${
+                                                    currentL1Id === entry.mountId ? ' is-active' : ''
+                                                }`}
+                                            >
+                                                <button
+                                                    type="button"
+                                                    class="l1-open-app-main"
+                                                    title={entry.label}
+                                                    onClick={() => {
+                                                        if (currentL1Id === entry.mountId) {
+                                                            exitL1App();
+                                                        } else {
+                                                            enterL1App(entry.mountId);
+                                                        }
+                                                    }}
+                                                >
+                                                    <span class="l1-nav-item-icon" aria-hidden="true">
+                                                        {entry.icon || '◇'}
+                                                    </span>
+                                                    <span class="l1-nav-item-label">{entry.label}</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    class="l1-open-app-archive"
+                                                    title={t('sidebar.archiveApp', language)}
+                                                    aria-label={t('sidebar.archiveApp', language)}
+                                                    onClick={(e: MouseEvent) => {
+                                                        e.stopPropagation();
+                                                        archiveL1App(entry.mountId);
+                                                    }}
+                                                >
+                                                    <svg
+                                                        viewBox="0 0 24 24"
+                                                        fill="none"
+                                                        stroke="currentColor"
+                                                        stroke-width="2"
+                                                        stroke-linecap="round"
+                                                        stroke-linejoin="round"
+                                                        width="14"
+                                                        height="14"
+                                                    >
+                                                        <polyline points="3 6 5 6 21 6" />
+                                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                        ))}
+                                        {permanentOnly.map(entry => (
                                             <L1NavItem
                                                 key={entry.id}
                                                 entry={entry}
                                                 isActive={currentL1Id === entry.id}
                                                 onClick={() => {
                                                     if (currentL1Id === entry.id) {
-                                                        // Toggle off — return to previous shell.
                                                         exitL1App();
                                                     } else {
                                                         enterL1App(entry.id);

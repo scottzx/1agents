@@ -27,8 +27,9 @@ func isProjectManagerRole(role string) bool {
 }
 
 // SessionRoleAuto marks a session created by the headless task runner for an
-// AI-executed task. These run silently in the backend, so handler.list hides
-// them from the sidebar; they remain resolvable by id for "查看详情" resume.
+// AI-executed task (or headless verifier). Listed in the sidebar and 会话 grid
+// like interactive chats so project execution is trackable; still resolvable
+// by id from the task timeline.
 const SessionRoleAuto = "auto"
 
 // SessionRoleExecutor and SessionRoleVerifier are the two task-bound roles of

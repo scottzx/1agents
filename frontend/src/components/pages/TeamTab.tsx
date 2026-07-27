@@ -4,6 +4,7 @@ import type { App } from '../app';
 import type { Lang } from '../i18n';
 import { t } from '../i18n';
 import * as fs from '../../stores/fsStore';
+import * as taskNav from '../../stores/taskNavStore';
 import { fsService } from '../../services/fsService';
 import { FilePreviewPane } from '../shared/WorkspacePanes';
 import { soulService, type TeamMember, type AvailableAgent } from '@1agents/core/services/soulService';
@@ -169,6 +170,15 @@ export function TeamTab({ workspaceId, app, language }: { workspaceId: string; a
         }
     };
 
+    useEffect(() => {
+        if (!selected) return;
+        return taskNav.registerHeaderBackAction(
+            `team-member-detail:${workspaceId}`,
+            () => setSelected(null),
+            taskNav.HEADER_BACK_PRIORITY.detail
+        );
+    }, [selected, workspaceId]);
+
     if (loading) return <div class="assistant-empty-row">…</div>;
     if (error)
         return (
@@ -183,16 +193,6 @@ export function TeamTab({ workspaceId, app, language }: { workspaceId: string; a
         const desc = meta.description || selected.description;
         return (
             <div class="skill-detail team-detail">
-                {/* In-pane breadcrumb — the detail lives inside a tab, and the two
-                    hosts (助理/项目) use different global crumb systems, so it owns
-                    its own back-nav to the roster. */}
-                <div class="team-crumb">
-                    <button class="team-crumb-back" onClick={() => setSelected(null)}>
-                        {t('assistant.detail.tab.team', language)}
-                    </button>
-                    <span class="team-crumb-sep">›</span>
-                    <span class="team-crumb-leaf">{selected.name || selected.file}</span>
-                </div>
                 <div class="skill-detail-head">
                     {/* Row 1: title + 核心 tag on the left, quick actions on the right. */}
                     <div class="skill-detail-row1">

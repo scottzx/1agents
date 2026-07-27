@@ -19,3 +19,6 @@
 [submodule "modules/gstack"]
 	path = modules/gstack
 	url = https://github.com/garrytan/gstack.git
+[submodule "modules/grok-build"]
+	path = modules/grok-build
+	url = https://github.com/xai-org/grok-build

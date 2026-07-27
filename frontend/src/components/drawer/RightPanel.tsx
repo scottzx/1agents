@@ -80,29 +80,26 @@ export function RightPanel({
         }
         taskSelectedId.value = id;
     };
-    const taskBack = () => {
-        const stack = taskNavStack.value;
-        if (stack.length > 0) {
-            taskSelectedId.value = stack[stack.length - 1];
-            taskNavStack.value = stack.slice(0, -1);
-        } else {
-            taskSelectedId.value = null;
-        }
-    };
-
-    // Publish the task back-step + selection state for the mobile header bridge
-    // (see taskNavStore): on mobile the app header is the single back affordance.
+    // Task detail uses the same global header back icon on desktop and mobile.
+    // Its higher-priority layer temporarily wins over project/roundtable back;
+    // unregistering it restores the parent action automatically.
     const hasTaskSelection = activeDrawerTab === 'tasks' && taskSelectedId.value !== null;
     useEffect(() => {
-        taskNav.taskBackHandler.value = taskBack;
-        return () => {
-            taskNav.taskBackHandler.value = null;
-            taskNav.taskHasSelection.value = false;
-        };
-    }, []);
-    useEffect(() => {
-        taskNav.taskHasSelection.value = hasTaskSelection;
-    }, [hasTaskSelection]);
+        if (!hasTaskSelection) return;
+        return taskNav.registerHeaderBackAction(
+            'right-panel-task-detail',
+            () => {
+                const stack = taskNavStack.value;
+                if (stack.length > 0) {
+                    taskSelectedId.value = stack[stack.length - 1];
+                    taskNavStack.value = stack.slice(0, -1);
+                } else {
+                    taskSelectedId.value = null;
+                }
+            },
+            taskNav.HEADER_BACK_PRIORITY.detail
+        );
+    }, [hasTaskSelection, activeWorkspaceId]);
 
     const language = ui.language.value;
     const theme = ui.theme.value;
@@ -172,25 +169,6 @@ export function RightPanel({
                                 <line x1="5" y1="12" x2="19" y2="12" />
                             </svg>
                         </button>
-                    )}
-                    {activeDrawerTab === 'tasks' && taskSelectedId.value !== null && (
-                        <div
-                            class="panel-back-btn"
-                            onClick={taskBack}
-                            title={taskNavStack.value.length > 0 ? '返回上一个任务' : '返回列表'}
-                        >
-                            <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2.5"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <line x1="19" y1="12" x2="5" y2="12" />
-                                <polyline points="12 19 5 12 12 5" />
-                            </svg>
-                        </div>
                     )}
                     {(activeDrawerTab === 'files' || activeDrawerTab === 'git') && (
                         <div

@@ -93,6 +93,7 @@ export const zhCN: Record<string, string> = {
         '若页面遇到复杂的 JS 渲染问题或白屏，可点击输入框右侧的按钮，直接使用系统默认浏览器打开该网页。',
 
     // ── Header (WorkspaceHeader.tsx) ──────────────────────────────────────
+    'header.back': '返回上一级',
     'header.expandSidebar': '展开左侧栏',
     'header.title.providers': '模型管理',
     'header.title.skills': '技能管理',
@@ -353,6 +354,8 @@ export const zhCN: Record<string, string> = {
     'sidebar.noSessions': '暂无会话 — 点击工作空间旁的 + 创建',
     'sidebar.closeSession': '关闭会话',
     'sidebar.archiveSession': '归档会话',
+    'sidebar.openApps': '应用',
+    'sidebar.archiveApp': '归档应用（关闭快捷方式）',
     'sidebar.renameSession': '重命名会话',
     'sidebar.forkSession': 'Fork 会话',
     'sidebar.deleteSession': '删除会话',
@@ -978,6 +981,14 @@ export const zhCN: Record<string, string> = {
     'discovery.catApps': '应用中心',
     'discovery.intro': '精选各类实用的 AI 辅助工具与技能库，点击即可快速访问。',
     'discovery.exploreNow': '立即探索',
+    'discovery.launchApp': '立即启动',
+    'discovery.appBadge': '内置应用',
+    'discovery.appDisabledBadge': '未启用',
+    'discovery.appDisabled': '应用未启用',
+    'discovery.appsLoading': '正在加载应用…',
+    'discovery.appsEmpty': '暂无已注册应用',
+    'discovery.roundtableDesc':
+        'Agents 圆桌脑暴：与裁判澄清议题后，市场/产品/研发/运营/财务五职能隔离发言两轮，裁判总结。真多 session 编排。',
 
     // ── Task list (TaskList.tsx) ──────────────────────────────────────────
     'taskList.t1': '移除了顶部全局导航栏以呈现 Coze 极简风格',
@@ -1688,6 +1699,7 @@ export const zhCN: Record<string, string> = {
     'session.role.pm': '项目经理',
     'session.role.executor': '执行者',
     'session.role.verifier': '验收者',
+    'session.role.auto': '自动执行',
     'session.role.general': '对话',
     'session.status.archived': '已归档',
     'session.status.active': '活跃',
@@ -1782,7 +1794,6 @@ export const zhCN: Record<string, string> = {
     'task.grid.labelsPlaceholder': '标签，逗号分隔…',
 
     // ── Task detail ────────────────────────────────────────────────────────
-    'task.detail.back': '← 返回列表',
     'task.detail.permalink': '复制任务永久链接',
     'task.detail.close': '关闭 Task',
     'task.detail.reopen': '重新打开',
@@ -1996,6 +2007,7 @@ export const enUS: Record<string, string> = {
 
     // ── Header ───────────────────────────────────────────────────────────
     'header.expandSidebar': 'Expand left sidebar',
+    'header.back': 'Back one level',
     'header.title.providers': 'Model Management',
     'header.title.skills': 'Skill Management',
     'header.title.settings': 'System Settings',
@@ -2262,6 +2274,8 @@ export const enUS: Record<string, string> = {
     'sidebar.noSessions': 'No sessions — click + next to a workspace to create one',
     'sidebar.closeSession': 'Close session',
     'sidebar.archiveSession': 'Archive session',
+    'sidebar.openApps': 'Apps',
+    'sidebar.archiveApp': 'Archive app (close shortcut)',
     'sidebar.renameSession': 'Rename session',
     'sidebar.forkSession': 'Fork session',
     'sidebar.deleteSession': 'Delete session',
@@ -2893,6 +2907,14 @@ export const enUS: Record<string, string> = {
     'discovery.catApps': 'Apps & Tools',
     'discovery.intro': 'A curated collection of practical AI tools and apps — click to open.',
     'discovery.exploreNow': 'Explore now',
+    'discovery.launchApp': 'Launch',
+    'discovery.appBadge': 'Built-in',
+    'discovery.appDisabledBadge': 'Disabled',
+    'discovery.appDisabled': 'App disabled',
+    'discovery.appsLoading': 'Loading apps…',
+    'discovery.appsEmpty': 'No registered apps yet',
+    'discovery.roundtableDesc':
+        'Agents Roundtable: clarify the topic with a referee, then market/product/eng/ops/finance speak in isolated sessions for two rounds with referee summaries.',
 
     // ── Task list ────────────────────────────────────────────────────────
     'taskList.t1': 'Removed the top global nav bar for a Coze-style minimal look',
@@ -3623,6 +3645,7 @@ export const enUS: Record<string, string> = {
     'session.role.pm': 'PM',
     'session.role.executor': 'Executor',
     'session.role.verifier': 'Verifier',
+    'session.role.auto': 'Auto-run',
     'session.role.general': 'General',
     'session.status.archived': 'Archived',
     'session.status.active': 'Active',
@@ -3718,7 +3741,6 @@ export const enUS: Record<string, string> = {
     'task.grid.labelsPlaceholder': 'Labels, comma-separated…',
 
     // ── Task detail ────────────────────────────────────────────────────────
-    'task.detail.back': '← Back to list',
     'task.detail.permalink': 'Copy task permalink',
     'task.detail.close': 'Close Task',
     'task.detail.reopen': 'Reopen',

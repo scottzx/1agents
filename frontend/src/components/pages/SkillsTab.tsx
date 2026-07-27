@@ -136,6 +136,15 @@ export function SkillsTab({
         };
     }, [selected, wsName, language, workspaceId, crumbsParent]);
 
+    useEffect(() => {
+        if (!selected) return;
+        return taskNav.registerHeaderBackAction(
+            `skill-detail:${workspaceId}`,
+            () => setSelected(null),
+            taskNav.HEADER_BACK_PRIORITY.detail
+        );
+    }, [selected, workspaceId]);
+
     const openPicker = async () => {
         setPickerOpen(true);
         setPickerQuery('');

@@ -29,7 +29,7 @@ export function RoundtableSidebar({ room, seats }: RoundtableSidebarProps) {
         if (!seat.session_id?.trim() || openingId) return;
         setOpeningId(seat.id);
         try {
-            await openSeatSession(seat);
+            await openSeatSession(seat, { roomId: room.id, roomTitle: room.title });
         } finally {
             setOpeningId(null);
         }

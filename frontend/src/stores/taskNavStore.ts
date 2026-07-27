@@ -26,17 +26,6 @@ import { parseTaskPermalink } from '../utils/markdown';
 export const pendingTaskNav = signal<{ workspaceId: string; taskId: string } | null>(null);
 
 /**
- * Mobile back-button bridge. The task-detail selection state lives inside
- * RightPanel (local signals), but on mobile the single back affordance is the
- * app header. RightPanel publishes whether a task is open (`taskHasSelection`)
- * and how to step back one level (`taskBackHandler`); the mobile header calls
- * the handler when a task is open, else falls through to its own onBack. Desktop
- * keeps RightPanel's own panel-back-btn and ignores this bridge.
- */
-export const taskHasSelection = signal(false);
-export const taskBackHandler = signal<(() => void) | null>(null);
-
-/**
  * Header breadcrumb bridge. A full-page module can publish its own breadcrumb
  * trail (including the root level) to the global WorkspaceHeader, overriding the
  * default `FULLPAGE_TITLE_KEYS` title — so its internal drill nav (e.g. 数据源 ›
@@ -49,6 +38,13 @@ export interface HeaderCrumb {
     onClick?: () => void;
 }
 export const headerCrumbs = signal<HeaderCrumb[] | null>(null);
+export {
+    HEADER_BACK_PRIORITY,
+    clearHeaderBackAction,
+    clearHeaderBackActions,
+    headerBackAction,
+    registerHeaderBackAction,
+} from './headerBackStore';
 
 /**
  * Add-action bridge for the panel header. When TaskList runs inside the panel

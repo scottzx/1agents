@@ -12,14 +12,14 @@ echo "==> [1/3] backend roundtable §7 E2E + package tests"
   go test ./internal/roundtable/ -count=1 -timeout 120s
 )
 
-echo "==> [2/3] frontend roundtable stage/role unit tests"
+echo "==> [2/3] frontend roundtable + global header back unit tests"
 (
   cd frontend
   # Prefer project-local tsx; fall back to npx (frontend may not list tsx as dep).
   if [[ -x node_modules/.bin/tsx ]]; then
-    node_modules/.bin/tsx --test src/components/roundtable/stage.test.ts
+    node_modules/.bin/tsx --test src/components/roundtable/stage.test.ts src/components/roundtable/breadcrumbs.test.ts src/stores/taskNavStore.test.ts
   elif command -v npx >/dev/null 2>&1; then
-    npx --yes tsx --test src/components/roundtable/stage.test.ts
+    npx --yes tsx --test src/components/roundtable/stage.test.ts src/components/roundtable/breadcrumbs.test.ts src/stores/taskNavStore.test.ts
   else
     echo "WARN: no tsx; skip frontend unit (static greps still cover UI wiring)"
   fi

@@ -126,6 +126,11 @@ func (svc *Service) CreateRoom(req CreateRoomRequest) (*Room, error) {
 			Status:      SeatReady,
 			CreatedAt:   now,
 		}
+		// Sidecar lets seat agents resolve room_id from any nested cwd (CLI 跨 cwd).
+		if err := WriteSeatSidecar(cwd, roomID, seat.ID, role); err != nil {
+			cleanup()
+			return nil, fmt.Errorf("seat sidecar %s: %w", role, err)
+		}
 		// Referee: register a real Grok Build session on create (design §5.2 R1).
 		// Panelists get sessions on R2 first prompt (design §4: session 可预创建或 R2 再起).
 		if role == RoleReferee {
@@ -245,8 +250,14 @@ type ChatResponse struct {
 	AcpSessionID string `json:"acp_session_id,omitempty"`
 }
 
-// r1RefereeSystemContext is injected on the first R1 prompt (fresh ACP session).
-const r1RefereeSystemContext = `当前阶段：R1 命题（用户 ↔ 裁判多轮）。
+// r1RefereeSystemContext injects the complete referee role contract plus the
+// current-stage instructions on the first R1 prompt (fresh ACP session).
+func r1RefereeSystemContext() string {
+	return rewriteRoundtableCLIInSeed(RoleSeedAGENTS(RoleReferee)) + `
+
+---
+
+## 当前阶段：R1 命题（用户 ↔ 裁判多轮）
 
 你的目标：充分澄清议题，帮助用户形成可确认的 Brief，字段包括：
 - title（议题标题）
@@ -259,6 +270,7 @@ const r1RefereeSystemContext = `当前阶段：R1 命题（用户 ↔ 裁判多�
 - 只输出澄清对话/简短结构化进展正文，禁止寒暄。
 - 不要替五职能席位做完整观点长文。
 - 当信息足够时，给出一份建议 Brief 草案供用户确认。`
+}
 
 // ChatWithReferee runs one user↔referee R1 turn:
 // writes user turn (kind=chat), prompts the real Grok Build session, writes
@@ -334,7 +346,7 @@ func (svc *Service) ChatWithReferee(roomID string, req ChatRequest) (*ChatRespon
 
 	sysCtx := ""
 	if referee.AcpSessionID == "" {
-		sysCtx = r1RefereeSystemContext
+		sysCtx = r1RefereeSystemContext()
 	}
 	result, err := svc.prompter.Prompt(SeatPromptRequest{
 		SessionID:      referee.SessionID,
@@ -400,22 +412,37 @@ type ConfirmBriefRequest struct {
 	ProductKind     ProductKind `json:"product_kind,omitempty"`
 }
 
+// isPlaceholderBriefField reports empty or pure placeholder values that must
+// never enter R2 (e.g. UI silent fill of "—" / "圆桌议题").
+func isPlaceholderBriefField(s string) bool {
+	v := strings.TrimSpace(s)
+	if v == "" {
+		return true
+	}
+	switch v {
+	case "—", "-", "–", "−", "N/A", "n/a", "NA", "na", "TODO", "todo", "TBD", "tbd":
+		return true
+	}
+	return false
+}
+
 // ValidateBrief checks minimum Brief fields (design §4 R1).
+// Rejects empty fields and pure placeholders so R2 never sees unusable Briefs.
 func ValidateBrief(b *Brief) error {
 	if b == nil {
 		return fmt.Errorf("brief is required")
 	}
-	if strings.TrimSpace(b.Title) == "" {
-		return fmt.Errorf("brief.title is required")
+	if isPlaceholderBriefField(b.Title) {
+		return fmt.Errorf("brief.title is required (placeholder values like \"—\" rejected)")
 	}
-	if strings.TrimSpace(b.Question) == "" {
-		return fmt.Errorf("brief.question is required")
+	if isPlaceholderBriefField(b.Question) {
+		return fmt.Errorf("brief.question is required (placeholder values like \"—\" rejected)")
 	}
-	if strings.TrimSpace(b.Constraints) == "" {
-		return fmt.Errorf("brief.constraints is required")
+	if isPlaceholderBriefField(b.Constraints) {
+		return fmt.Errorf("brief.constraints is required (placeholder values like \"—\" rejected)")
 	}
-	if strings.TrimSpace(b.SuccessCriteria) == "" {
-		return fmt.Errorf("brief.success_criteria is required")
+	if isPlaceholderBriefField(b.SuccessCriteria) {
+		return fmt.Errorf("brief.success_criteria is required (placeholder values like \"—\" rejected)")
 	}
 	if b.ProductKind != "" {
 		switch b.ProductKind {
@@ -488,7 +515,7 @@ func (svc *Service) ConfirmBrief(roomID string, req ConfirmBriefRequest) (*Room,
 // r2PanelistSystemContext is injected on each panelist's first (only) R2 turn.
 // Must NOT include any other seat's output — isolation is the hard R2 rule.
 func r2PanelistSystemContext(role Role) string {
-	return fmt.Sprintf(`当前阶段：R2 首轮各自发言。
+	return RoleSeedAGENTS(role) + "\n\n---\n\n" + fmt.Sprintf(`## 当前阶段：R2 首轮各自发言
 
 你的职能席位：%s（%s）。
 规则：

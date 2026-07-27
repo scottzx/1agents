@@ -113,13 +113,27 @@ func TestCreateRoom_SixSeatsDraftingBrief(t *testing.T) {
 		if _, err := os.Stat(proj.WorkspacePath); err != nil {
 			t.Fatalf("app cwd missing for %s: %v", seat.Role, err)
 		}
-		agentsMD, err := os.ReadFile(filepath.Join(proj.WorkspacePath, "AGENTS.md"))
-		if err != nil {
-			t.Fatalf("AGENTS.md for %s: %v", seat.Role, err)
-		}
-		content := string(agentsMD)
-		if !strings.Contains(content, "Agents 圆桌") {
-			t.Fatalf("AGENTS.md for %s missing roundtable header", seat.Role)
+		var content string
+		for _, seedFile := range []string{"AGENTS.md", "Claude.md"} {
+			seed, err := os.ReadFile(filepath.Join(proj.WorkspacePath, seedFile))
+			if err != nil {
+				t.Fatalf("%s for %s: %v", seedFile, seat.Role, err)
+			}
+			seedContent := string(seed)
+			if seedFile == "AGENTS.md" {
+				content = seedContent
+			}
+			if !strings.Contains(seedContent, "Agents 圆桌") {
+				t.Fatalf("%s for %s missing roundtable header", seedFile, seat.Role)
+			}
+			for _, marker := range []string{
+				"## 使命", "## 行为设置", "## 圆桌行为协议", "## 默认输出结构",
+				"角色锁定", "事实边界", "轮次纪律", "待验证假设",
+			} {
+				if !strings.Contains(seedContent, marker) {
+					t.Fatalf("%s for %s missing complete role prompt marker %q", seedFile, seat.Role, marker)
+				}
+			}
 		}
 		// Role-specific marker.
 		switch seat.Role {
@@ -301,6 +315,11 @@ func TestR1_MultiTurnChatAndConfirmBrief(t *testing.T) {
 	// First prompt should carry system context (fresh session).
 	if len(prompter.Calls) < 1 || prompter.Calls[0].SystemContext == "" {
 		t.Fatal("first prompt should inject R1 system context")
+	}
+	for _, marker := range []string{"## 使命", "## 行为设置", "## 圆桌行为协议", "## R1 写 Brief"} {
+		if !strings.Contains(prompter.Calls[0].SystemContext, marker) {
+			t.Fatalf("first referee prompt missing complete role marker %q", marker)
+		}
 	}
 	if prompter.Calls[0].AcpSessionID != "" {
 		t.Fatal("first prompt should not resume")
@@ -541,13 +560,31 @@ func TestHTTP_R1ChatAndBrief(t *testing.T) {
 }
 
 func TestRoleSeedContent(t *testing.T) {
+	roleMarkers := map[roundtable.Role][]string{
+		roundtable.RoleReferee: {"保持中立", "1–3 个最影响决策的问题", "Summary₃ 终稿"},
+		roundtable.RoleMarket:  {"人群与场景", "竞争与定位", "市场验证"},
+		roundtable.RoleProduct: {"问题定义", "MVP 的最小完整闭环", "验收指标"},
+		roundtable.RoleEng:     {"可行性", "质量属性", "spike / PoC / 打样"},
+		roundtable.RoleOps:     {"运营模型", "容量与履约", "异常升级条件"},
+		roundtable.RoleFinance: {"单位经济", "现金与回本", "情景与敏感性"},
+	}
 	for _, role := range roundtable.DefaultRoster {
 		md := roundtable.RoleSeedAGENTS(role)
 		if md == "" {
 			t.Fatalf("empty seed for %s", role)
 		}
-		if !strings.Contains(md, "禁止寒暄") {
-			t.Fatalf("%s missing common contract", role)
+		for _, marker := range []string{
+			"## 使命", "## 行为设置", "## 圆桌行为协议", "## 默认输出结构",
+			"角色锁定", "事实边界", "结论优先", "可执行", "轮次纪律", "禁止寒暄",
+		} {
+			if !strings.Contains(md, marker) {
+				t.Fatalf("%s missing complete role prompt marker %q", role, marker)
+			}
+		}
+		for _, marker := range roleMarkers[role] {
+			if !strings.Contains(md, marker) {
+				t.Fatalf("%s missing role-specific behavior marker %q", role, marker)
+			}
 		}
 	}
 	// Write to disk
@@ -562,8 +599,16 @@ func TestRoleSeedContent(t *testing.T) {
 	if !strings.Contains(string(b), "研发") {
 		t.Fatal("eng AGENTS.md content")
 	}
-	if _, err := os.Stat(filepath.Join(dir, "Claude.md")); err != nil {
+	claude, err := os.ReadFile(filepath.Join(dir, "Claude.md"))
+	if err != nil {
 		t.Fatal("Claude.md missing")
+	}
+	for _, marker := range []string{
+		"Agents 圆桌（Claude.md） · 研发", "## 行为设置", "## 圆桌行为协议",
+	} {
+		if !strings.Contains(string(claude), marker) {
+			t.Fatalf("Claude.md missing complete role marker %q", marker)
+		}
 	}
 }
 
@@ -726,6 +771,13 @@ func TestR2_ParallelIsolatedSpeechAndSummary(t *testing.T) {
 		// Role present in system context
 		if !strings.Contains(c.SystemContext, roundtable.RoleLabel(c.Role)) {
 			t.Fatalf("panelist %s sys ctx missing role label", c.Role)
+		}
+		for _, marker := range []string{
+			"## 使命", "## 行为设置", "## 圆桌行为协议", "## 默认输出结构",
+		} {
+			if !strings.Contains(c.SystemContext, marker) {
+				t.Fatalf("panelist %s sys ctx missing complete role marker %q", c.Role, marker)
+			}
 		}
 		// Peer speech bodies forbidden
 		for _, sec := range allSecrets {

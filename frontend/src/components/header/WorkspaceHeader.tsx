@@ -8,7 +8,7 @@ import { AgentAvatar } from '../chat/AgentAvatar';
 import { CrumbTrail, type Crumb } from '../platform/ShellNav';
 import * as stage from '../../stores/stageStore';
 import * as tabsStore from '../../stores/tabsStore';
-import { isBeginnerMode, isMobile } from '../../stores/uiStore';
+import { isBeginnerMode } from '../../stores/uiStore';
 import * as taskNav from '../../stores/taskNavStore';
 import { activeWorkspaceDeviceId, activeWorkspaceId, remoteDevices, workspaces } from '../../stores/workspaceStore';
 
@@ -309,6 +309,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                       : [{ label: activeWs.name }]),
               ]
         : [];
+    const effectiveBack = taskNav.headerBackAction.value ?? onBack;
 
     // Show the current session: close any open artifact drawer (keeps the
     // session's own chat/terminal tab as-is).
@@ -329,22 +330,13 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
         <Fragment>
             <header class="workspace-header">
                 <div class="header-left">
-                    {onBack ? (
+                    {effectiveBack ? (
                         <button
+                            type="button"
                             class="header-back-btn"
-                            onClick={() => {
-                                // Mobile single-back: step out of an open task first
-                                // (detail → parent task → list), then fall through to
-                                // the workspace-level back. Desktop keeps its own
-                                // panel-back-btn and uses onBack directly.
-                                if (isMobile.value && taskNav.taskHasSelection.value && taskNav.taskBackHandler.value) {
-                                    taskNav.taskBackHandler.value();
-                                } else {
-                                    onBack();
-                                }
-                            }}
-                            style="margin-right: 8px; display: flex; align-items: center; justify-content: center; background: none; border: none; color: var(--text-main); cursor: pointer; padding: 4px;"
-                            title="Back"
+                            onClick={effectiveBack}
+                            title={t('header.back', language)}
+                            aria-label={t('header.back', language)}
                         >
                             <svg
                                 viewBox="0 0 24 24"
@@ -353,7 +345,6 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                                 stroke-width="2.5"
                                 stroke-linecap="round"
                                 stroke-linejoin="round"
-                                style="width: 20px; height: 20px;"
                             >
                                 <polyline points="15 18 9 12 15 6" />
                             </svg>

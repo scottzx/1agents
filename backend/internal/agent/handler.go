@@ -252,17 +252,11 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		recs = []ChatSessionRecord{}
 	}
 
-	// Headless auto-run sessions execute silently in the backend; keep them
-	// out of the sidebar so an AI-executed task doesn't spawn a chat box.
-	// They stay resolvable by id (Get), so "查看详情" can still resume them.
-	filtered := recs[:0]
-	for _, rec := range recs {
-		if rec.Role == SessionRoleAuto {
-			continue
-		}
-		filtered = append(filtered, rec)
-	}
-	recs = filtered
+	// Include headless auto-run sessions (role=auto) in the list so project
+	// task execution shows up in the sidebar and 会话 grid — same persistence
+	// as interactive chats. Users can open them without deep task navigation,
+	// and switching away no longer drops the row (it was previously only
+	// injected while activeSession pointed at it via Get-by-id).
 
 	var wsPath string
 	if len(recs) > 0 && wsID != meta.OneshotWorkspaceID {

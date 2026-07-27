@@ -874,9 +874,6 @@ export function TaskDetail({
                 </span>
                 <div class="topic-title-group">
                     <div class="topic-kicker">
-                        {onBack && (
-                            <button class="task-back-btn" title={t('task.detail.back', lang)} onClick={onBack} />
-                        )}
                         <span class="topic-type-chip">{typeLabel}</span>
                         <span>{issueStateLabel}</span>
                         <span class="topic-dot">·</span>

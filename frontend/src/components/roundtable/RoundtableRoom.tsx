@@ -14,6 +14,10 @@ import { LaunchWizard } from './LaunchWizard';
 import { RoomList } from './RoomList';
 import { isTerminalState, pollIntervalMs } from './stage';
 import { persistListView, persistRoomView, readStoredRoomId, resolveInitialNav } from './navState';
+import { roundtableBreadcrumbs } from './breadcrumbs';
+import * as taskNav from '../../stores/taskNavStore';
+import * as tabsStore from '../../stores/tabsStore';
+import * as stage from '../../stores/stageStore';
 
 export interface RoundtableRoomProps {
     /** When set, open this room directly. */
@@ -82,6 +86,34 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
         // Creating is transient; remember list so cancel/back returns to cards.
         persistListView();
     }, []);
+
+    const leaveRoundtable = useCallback(() => {
+        taskNav.headerCrumbs.value = null;
+        taskNav.clearHeaderBackAction('roundtable-room');
+        stage.exitL1App();
+        tabsStore.selectDiscoveryCategory('apps');
+    }, []);
+
+    useEffect(() => {
+        const backAction = shell === 'list' ? leaveRoundtable : goList;
+        const crumbs = roundtableBreadcrumbs({
+            view: shell,
+            roomTitle: room?.title || defaultTitle,
+            onList: goList,
+        });
+        taskNav.headerCrumbs.value = crumbs;
+        const unregisterBack = taskNav.registerHeaderBackAction(
+            'roundtable-room',
+            backAction,
+            taskNav.HEADER_BACK_PRIORITY.surface
+        );
+        return () => {
+            if (taskNav.headerCrumbs.value === crumbs) {
+                taskNav.headerCrumbs.value = null;
+            }
+            unregisterBack();
+        };
+    }, [shell, room?.title, defaultTitle, goList, leaveRoundtable]);
 
     const refresh = useCallback(async (id: string, opts?: { quiet?: boolean }) => {
         if (!opts?.quiet) setLoading(true);
@@ -171,16 +203,40 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
         }
     };
 
+    const briefFormReady =
+        briefTitle.trim().length > 0 &&
+        briefQuestion.trim().length > 0 &&
+        briefConstraints.trim().length > 0 &&
+        briefSuccess.trim().length > 0 &&
+        !['—', '-', '–', 'TBD', 'tbd', 'N/A', 'n/a'].includes(briefConstraints.trim()) &&
+        !['—', '-', '–', 'TBD', 'tbd', 'N/A', 'n/a'].includes(briefSuccess.trim());
+
     const confirmBrief = async () => {
         if (!roomId) return;
+        const title = briefTitle.trim();
+        const question = briefQuestion.trim();
+        const constraints = briefConstraints.trim();
+        const success = briefSuccess.trim();
+        // Never silent-fill with room title / "—" — empty Brief must not enter R2.
+        if (!title || !question || !constraints || !success) {
+            setError('请完整填写 Brief 四字段（标题 / 议题 / 约束 / 成功标准），不可用「—」占位');
+            return;
+        }
+        if (
+            ['—', '-', '–', 'TBD', 'tbd', 'N/A', 'n/a'].includes(constraints) ||
+            ['—', '-', '–', 'TBD', 'tbd', 'N/A', 'n/a'].includes(success)
+        ) {
+            setError('约束与成功标准不能使用占位符，请填写真实内容');
+            return;
+        }
         setBusy(true);
         setError(null);
         try {
             await roundtableService.confirmBrief(roomId, {
-                title: briefTitle.trim() || room?.title || '议题',
-                question: briefQuestion.trim() || briefTitle.trim() || '核心问题',
-                constraints: briefConstraints.trim() || '—',
-                success_criteria: briefSuccess.trim() || '—',
+                title,
+                question,
+                constraints,
+                success_criteria: success,
             });
             setShowBriefForm(false);
             await refresh(roomId, { quiet: true });
@@ -232,7 +288,6 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
                 defaultTitle={defaultTitle}
                 onStart={createRoom}
                 onContinue={id => goRoom(id)}
-                onBack={goList}
             />
         );
     }
@@ -262,9 +317,6 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
                         ) : (
                             <div class="rt-error">{error || '无法加载圆桌'}</div>
                         )}
-                        <button type="button" class="rt-btn rt-btn-ghost" onClick={goList}>
-                            返回话题列表
-                        </button>
                     </div>
                 </div>
             </div>
@@ -279,14 +331,6 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
             <div class="rt-room-main">
                 <header class="rt-room-header">
                     <div class="rt-room-title-row">
-                        <button
-                            type="button"
-                            class="rt-btn rt-btn-ghost rt-back-list"
-                            onClick={goList}
-                            title="返回话题列表"
-                        >
-                            ← 列表
-                        </button>
                         <h1 class="rt-room-title">{room.title || '圆桌'}</h1>
                         {loading && <span class="rt-room-loading">刷新中</span>}
                         <button
@@ -308,7 +352,6 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
                                     class="rt-btn"
                                     disabled={busy}
                                     onClick={() => {
-                                        if (!briefTitle) setBriefTitle(room.title || '');
                                         setShowBriefForm(v => !v);
                                     }}
                                 >
@@ -337,14 +380,45 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
                             )}
                         </div>
                     )}
+                    {/* CLI-confirmed brief is already on room; show read-only card when past drafting. */}
+                    {!drafting && room.brief && (
+                        <div class="rt-brief-readonly bento-card" aria-label="已确认 Brief">
+                            <div class="bento-zone-header">
+                                <span class="bento-card-title">Brief（已确认）</span>
+                            </div>
+                            <div class="bento-zone-body">
+                                <dl class="rt-brief-dl">
+                                    <dt>标题</dt>
+                                    <dd>{room.brief.title}</dd>
+                                    <dt>议题</dt>
+                                    <dd>{room.brief.question}</dd>
+                                    <dt>约束</dt>
+                                    <dd>{room.brief.constraints}</dd>
+                                    <dt>成功标准</dt>
+                                    <dd>{room.brief.success_criteria}</dd>
+                                    {room.brief.product_kind ? (
+                                        <>
+                                            <dt>品类</dt>
+                                            <dd>{room.brief.product_kind}</dd>
+                                        </>
+                                    ) : null}
+                                </dl>
+                            </div>
+                        </div>
+                    )}
                     {drafting && showBriefForm && (
                         <div class="rt-brief-form">
+                            <p class="rt-brief-hint">
+                                四字段均必填；请填真实内容。裁判也可在 seat cwd 用 <code>roundtable set-brief</code>{' '}
+                                写入（开发环境用二进制绝对路径或 ONEAGENTS_CLI；刷新后可见）。
+                            </p>
                             <label class="rt-field">
                                 <span class="rt-field-label">标题</span>
                                 <input
                                     class="rt-input"
                                     value={briefTitle}
                                     onInput={e => setBriefTitle((e.target as HTMLInputElement).value)}
+                                    required
                                 />
                             </label>
                             <label class="rt-field">
@@ -353,6 +427,7 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
                                     class="rt-input"
                                     value={briefQuestion}
                                     onInput={e => setBriefQuestion((e.target as HTMLInputElement).value)}
+                                    required
                                 />
                             </label>
                             <label class="rt-field">
@@ -361,6 +436,7 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
                                     class="rt-input"
                                     value={briefConstraints}
                                     onInput={e => setBriefConstraints((e.target as HTMLInputElement).value)}
+                                    required
                                 />
                             </label>
                             <label class="rt-field">
@@ -369,12 +445,13 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
                                     class="rt-input"
                                     value={briefSuccess}
                                     onInput={e => setBriefSuccess((e.target as HTMLInputElement).value)}
+                                    required
                                 />
                             </label>
                             <button
                                 type="button"
                                 class="rt-btn rt-btn-primary"
-                                disabled={busy}
+                                disabled={busy || !briefFormReady}
                                 onClick={() => void confirmBrief()}
                             >
                                 提交 Brief → waiting_r2

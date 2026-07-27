@@ -1,8 +1,8 @@
-// Package cli implements the `1agents project ...` and `1agents task ...`
-// subcommands. They write directly to the global metadata database
-// (~/.1agents/meta.db, WAL mode) so they work whether or not the daemon is
-// running — agents use these to fill in task fields as they work.
-// See docs/features/project-model/design.md §4.
+// Package cli implements the `1agents project ...`, `1agents task ...`, and
+// `1agents roundtable ...` subcommands. They write directly to the global
+// metadata database (~/.1agents/meta.db, WAL mode) so they work whether or not
+// the daemon is running — agents use these to fill in task fields as they work.
+// See docs/features/project-model/design.md §4 and agents-roundtable/design.md.
 package cli
 
 import (
@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/scottzx/1Agents/backend/internal/meta"
+	"github.com/scottzx/1Agents/backend/internal/roundtable"
 )
 
 // Run dispatches args (the daemon binary's positional arguments). It returns
@@ -28,6 +29,8 @@ func Run(args []string) (handled bool, exitCode int) {
 		return true, runProject(args[1:])
 	case "task":
 		return true, runTask(args[1:])
+	case "roundtable":
+		return true, roundtable.RunCLI(args[1:])
 	default:
 		return false, 0
 	}

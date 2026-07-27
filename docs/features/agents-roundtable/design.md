@@ -29,11 +29,11 @@
 | 维度 | 决策 |
 |------|------|
 | 路线 | **B：真多 Agent 会话编排**（每席独立进程/session，非单 session 假扮多角色） |
-| 席位运行时 | **一席 = 一个 `kind=tmp` workspace + 一个后端 agent session** |
+| 席位运行时 | **一席 = 一个 `kind=app` workspace + 一个后端 agent session** |
 | 会话复用 | 同席位跨轮用 **1acp `session/resume`** |
 | 过程展示 | **默认折叠过程**；主时间线只展示该 turn **发言正文**（`content_text`） |
 | 入口 | **更多 / 发现中心 / 应用中心** |
-| 裁判 | **必须是真实 agent 二进制**（独立 tmp + session） |
+| 裁判 | **必须是真实 agent 二进制**（独立 app workspace + session） |
 | 默认 harness | **全部 Grok Build**；差异化靠 **职能角色 seed** |
 | 默认编制 | **裁判 + 市场 / 产品 / 研发 / 运营 / 财务**（共 **6** 个 session） |
 | 领域语境 | 多半是 **IT 软件、硬件产品**；Brief 可注明软/硬/一体 |
@@ -45,58 +45,38 @@
 
 ```
 Roundtable room
-├── seat:referee  → Grok Build · 裁判/主持人     · tmp-rt-<id>-ref
-├── seat:market   → Grok Build · 市场             · tmp-rt-<id>-mkt
-├── seat:product  → Grok Build · 产品             · tmp-rt-<id>-prd
-├── seat:eng      → Grok Build · 研发             · tmp-rt-<id>-eng
-├── seat:ops      → Grok Build · 运营             · tmp-rt-<id>-ops
-└── seat:finance  → Grok Build · 财务             · tmp-rt-<id>-fin
+├── seat:referee  → Grok Build · 裁判/主持人     · app-rt-<id>-ref
+├── seat:market   → Grok Build · 市场             · app-rt-<id>-mkt
+├── seat:product  → Grok Build · 产品             · app-rt-<id>-prd
+├── seat:eng      → Grok Build · 研发             · app-rt-<id>-eng
+├── seat:ops      → Grok Build · 运营             · app-rt-<id>-ops
+└── seat:finance  → Grok Build · 财务             · app-rt-<id>-fin
 ```
 
-- 复用现有 `createTmpWorkspace` / `kind=tmp` 思路：轻量 cwd、seed `AGENTS.md`、任务区可见、不污染项目。
+- 复用 `CreateAppWorkspace` / `kind=app`：轻量 cwd、seed `AGENTS.md`、不进入任务区或项目列表。
 - UI 席位名展示 **职能**（市场/产品/研发/运营/财务），不只显示「Grok」。
 
-### 3.1 Role contracts
+### 3.1 Complete role prompts
 
-#### 裁判（Referee）
+`RoleSeedAGENTS(role)` 是六个席位的角色提示词单一真源。建房时，每个 `kind=app` workspace 都要写入完整的 `AGENTS.md` 和 `Claude.md`；首次 ACP 调用还要将同一份完整契约注入 `SystemContext`（裁判为 R1，五个职能席为 R2）。R3 resume 原会话，不另起一套角色定义。
 
-- **R1**：与用户充分澄清议题，产出并确认 `Brief`。
-- **R2/R3 末**：综合总结；不抢 panelist 职能长文。
-- Summary 须标注观点来源席位；冲突时显式写出分歧（尤其 **产品诉求 vs 技术约束**）。
+每份完整提示词必须包含：
 
-#### 市场（Market）
+- **身份与使命**：该席位为什么存在，对什么决策负责。
+- **职能分析框架**：必须覆盖的分析维度，不能只有一句角色标签。
+- **明确行为设置**：如何处理证据、假设、取舍、异议与未知项。
+- **输出焦点与边界**：应该产出什么，不应越俎代替哪个席位。
+- **圆桌行为协议**：角色锁定、事实边界、结论优先、可执行性、R2/R3 轮次纪律与正文契约。
+- **默认输出结构**：结论、关键判断、风险与反例、建议动作、待验证假设。
 
-- 用户/客户、竞争、定位、增长、品牌与渠道。
-- 优先：谁会买、为什么买、和谁抢、怎么触达。
-
-#### 产品（Product）
-
-- 需求真伪、方案形态、优先级、体验与边界。
-- 优先：做什么/不做什么、核心路径、风险假设。
-
-#### 研发（Engineering / R&D）
-
-- 可行性、架构/方案、技术债、交付周期、质量与风险；覆盖 **软件 + 硬件**。
-- 软件：架构边界、依赖集成、性能/安全/可观测、工期人力、测试发布。
-- 硬件：选型供货、固件/驱动、认证合规、打样-试产-量产、软硬联调。
-- 优先：是否成立、关键/备选路径代价、工期依赖、最大技术风险与验证方式。
-- 不替市场做定位、不替财务做完整商业模型；可点名抬成本/拉交付的技术选择。
-
-#### 运营（Ops）
-
-- 落地、流程、供给/履约、节奏、协作成本。
-- 优先：怎么跑起来、卡点、资源与节奏。
-
-#### 财务（Finance）
-
-- 成本、收入、单位经济、预算、回本与风险。
-- 优先：钱从哪来/花到哪、是否算得过账、财务红线。
-
-#### 共性（正文契约）
-
-- 只输出本轮观点/总结正文，**禁止寒暄**。
-- 紧扣 `Brief`，不跑题。
-- Tool/thinking 进 process，不进主时间线 `content_text`。
+| 席位 | 专属分析框架 | 关键行为设置 |
+|------|------------------|------------------|
+| 裁判 | R1 Brief 澄清；R2 共识/分歧/证据缺口；R3 收敛与终稿 | 保持中立、标注来源、不伪造共识；R1 每轮优先问 1–3 个高影响问题 |
+| 市场 | 人群与场景、证据、竞争定位、渠道增长、市场验证 | 不编造 TAM/SAM/SOM；优先收窄切入市场并给出可验证方案 |
+| 产品 | 问题定义、价值指标、范围优先级、核心旅程、风险验收 | 必须明确做/不做，用用户问题而非功能数量证明范围 |
+| 研发 | 可行性、方案边界、交付计划、质量属性、软硬件专项 | 工期必须绑定范围/人力/依赖；高不确定性用 spike、PoC 或打样验证 |
+| 运营 | 运营模型、流程责任、容量履约、上线节奏、反馈闭环 | 不把“加人”当默认解法；动作必须有负责人、频率、指标与升级条件 |
+| 财务 | 商业假设、成本结构、单位经济、现金回本、情景敏感性 | 不伪造精确数据；给公式/输入/阈值，并明确预算、投资条件和止损线 |
 
 ### 3.2 产品 vs 研发（防同质）
 
@@ -122,8 +102,13 @@ R1 命题 ──► R2 首轮各自发言 ──► 裁判总结 ──► R3 �
 ### R1
 
 - Panelist 可不发言；session 可预创建或 R2 再起。
-- 出站门：用户确认 Brief（或点「开始圆桌」）。
+- 出站门：Brief 写入 app 后进入 `waiting_r2`。两条等价通道：
+  1. **UI** `POST /api/roundtable/rooms/{id}/brief`（ConfirmBrief）
+  2. **CLI** `1agents roundtable set-brief`（裁判在 seat cwd 跨 pwd 直写 meta.db；daemon 可关）
 - Brief 最小字段：`title` / `question`、`constraints`、`success_criteria`；可选 `product_kind`: software \| hardware \| hybrid。
+- **禁止占位**：空字段或纯 `—` / TBD 不得落库，也不得进入 R2 有效分析路径。
+- **跨 cwd room 解析**（CLI，优先级）：`--room` → env `ONEAGENTS_ROUNDTABLE_ROOM_ID` → 席位 cwd 侧车 `.1agents-roundtable.json` → workspace path 反查 seats。
+- CreateRoom 时每个 seat cwd 写入侧车（room_id / role / seat_id / **cli_bin**）；裁判 AGENTS.md 教用 `set-brief`，且把 bare `1agents roundtable` **改写为 daemon 绝对路径**（对齐 project-items / PM skill 的 `rewriteCLIBinaryPath` / `ONEAGENTS_CLI`）。开发环境常无 PATH 上的 `1agents`。
 
 ### R2
 
@@ -241,9 +226,16 @@ Brief {
 ### 6.3 Side (minimal)
 
 - 当前 Brief、最新 Summary、席位列表  
-- 不接 Diff / 文件树（tmp 纯对话）
+- 不接 Diff / 文件树（app seat 纯对话）
 
-### 6.4 Entry
+### 6.4 Global breadcrumb
+
+- 使用全局 `WorkspaceHeader` 导航，左侧固定为独立、无外边框的「返回上一级」图标按钮，不在内容区重复放返回按钮。
+- 图标右侧才是可点击的路径面包屑：`圆桌列表 › <具体圆桌> › <具体会话>`；路径中不出现「返回」文字节点。
+- 返回图标始终回到当前层的上一级；在列表层则回到发现中心的应用列表。
+- 从席位打开完整 ChatUI 后保留圆桌上下文，可经面包屑回到原圆桌或圆桌列表。
+
+### 6.5 Entry
 
 | 入口 | 行为 |
 |------|------|
@@ -266,6 +258,9 @@ Brief {
 7. 刷新后 room 可恢复；未结束席位可继续 resume。  
 8. Summary 能区分职能来源；研发与产品观点可区分。  
 9. **布局（#260）**：底栏固定裁判 `EmbeddedChat`（历史 + 实时 + typing + Composer）；时间线/席位区**不**再渲染裁判第二份嵌入卡；无旧版 `chatText` 简易底栏。
+10. **导航**：全局标题栏同时提供独立的返回图标和「圆桌列表 › 具体圆桌 › 具体会话」路径面包屑；图标回上一级，路径节点按名称跳转。
+11. **工作空间**：裁判与五个职能席位全部持久化为 `kind=app`。
+12. **角色提示词**：六个席位在创建时都写入完整 role prompt，包含使命、职能分析框架、明确行为设置、边界与输出结构；首次 ACP 调用注入同份完整契约。
 
 ---
 
@@ -273,7 +268,7 @@ Brief {
 
 | # | 切片 | 验证 |
 |---|------|------|
-| 1 | Room 状态机 + 持久化 + 6×tmp seat 工厂 + 角色 seed | API 建房、列出 seat |
+| 1 | Room 状态机 + 持久化 + 6×app seat 工厂 + 角色 seed | API 建房、列出 seat |
 | 2 | R1 裁判 session 对话 + Brief 确认 | 双人聊通并出站 |
 | 3 | R2 五席并行 prompt（隔离）+ 裁判 Summary₂ | 五条正文 + 总结入时间线 |
 | 4 | R3 resume + 公开上下文注入 + Summary₃ | 同 session_id 跨轮；可见他人 R2 |

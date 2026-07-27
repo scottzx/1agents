@@ -47,7 +47,13 @@ export function TaskList({
 
     const isControlled = onTaskSelect !== undefined;
     const selectedTaskId = isControlled ? externalSelectedTaskId ?? null : internalSelectedTaskId;
-    const setSelectedTaskId = isControlled ? (id: string | null) => onTaskSelect(id) : setInternalSelectedTaskId;
+    const setSelectedTaskId = useCallback(
+        (id: string | null) => {
+            if (onTaskSelect) onTaskSelect(id);
+            else setInternalSelectedTaskId(id);
+        },
+        [onTaskSelect]
+    );
     const showMsForm = useSignal(false); // create-milestone modal (small → stays a modal)
     const showSessions = useSignal(false); // sessions popup, opened from the 总览 会话 card
     const [sessionCount, setSessionCount] = useState(0);
@@ -111,6 +117,23 @@ export function TaskList({
             setLoading(false);
         }
     }, [workspaceId, setTasks]);
+
+    const closeTaskDetail = useCallback(() => {
+        setSelectedTaskId(null);
+        void fetchTasks();
+    }, [fetchTasks, setSelectedTaskId]);
+
+    // Standalone project/assistant task details publish their back action to
+    // the global header. Controlled TaskList instances are owned by RightPanel,
+    // which also preserves its task-to-task history stack.
+    useEffect(() => {
+        if (!selectedTaskId || isControlled) return;
+        return taskNav.registerHeaderBackAction(
+            `task-detail:${workspaceId}`,
+            closeTaskDetail,
+            taskNav.HEADER_BACK_PRIORITY.detail
+        );
+    }, [selectedTaskId, isControlled, workspaceId, closeTaskDetail]);
 
     // The 总览 会话 card shows the live count of active (non-archived) sessions.
     const fetchSessionCount = useCallback(async () => {
@@ -301,14 +324,7 @@ export function TaskList({
                 workspaceId={workspaceId}
                 taskId={selectedTaskId}
                 allTasks={tasks}
-                onBack={
-                    isControlled
-                        ? undefined
-                        : () => {
-                              setSelectedTaskId(null);
-                              fetchTasks();
-                          }
-                }
+                onBack={isControlled ? undefined : closeTaskDetail}
                 onDelete={handleDeleteTask}
                 onNavigate={setSelectedTaskId}
                 onSelectSession={onSelectSession}

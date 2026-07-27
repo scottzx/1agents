@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -295,6 +296,74 @@ func (s *Store) ListSeats(roomID string) ([]Seat, error) {
 		out = append(out, seat)
 	}
 	return out, nil
+}
+
+// FindSeatByWorkspaceID returns the seat bound to a disposable workspace id.
+func (s *Store) FindSeatByWorkspaceID(workspaceID string) (*Seat, error) {
+	if strings.TrimSpace(workspaceID) == "" {
+		return nil, fmt.Errorf("roundtable: workspace_id required")
+	}
+	row := s.db.SQL().QueryRow(
+		`SELECT id, room_id, role, agent_type, workspace_id, session_id, acp_session_id, status, created_at
+		 FROM agents_roundtable_seats WHERE workspace_id = ? LIMIT 1`, workspaceID)
+	var seat Seat
+	var role, status, createdAt string
+	err := row.Scan(
+		&seat.ID, &seat.RoomID, &role, &seat.AgentType, &seat.WorkspaceID,
+		&seat.SessionID, &seat.AcpSessionID, &status, &createdAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, meta.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	seat.Role = Role(role)
+	seat.Status = SeatStatus(status)
+	seat.CreatedAt = strToTime(createdAt)
+	return &seat, nil
+}
+
+// FindRoomIDByWorkspacePath resolves a seat cwd (or workspace path) to room_id
+// via meta.projects → seats.workspace_id. Used when CLI has no --room/env/sidecar.
+func (s *Store) FindRoomIDByWorkspacePath(absPath string) (string, error) {
+	absPath = filepath.Clean(strings.TrimSpace(absPath))
+	if absPath == "" || absPath == "." {
+		return "", fmt.Errorf("roundtable: empty workspace path")
+	}
+	projects, err := s.db.ListProjects()
+	if err != nil {
+		return "", err
+	}
+	// Match exact cwd, then parent (agent may chdir into a subdir of the seat).
+	matchPath := func(path string) (string, bool) {
+		for _, p := range projects {
+			if filepath.Clean(p.WorkspacePath) != path {
+				continue
+			}
+			seat, err := s.FindSeatByWorkspaceID(p.ID)
+			if err == meta.ErrNotFound {
+				continue
+			}
+			if err != nil {
+				return "", false
+			}
+			if seat.RoomID != "" {
+				return seat.RoomID, true
+			}
+		}
+		return "", false
+	}
+	if id, ok := matchPath(absPath); ok {
+		return id, nil
+	}
+	parent := filepath.Dir(absPath)
+	if parent != absPath {
+		if id, ok := matchPath(parent); ok {
+			return id, nil
+		}
+	}
+	return "", meta.ErrNotFound
 }
 
 // GetSeat returns one seat by id.
