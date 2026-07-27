@@ -118,8 +118,14 @@ interface SidePanelState {
 export const SIDE_PANEL_IDLE_CLEANUP_MS = 30 * 60 * 1000;
 const SIDE_PANEL_STORAGE_PREFIX = '1agents-side-panel-tabs:v1:';
 const SIDE_PANEL_TYPES: SidePanelTabType[] = ['tasks', 'files', 'browser', 'git', 'terminal'];
+// Read localStorage only at module init — do NOT touch wsStore.activeWorkspaceId
+// here. workspaceStore imports tabsStore, so evaluating that live binding during
+// tabsStore load hits the TDZ ("Cannot access '_' before initialization").
+// Runtime callers (setSidePanelOwnerForWorkspace) sync the owner after both
+// stores are fully initialized; the localStorage key matches activeWorkspaceId's
+// own bootstrap source.
 const sidePanelDefaultOwner = (): string =>
-    `workspace:${wsStore.activeWorkspaceId.value || localStorage.getItem('1agents-active-workspace') || 'none'}`;
+    `workspace:${localStorage.getItem('1agents-active-workspace') || 'none'}`;
 
 export const sidePanelOwnerKey = signal<string>(sidePanelDefaultOwner());
 
