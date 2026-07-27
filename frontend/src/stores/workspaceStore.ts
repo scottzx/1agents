@@ -493,6 +493,7 @@ export const selectWorkspace = async (ws: Workspace, opts?: { skipLanding?: bool
     // binding a newly minted tmp workspace after session create.
     if (!opts?.skipLanding) {
         tabsStore.activeTabId.value = 'tasks';
+        tabsStore.setSidePanelOwnerForWorkspace(ws.id);
     }
 
     // 多设备(#114):切换 API 路由目标。远程项目 → 经 #111 代理路由;本机 → 直连。

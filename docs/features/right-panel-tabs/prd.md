@@ -153,17 +153,20 @@ header-right
 
 | 触发 | 行为 |
 |------|------|
-| Header「添加 Tab」/ 右栏 `+` 选「文件」 | `panelVisible=true`；确保文件默认 Tab；active=文件 |
-| 用户显式点文件路径 / 打开预览 | 同上 + path 去重实例 Tab 前台聚焦 |
-| 用户显式点 URL / 打开浏览器 | 浏览器默认 Tab + URL（P0 单会话即可） |
+| Header「打开副栏」 | `panelVisible=true`；无 Tab 时显示类型选择器 |
+| 右栏 `+` 选类型 | 显式新增 Tab；active=新 Tab |
+| ChatUI 点击任务引用 | 复用 `tasks:default`；打开对应任务详情 |
+| ChatUI 点击文件路径 / 打开预览 | 复用 `files:default`；更新到对应 path/line |
+| ChatUI 点击 URL / 打开浏览器 | 复用 `browser:default`；更新 URL |
+| 用户显式多开浏览器 / 终端 / 文件实例 | 创建唯一实例 Tab，不走默认复用键 |
 | Agent 写文件 / tool 完成 | **不**改 `panelVisible`，**不**新建文件 Tab（R1） |
-| Chat 内嵌小 Diff | 保留；大 diff「在右侧打开」→ 文件实例 + Diff 子视图（P1 可加强） |
+| Chat 内嵌小 Diff | 保留；大 diff「在右侧打开」→ 复用文件 Tab + Diff 子视图（P1 可加强） |
 
 ### 3.6 生命周期状态机
 
 ```
 panelVisible: boolean
-tabs: ArtifactTab[]      // 按 projectId 隔离
+tabs: ArtifactTab[]      // 按 chat session 隔离；无 chat 时 fallback workspace
 activeTabId: string
 ```
 
@@ -173,8 +176,9 @@ activeTabId: string
 | 开侧栏 | true | 不变，恢复 active |
 | 添加/打开 Mode 或实例 | true | 入栈/聚焦 |
 | Agent 写文件 | 不变 | 不变 |
-| 换项目 | 可保持或 false | **清空** |
-| 同项目换会话 | 不变 | **保留** |
+| 换 Chat 会话 | 恢复目标会话的 Tab 栈 | 按 `chat:<sessionId>` 读取 |
+| 无 Chat / 终端上下文 | 恢复 workspace fallback | 按 `workspace:<workspaceId>` 读取 |
+| 同一 Chat 内点击任务/文件/URL | true | 复用默认 Tab，不新增 |
 
 ### 3.7 文件 Mode 与 Diff（R5）
 
@@ -205,9 +209,11 @@ Git 变更点文件 → 打开同 path 实例 Tab（+ Diff 若有）
 
 **目标收敛方向：**
 
-- 引入（或演进）`artifact` 状态：`panelVisible` + `tabs[]` + `activeTabId`（建议按 `workspaceId` 分桶）。
-- `stageStore.hasContent` 改为「右栏可见且有内容」而非仅 `activeDrawerTab ∈ SECONDARY_TABS`。
-- `openPreviewTab` / 全局 workspace preview 路径 **并入** 右栏文件实例 Tab。
+- 引入（或演进）`artifact` 状态：`panelVisible` + `tabs[]` + `activeTabId`，按 `chat:<sessionId>` 分桶，无 Chat 时 fallback `workspace:<workspaceId>`。
+- `stageStore.hasContent` 改为「右栏可见且有内容 / 空态选择器」而非仅 `activeDrawerTab ∈ SECONDARY_TABS`。
+- ChatUI 的任务引用、文件路径、URL 打开协议默认复用 `tasks:default` / `files:default` / `browser:default`。
+- `openPreviewTab` / 全局 workspace preview 路径 **并入** 右栏文件默认 Tab 或显式文件实例 Tab。
+- 终端 Tab idle cleanup / 手动关闭必须 `killTerminal`，关闭对应 tmux window。
 - `openBrowserTab` **并入** 右栏浏览器 Tab。
 
 ---
@@ -220,24 +226,24 @@ Git 变更点文件 → 打开同 path 实例 Tab（+ Diff 若有）
 
 | 序号 | 交付 | 验收要点 |
 |------|------|----------|
-| P0-1 | Artifact 状态模型与生命周期 | 关栏保留；换项目清空；同项目换会话保留；API：`openPanel` / `closePanel` / `addTab` / `closeTab` / `selectTab` |
-| P0-2 | RightPanel Tab 条 UI | 默认+实例 Tab 名称；active；实例 ×；默认 `⋯` 快切；视觉贴合 codex-minimal / 现有 panel header |
-| P0-3 | header-right 精简 | 仅开/关侧栏 + 添加 Tab；Mode 一排入口移除或不再主路径 |
-| P0-4 | 文件 Mode + 实例 Tab | 打开文件 Mode 出右栏；path 去重；Chat/文件树显式打开聚焦 |
-| P0-5 | 打开协议 R1 | Agent 写文件路径不自动开栏/加 Tab；显式点击会 |
-| P0-6 | stage 接线 | `hasContent` / split / rail 与 `panelVisible` 一致；无双开闪烁 |
-| P0-7 | 浏览器 + 任务默认 Tab | 可通过添加/⋯ 打开；浏览器 P0 单会话即可 |
-| P0-8 | 清理旁路 | 桌面主路径不再依赖顶栏 hidden workspace-tabs 打开 preview |
+| P0-1 | Artifact 状态模型与生命周期 | 按 Chat 会话持久化；无 Chat fallback workspace；默认复用键；30 分钟 idle 普通 Tab 卸载、终端 Tab kill tmux |
+| P0-2 | RightPanel Tab 条 UI | Tab 条、空态选择器、`+` 类型浮层、实例 ×、已回收终端空态；视觉贴合现有 panel header |
+| P0-3 | header-right 精简 | 顶部只控制主/副 panel 开关；Mode 一排入口移除或不再主路径 |
+| P0-4 | 文件 Mode + 复用 Tab | ChatUI 文件路径默认复用 `files:default`；显式多开才创建文件实例 Tab |
+| P0-5 | 打开协议 R1 | ChatUI 显式点击任务/文件/URL 会打开/复用副栏；Agent 写文件路径不自动开栏/加 Tab |
+| P0-6 | stage 接线 | `hasContent` / split / rail 与 `panelVisible` + active side Tab 一致；空态也可占位 |
+| P0-7 | 任务 / 浏览器 / Git / 终端 Tab | 任务引用复用 `tasks:default`；URL 复用 `browser:default`；Git/终端可通过添加打开；终端关闭会 kill tmux |
+| P0-8 | 清理旁路 | 桌面主路径不再依赖顶栏 hidden workspace-tabs 打开 preview/browser |
 
 ### 5.2 P1 — 体验加深
 
 | 序号 | 交付 | 验收要点 |
 |------|------|----------|
-| P1-1 | 文件 Tab 内 Preview \| Diff | Git 点文件进同 path + Diff 子视图 |
-| P1-2 | 浏览器多实例 Tab | 多 origin/port 可并存；URL 去重策略明确 |
-| P1-3 | Tab 溢出 `⋯` | 条太窄时 overflow 列表 |
-| P1-4 | 栈持久化 | localStorage 按 project 恢复（可选） |
-| P1-5 | Chat chip / 未读点 | 后台打开可发现（仍默认不抢焦） |
+| P1-1 | 文件 Tab 内 Preview \| Diff | Git 点文件进复用文件 Tab + Diff 子视图 |
+| P1-2 | 浏览器显式多实例 | P0 默认复用；P1 支持用户显式多开、URL 去重和标题管理 |
+| P1-3 | Tab 溢出 `⋯` | 条太窄时 overflow 列表，覆盖显式多开的文件/浏览器/终端 |
+| P1-4 | 持久化增强 | P0 已做会话级 localStorage；P1 补迁移兼容、清理策略和容量上限 |
+| P1-5 | Chat chip / 未读点 | 后台打开标记已有 reusable Tab，不强制创建新 Tab |
 
 ### 5.3 P2 — 延后（本 PRD 不建卡）
 
@@ -268,24 +274,24 @@ Git 变更点文件 → 打开同 path 实例 Tab（+ Diff 若有）
 
 | # | 任务 | 依赖 | 说明 |
 |---|------|------|------|
-| **#152** | P0-1 状态模型与生命周期 | — | store + 项目隔离 |
-| **#153** | P0-2 RightPanel Tab 条 UI | #152（文案） | chrome + 默认 Tab ⋯ |
-| **#154** | P0-3 header-right 精简 | #152（文案） | 开/关 + 添加 |
-| **#155** | P0-6 stageStore 接线 | #152（文案） | split/rail |
-| **#156** | P0-4 文件 Mode + 实例 Tab | #152 #153 | 核心路径 |
-| **#157** | P0-7 任务 / 浏览器默认 Tab | #153 | body 复用 |
-| **#158** | P0-5 打开协议 R1 | #156 | Agent 不抢焦 |
-| **#159** | P0-8 收敛 preview 旁路 | #156 #155 | 桌面主路径 |
+| **#152** | P0-1 状态模型与生命周期 | — | 会话级 store + localStorage + reusableKey + idle cleanup + 终端 kill tmux |
+| **#153** | P0-2 RightPanel Tab 条 UI | #152（文案） | Tab 条 + 空态选择器 + `+` 类型浮层 + 已回收终端空态 |
+| **#154** | P0-3 header-right 精简 | #152（文案） | 顶部只控制主/副 panel 开关 |
+| **#155** | P0-6 stageStore 接线 | #152（文案） | split/rail 读取 panelOpen + active side Tab |
+| **#156** | P0-4 文件 Mode + 复用 Tab | #152 #153 | ChatUI 文件点击复用 `files:default`；显式多开另建实例 |
+| **#157** | P0-7 任务 / 浏览器 / Git / 终端 Tab | #153 | 任务/URL 默认复用；Git/终端可添加；终端回收 kill tmux |
+| **#158** | P0-5 打开协议 R1 | #156 #157 | 用户显式点击才打开/复用；Agent 自动产物不抢焦 |
+| **#159** | P0-8 收敛 preview 旁路 | #156 #155 | 桌面主路径统一走 side panel tabs |
 
 ### 6.4 P1 任务
 
 | # | 任务 | 依赖 | 说明 |
 |---|------|------|------|
-| **#160** | P1-1 文件 Preview\|Diff | #156 | R5 深化 |
-| **#161** | P1-2 浏览器多 Tab | #157 | |
-| **#162** | P1-3 溢出菜单 | #153 | |
-| **#163** | P1-4 持久化 | #152 | |
-| **#164** | P1-5 未读/chip | #156 | 可选 |
+| **#160** | P1-1 文件 Preview\|Diff | #156 #158 | Git 点文件进入复用文件 Tab 的 Diff 子视图 |
+| **#161** | P1-2 浏览器显式多 Tab | #157 | P0 默认复用；P1 做显式多开与 URL 去重 |
+| **#162** | P1-3 溢出菜单 | #153 | 覆盖显式多开的文件/浏览器/终端 tabs |
+| **#163** | P1-4 持久化增强 | #152 | 迁移兼容、容量上限、过期清理 |
+| **#164** | P1-5 未读/chip | #156 #158 | 标记已有 reusable Tab，不强制新建 |
 
 ---
 
@@ -316,10 +322,11 @@ Git 变更点文件 → 打开同 path 实例 Tab（+ Diff 若有）
 
 | 议题 | 本 PRD 默认 | 备注 |
 |------|-------------|------|
-| P0 默认 Tab 集合 | 任务 · 文件 · 浏览器 | Git/渠道走「添加」 |
-| 默认 Tab `⋯` P0 | 跨默认面板快切 + 文件最近列表入口 | 不做满操作菜单 |
+| P0 默认 Tab 集合 | 任务 · 文件 · 浏览器 · Git · 终端 | 空态/`+` 都可添加 |
+| ChatUI 自动打开 | 默认复用 tasks/files/browser | 避免副栏 Tab 过多 |
 | 关栏控件 | Header 主 + 栏内 × 可保留 | 栏内 × = closePanel |
 | Git 完整面板 | P0 可通过添加加入 | Diff 走文件 Mode（P1 子视图） |
+| 终端回收 | idle / 手动关闭都 kill tmux | 避免进程泄漏 |
 
 ---
 
@@ -328,4 +335,5 @@ Git 变更点文件 → 打开同 path 实例 Tab（+ Diff 若有）
 | 日期 | 说明 |
 |------|------|
 | 2026-07-18 | 初稿：产品讨论锁定 R1–R9；P0/P1 拆解；执行人 human |
+| 2026-07-27 | 更新：会话级副栏 tabs、ChatUI 默认复用、终端 idle/关闭 kill tmux、P0/P1 任务口径 |
 )

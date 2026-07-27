@@ -141,6 +141,8 @@ export class Xterm {
     }
 
     dispose() {
+        this.doReconnect = false;
+        this.reconnect = false;
         this.containerObserver?.disconnect();
         this.containerObserver = undefined;
         for (const d of this.disposables) {
@@ -151,13 +153,13 @@ export class Xterm {
             window.clearInterval(this.heartbeatInterval);
             this.heartbeatInterval = undefined;
         }
-        // relay 模式下显式关桥,释放节点侧 ttyd 连接(裸 WS 由浏览器回收,行为不变)。
-        if (this.socket instanceof RelayTerminalSocket) {
+        if (this.socket) {
             try {
                 this.socket.close();
             } catch {
                 /* ignore */
             }
+            this.socket = undefined;
         }
     }
 

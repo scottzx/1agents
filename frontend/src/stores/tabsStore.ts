@@ -1,4 +1,4 @@
-import { signal } from '@preact/signals';
+import { computed, signal } from '@preact/signals';
 
 import { isFullPageTab, type FsEntry, type RightDrawerTab } from '../components/types';
 import { t } from '../i18n';
@@ -63,7 +63,7 @@ export const activeTab = signal<'terminal' | 'agents' | 'console' | 'folders' | 
  * reloads (so the workbench restores which column was open); full-page
  * modules and `pm` are transient.
  */
-const CONTENT_DRAWER_TABS: RightDrawerTab[] = ['tasks', 'channels', 'files', 'browser', 'git'];
+const CONTENT_DRAWER_TABS: RightDrawerTab[] = ['tasks', 'channels', 'files', 'browser', 'git', 'terminal'];
 const DRAWER_KEY = '1agents-drawer-tab';
 /**
  * Persist the artifact column's state across reloads. We store content tabs
@@ -89,6 +89,317 @@ const initialDrawerTab = (): RightDrawerTab => {
     return CONTENT_DRAWER_TABS.includes(stored) ? stored : 'none';
 };
 export const activeDrawerTab = signal<RightDrawerTab>(initialDrawerTab());
+
+export type SidePanelTabType = 'tasks' | 'files' | 'browser' | 'git' | 'terminal';
+
+export interface SidePanelTab {
+    id: string;
+    type: SidePanelTabType;
+    title: string;
+    reusableKey: string;
+    createdAt: number;
+    lastActiveAt: number;
+    mounted: boolean;
+    reclaimed?: boolean;
+    path?: string;
+    line?: number;
+    lineEnd?: number;
+    selectedTaskId?: string | null;
+    url?: string;
+    terminalWindowIndex?: number;
+}
+
+interface SidePanelState {
+    panelOpen: boolean;
+    activeTabId: string | null;
+    tabs: SidePanelTab[];
+}
+
+export const SIDE_PANEL_IDLE_CLEANUP_MS = 30 * 60 * 1000;
+const SIDE_PANEL_STORAGE_PREFIX = '1agents-side-panel-tabs:v1:';
+const SIDE_PANEL_TYPES: SidePanelTabType[] = ['tasks', 'files', 'browser', 'git', 'terminal'];
+const sidePanelDefaultOwner = (): string =>
+    `workspace:${wsStore.activeWorkspaceId.value || localStorage.getItem('1agents-active-workspace') || 'none'}`;
+
+export const sidePanelOwnerKey = signal<string>(sidePanelDefaultOwner());
+
+const sidePanelStorageKey = (ownerKey: string): string => `${SIDE_PANEL_STORAGE_PREFIX}${ownerKey}`;
+const isSidePanelType = (tab: RightDrawerTab): tab is SidePanelTabType =>
+    SIDE_PANEL_TYPES.includes(tab as SidePanelTabType);
+
+const defaultSidePanelTitle = (type: SidePanelTabType): string => {
+    switch (type) {
+        case 'tasks':
+            return t('sidePanel.tab.tasks', ui.language.value);
+        case 'files':
+            return t('sidePanel.tab.files', ui.language.value);
+        case 'browser':
+            return t('sidePanel.tab.browser', ui.language.value);
+        case 'git':
+            return t('sidePanel.tab.git', ui.language.value);
+        case 'terminal':
+            return t('sidePanel.tab.terminal', ui.language.value);
+    }
+};
+
+const defaultReusableKey = (type: SidePanelTabType): string => `${type}:default`;
+
+const loadSidePanelState = (ownerKey: string): SidePanelState => {
+    try {
+        const raw = localStorage.getItem(sidePanelStorageKey(ownerKey));
+        if (!raw) return { panelOpen: false, activeTabId: null, tabs: [] };
+        const parsed = JSON.parse(raw) as Partial<SidePanelState>;
+        const tabs = Array.isArray(parsed.tabs) ? parsed.tabs.filter(t => t && typeof t.id === 'string') : [];
+        return {
+            panelOpen: Boolean(parsed.panelOpen),
+            activeTabId: typeof parsed.activeTabId === 'string' ? parsed.activeTabId : tabs[0]?.id || null,
+            tabs: tabs as SidePanelTab[],
+        };
+    } catch {
+        return { panelOpen: false, activeTabId: null, tabs: [] };
+    }
+};
+
+const initialSidePanel = loadSidePanelState(sidePanelOwnerKey.value);
+if (!initialSidePanel.panelOpen && isSidePanelType(activeDrawerTab.value)) {
+    activeDrawerTab.value = 'none';
+}
+export const sidePanelOpen = signal<boolean>(initialSidePanel.panelOpen);
+export const sidePanelTabs = signal<SidePanelTab[]>(initialSidePanel.tabs);
+export const activeSidePanelTabId = signal<string | null>(initialSidePanel.activeTabId);
+export const activeSidePanelTab = computed<SidePanelTab | null>(
+    () => sidePanelTabs.value.find(tab => tab.id === activeSidePanelTabId.value) || null
+);
+
+const persistSidePanelState = () => {
+    try {
+        const state: SidePanelState = {
+            panelOpen: sidePanelOpen.value,
+            activeTabId: activeSidePanelTabId.value,
+            tabs: sidePanelTabs.value,
+        };
+        localStorage.setItem(sidePanelStorageKey(sidePanelOwnerKey.value), JSON.stringify(state));
+    } catch {
+        /* private mode / quota */
+    }
+};
+
+const activateSidePanelDrawer = (type?: SidePanelTabType) => {
+    const drawer = (type || activeSidePanelTab.value?.type || 'tasks') as RightDrawerTab;
+    sidePanelOpen.value = true;
+    activeDrawerTab.value = drawer;
+    activeModulePath.value = '';
+    persistDrawerTab(drawer);
+    persistSidePanelState();
+    ui.triggerTerminalFit();
+};
+
+export const setSidePanelOwner = (ownerKey: string) => {
+    if (!ownerKey || ownerKey === sidePanelOwnerKey.value) return;
+    persistSidePanelState();
+    sidePanelOwnerKey.value = ownerKey;
+    const next = loadSidePanelState(ownerKey);
+    sidePanelOpen.value = next.panelOpen;
+    sidePanelTabs.value = next.tabs;
+    activeSidePanelTabId.value = next.activeTabId;
+    if (next.panelOpen) {
+        activateSidePanelDrawer(next.tabs.find(t => t.id === next.activeTabId)?.type);
+    } else if (isSidePanelType(activeDrawerTab.value)) {
+        activeDrawerTab.value = 'none';
+    }
+};
+
+export const setSidePanelOwnerForWorkspace = (workspaceId: string) => {
+    setSidePanelOwner(`workspace:${workspaceId || 'none'}`);
+};
+
+export const setSidePanelOwnerForChat = (sessionId: string) => {
+    setSidePanelOwner(`chat:${sessionId}`);
+};
+
+const makeSidePanelTabId = (type: SidePanelTabType): string =>
+    `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+const buildSidePanelTab = (
+    type: SidePanelTabType,
+    payload: Partial<SidePanelTab> = {},
+    reusableKey = defaultReusableKey(type)
+): SidePanelTab => {
+    const now = Date.now();
+    return {
+        id: makeSidePanelTabId(type),
+        type,
+        title: payload.title || defaultSidePanelTitle(type),
+        reusableKey,
+        createdAt: now,
+        lastActiveAt: now,
+        mounted: true,
+        ...payload,
+    };
+};
+
+export const updateSidePanelTab = (tabId: string, patch: Partial<SidePanelTab>) => {
+    sidePanelTabs.value = sidePanelTabs.value.map(tab =>
+        tab.id === tabId ? { ...tab, ...patch, lastActiveAt: Date.now() } : tab
+    );
+    persistSidePanelState();
+};
+
+export const touchSidePanelTab = (tabId = activeSidePanelTabId.value) => {
+    if (!tabId) return;
+    updateSidePanelTab(tabId, { mounted: true });
+};
+
+export const openSidePanel = () => {
+    activateSidePanelDrawer(activeSidePanelTab.value?.type);
+};
+
+export const openOrReuseSidePanelTab = (type: SidePanelTabType, payload: Partial<SidePanelTab> = {}) => {
+    const reusableKey = payload.reusableKey || defaultReusableKey(type);
+    const existing = sidePanelTabs.value.find(tab => tab.reusableKey === reusableKey);
+    if (existing) {
+        updateSidePanelTab(existing.id, {
+            ...payload,
+            type,
+            title: payload.title || existing.title || defaultSidePanelTitle(type),
+            mounted: true,
+            reclaimed:
+                type === 'terminal' && typeof payload.terminalWindowIndex !== 'number' ? existing.reclaimed : false,
+        });
+        activeSidePanelTabId.value = existing.id;
+    } else {
+        const tab = buildSidePanelTab(type, payload, reusableKey);
+        sidePanelTabs.value = [...sidePanelTabs.value, tab];
+        activeSidePanelTabId.value = tab.id;
+    }
+    activateSidePanelDrawer(type);
+};
+
+export const addSidePanelTab = (type: SidePanelTabType, payload: Partial<SidePanelTab> = {}) => {
+    const tab = buildSidePanelTab(type, payload, `${type}:${makeSidePanelTabId(type)}`);
+    sidePanelTabs.value = [...sidePanelTabs.value, tab];
+    activeSidePanelTabId.value = tab.id;
+    activateSidePanelDrawer(type);
+};
+
+export const selectSidePanelTab = (tabId: string) => {
+    const tab = sidePanelTabs.value.find(t => t.id === tabId);
+    if (!tab) return;
+    activeSidePanelTabId.value = tabId;
+    updateSidePanelTab(tabId, { mounted: true });
+    activateSidePanelDrawer(tab.type);
+};
+
+export const updateSidePanelBrowserUrl = (tabId: string, url: string) => {
+    updateSidePanelTab(tabId, { url, title: browserTitleFromUrl(url) });
+};
+
+export const bindTerminalToSidePanelTab = (tabId: string, terminalWindowIndex: number) => {
+    updateSidePanelTab(tabId, {
+        terminalWindowIndex,
+        reclaimed: false,
+        mounted: true,
+        title: `${t('sidePanel.tab.terminal', ui.language.value)} #${terminalWindowIndex}`,
+    });
+};
+
+const killTerminalWindow = (windowIndex: number) => {
+    void import('./sessionStore').then(sess => sess.killTerminal(windowIndex));
+};
+
+const reclaimedTerminalPatch = (): Partial<SidePanelTab> => ({
+    mounted: false,
+    reclaimed: true,
+    terminalWindowIndex: undefined,
+    title: t('sidePanel.terminal.reclaimedTitle', ui.language.value),
+});
+
+const reclaimTerminalTab = (tab: SidePanelTab) => {
+    if (typeof tab.terminalWindowIndex === 'number') {
+        killTerminalWindow(tab.terminalWindowIndex);
+    }
+    updateSidePanelTab(tab.id, reclaimedTerminalPatch());
+};
+
+export const closeSidePanelTab = (tabId: string) => {
+    const tab = sidePanelTabs.value.find(t => t.id === tabId);
+    if (!tab) return;
+    if (tab.type === 'terminal' && !tab.reclaimed) reclaimTerminalTab(tab);
+    const current = sidePanelTabs.value;
+    const index = current.findIndex(t => t.id === tabId);
+    const nextTabs = current.filter(t => t.id !== tabId);
+    sidePanelTabs.value = nextTabs;
+    if (activeSidePanelTabId.value === tabId) {
+        const nextActive = nextTabs[index - 1] || nextTabs[index] || null;
+        activeSidePanelTabId.value = nextActive?.id || null;
+        if (nextActive) activateSidePanelDrawer(nextActive.type);
+    }
+    if (nextTabs.length === 0) {
+        activeSidePanelTabId.value = null;
+        sidePanelOpen.value = true;
+    }
+    persistSidePanelState();
+};
+
+const cleanupStoredSidePanelTabs = (now: number) => {
+    const currentKey = sidePanelStorageKey(sidePanelOwnerKey.value);
+    for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+        if (!key || key === currentKey || !key.startsWith(SIDE_PANEL_STORAGE_PREFIX)) continue;
+        try {
+            const raw = localStorage.getItem(key);
+            if (!raw) continue;
+            const state = JSON.parse(raw) as Partial<SidePanelState>;
+            if (!Array.isArray(state.tabs)) continue;
+            let changed = false;
+            const tabs = state.tabs.map(tab => {
+                if (!tab || typeof tab.id !== 'string') return tab;
+                if (now - (tab.lastActiveAt || 0) < SIDE_PANEL_IDLE_CLEANUP_MS) return tab;
+                if (tab.type === 'terminal' && !tab.reclaimed) {
+                    if (typeof tab.terminalWindowIndex === 'number') {
+                        killTerminalWindow(tab.terminalWindowIndex);
+                    }
+                    changed = true;
+                    return { ...tab, ...reclaimedTerminalPatch() };
+                }
+                if (tab.mounted) {
+                    changed = true;
+                    return { ...tab, mounted: false };
+                }
+                return tab;
+            });
+            if (changed) {
+                localStorage.setItem(key, JSON.stringify({ ...state, tabs }));
+            }
+        } catch {
+            /* ignore malformed side-panel state */
+        }
+    }
+};
+
+const cleanupIdleSidePanelTabs = () => {
+    const now = Date.now();
+    for (const tab of sidePanelTabs.value) {
+        if (tab.id === activeSidePanelTabId.value && sidePanelOpen.value) continue;
+        if (now - (tab.lastActiveAt || 0) < SIDE_PANEL_IDLE_CLEANUP_MS) continue;
+        if (tab.type === 'terminal' && !tab.reclaimed) {
+            reclaimTerminalTab(tab);
+        } else if (tab.mounted) {
+            updateSidePanelTab(tab.id, { mounted: false });
+        }
+    }
+    cleanupStoredSidePanelTabs(now);
+};
+
+declare global {
+    interface Window {
+        __sidePanelIdleCleanupInterval?: number;
+    }
+}
+
+if (typeof window !== 'undefined' && !window.__sidePanelIdleCleanupInterval) {
+    window.__sidePanelIdleCleanupInterval = window.setInterval(cleanupIdleSidePanelTabs, 60 * 1000);
+}
 /** Selected discovery category — default「应用」so 更多 → 发现中心 lands on apps (design §6.3). */
 export const discoveryCategory = signal<string>(DISCOVERY_DEFAULT_CATEGORY);
 export const activeExternalApp = signal<string | null>(null);
@@ -148,6 +459,18 @@ export const selectTab = async (tabId: string) => {
 };
 
 export const openPreviewTab = async (path: string, fileName: string) => {
+    if (!ui.isMobile.value) {
+        openOrReuseSidePanelTab('files', { path, title: fileName || defaultSidePanelTitle('files') });
+        await fs.openFileDetail({
+            name: fileName || path.split('/').pop() || path,
+            path,
+            isDir: false,
+            size: 0,
+            modTime: 0,
+        });
+        return;
+    }
+
     const tabId = `preview-${path}`;
     const exists = tabs.value.some(t => t.id === tabId);
 
@@ -369,6 +692,10 @@ export const getActiveBrowserTabId = (): string | null => {
  */
 export const openBrowserTab = (url = '') => {
     const normalized = normalizeBrowserUrl(url);
+    if (!ui.isMobile.value) {
+        openOrReuseSidePanelTab('browser', { url: normalized, title: browserTitleFromUrl(normalized) });
+        return;
+    }
     ensureBrowserSessionTab(normalized);
     openContentTab('browser');
     touchBrowserActivity();
@@ -416,6 +743,10 @@ export const updateBrowserUrl = (tabId: string, url: string) => {
  * embed URL loaded.
  */
 export const openContentTab = (tab: RightDrawerTab) => {
+    if (!ui.isMobile.value && isSidePanelType(tab)) {
+        openOrReuseSidePanelTab(tab);
+        return;
+    }
     if (activeDrawerTab.value === tab) return;
     if (activeDrawerTab.value === 'browser' && tab !== 'browser') clearBrowserIdleTimer();
     activeDrawerTab.value = tab;
@@ -429,6 +760,12 @@ export const openContentTab = (tab: RightDrawerTab) => {
 /** Close the right content column. */
 export const closeContentTab = () => {
     activeExternalApp.value = null;
+    const activeSideTab = activeSidePanelTab.value;
+    if (activeSideTab?.type === 'terminal' && !activeSideTab.reclaimed) {
+        updateSidePanelTab(activeSideTab.id, { mounted: false });
+    }
+    sidePanelOpen.value = false;
+    persistSidePanelState();
     if (activeDrawerTab.value === 'none') return;
     if (activeDrawerTab.value === 'browser') clearBrowserIdleTimer();
     activeDrawerTab.value = 'none';
@@ -452,6 +789,14 @@ export const closeExternalApp = () => {
 // Coze click shortcut toggle dynamic drawer logic
 export const toggleDrawerTab = (tab: RightDrawerTab) => {
     activeExternalApp.value = null;
+    if (!ui.isMobile.value && isSidePanelType(tab)) {
+        if (sidePanelOpen.value && activeSidePanelTab.value?.type === tab) {
+            closeContentTab();
+        } else {
+            openOrReuseSidePanelTab(tab);
+        }
+        return;
+    }
     // Full-page modules (discovery / settings / …) and L1 apps are same-level
     // primary surfaces — leave any active L1 app so it cannot cover the module.
     // Lazy import avoids store cycle (stageStore → tabsStore).

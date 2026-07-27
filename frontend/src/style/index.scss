@@ -9857,6 +9857,111 @@ body {
       gap: 6px;
     }
 
+    .side-panel-tab-strip {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+      flex: 1;
+      overflow-x: auto;
+      scrollbar-width: none;
+
+      &::-webkit-scrollbar {
+        display: none;
+      }
+    }
+
+    .side-panel-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      max-width: 148px;
+      height: 28px;
+      padding: 0 6px 0 10px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      flex: 0 0 auto;
+
+      &.active {
+        background: var(--bg-card);
+        border-color: var(--border-color);
+        color: var(--text-main);
+      }
+
+      &.reclaimed {
+        color: var(--text-muted);
+      }
+
+      &:hover {
+        background: var(--btn-hover);
+        color: var(--text-main);
+      }
+    }
+
+    .side-panel-tab-title {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .side-panel-tab-close {
+      width: 16px;
+      height: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      color: var(--text-muted);
+
+      &:hover {
+        background: var(--btn-hover);
+        color: var(--text-main);
+      }
+    }
+
+    .side-panel-add-menu {
+      position: relative;
+      display: inline-flex;
+    }
+
+    .side-panel-add-popover {
+      position: absolute;
+      top: 32px;
+      right: 0;
+      z-index: 30;
+      min-width: 132px;
+      padding: 6px;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      background: var(--bg-panel);
+      box-shadow: var(--shadow-lg);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+
+      button {
+        border: none;
+        background: transparent;
+        color: var(--text-main);
+        text-align: left;
+        border-radius: 6px;
+        padding: 8px 10px;
+        cursor: pointer;
+        font-size: 13px;
+
+        &:hover {
+          background: var(--btn-hover);
+        }
+      }
+    }
+
     .panel-refresh-btn,
     .panel-close-btn {
       display: flex;
@@ -9908,6 +10013,99 @@ body {
         background-color: var(--accent-light);
       }
     }
+  }
+
+  .side-panel-empty,
+  .side-panel-terminal-empty {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    color: var(--text-secondary);
+  }
+
+  .side-panel-empty-inner {
+    width: min(420px, 100%);
+
+    h3 {
+      margin: 0 0 6px;
+      color: var(--text-main);
+      font-size: 18px;
+    }
+
+    p {
+      margin: 0 0 16px;
+      font-size: 13px;
+    }
+  }
+
+  .side-panel-empty-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    gap: 8px;
+
+    button {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      text-align: left;
+      padding: 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      background: var(--bg-card);
+      color: var(--text-main);
+      cursor: pointer;
+
+      &:hover {
+        border-color: var(--accent-color);
+        background: var(--btn-hover);
+      }
+
+      span {
+        color: var(--text-secondary);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+    }
+  }
+
+  .side-panel-terminal-empty {
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+
+    h3 {
+      margin: 0;
+      color: var(--text-main);
+    }
+
+    p {
+      margin: 0;
+      max-width: 360px;
+      font-size: 13px;
+    }
+
+    button {
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      background: var(--bg-card);
+      color: var(--text-main);
+      padding: 8px 12px;
+      cursor: pointer;
+
+      &:hover {
+        background: var(--btn-hover);
+      }
+    }
+  }
+
+  .side-panel-terminal-host {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
 
   .panel-body-tasks {

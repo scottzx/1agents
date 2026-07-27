@@ -1128,6 +1128,11 @@ export const selectSession = async (session: Session) => {
         }
     }
     activeSession.value = { ...session, active: true };
+    if (isChat(session)) {
+        tabsStore.setSidePanelOwnerForChat(session.id);
+    } else {
+        tabsStore.setSidePanelOwnerForWorkspace(session.workspaceId);
+    }
     // A session opened with a transient initialMessage (issue-model follow-up /
     // new-session reply) auto-sends that prompt once ChatPanel is ready. Plain
     // switches carry none, which also clears any stale pending message.

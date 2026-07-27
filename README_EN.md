@@ -35,6 +35,7 @@ The goal is to move AI beyond "help me with this step" and into the collaboratio
 - Desktop layout with workspace tree, context header, main workbench canvas, and side content panel.
 - Mobile layout with single-column navigation and mobile Chat, terminal, and settings views.
 - Support tabs, built-in browser, file preview, global search, and resizable panes.
+- Desktop right-side secondary panels support session-persisted tabs for tasks, files, browser, Git, and terminals.
 
 ### Projects and Workspaces
 
@@ -58,6 +59,7 @@ The goal is to move AI beyond "help me with this step" and into the collaboratio
 - Browser terminal based on `ttyd`, `xterm.js`, and WebSocket.
 - Use `tmux` to keep terminal sessions recoverable after refresh or disconnect.
 - Support multiple terminal windows and terminal creation with workspace and cwd.
+- Secondary-panel terminal tabs unload idle frontend connections and reclaim the corresponding `tmux` window to avoid orphaned processes.
 - Support initial command, tmux mouse mode, light/dark terminal themes, and mobile terminal adaptation.
 
 ### PMO, Tasks, and Roadmap

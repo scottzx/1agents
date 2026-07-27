@@ -147,11 +147,11 @@ const setStageView = (v: 'conversation' | 'project'): void => {
 };
 
 /**
- * The four single-select content tabs surfaced by the header toolbar, in
- * display order (项目管理 first, before 渠道). These are also the only
- * secondary (right-column) views.
+ * Content tabs that can occupy the secondary right-column pane. The header
+ * no longer renders these as one button per mode, but the stage still uses
+ * this list to decide whether a drawer value is secondary content.
  */
-export const HEADER_CONTENT_TABS: RightDrawerTab[] = ['tasks', 'channels', 'files', 'browser', 'git'];
+export const HEADER_CONTENT_TABS: RightDrawerTab[] = ['tasks', 'channels', 'files', 'browser', 'git', 'terminal'];
 const SECONDARY_TABS: RightDrawerTab[] = HEADER_CONTENT_TABS;
 
 // ── Persisted layout state ──────────────────────────────────────────────

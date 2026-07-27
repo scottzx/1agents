@@ -1,4 +1,5 @@
 import { h } from 'preact';
+import type { ITerminalOptions } from '@xterm/xterm';
 import { useState, useEffect } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 import { RightDrawerTab, Session } from '../types';
@@ -9,6 +10,7 @@ import { GitPanel } from './GitPanel';
 import { TaskList } from './TaskList';
 import { BuiltinBrowser } from '../browser/BuiltinBrowser';
 import * as tabsStore from '../../stores/tabsStore';
+import * as sess from '../../stores/sessionStore';
 import { ProjectShell } from '../platform/ProjectShell';
 import { t } from '../../i18n';
 import { fsService } from '../../services/fsService';
@@ -19,6 +21,17 @@ import * as wsStore from '../../stores/workspaceStore';
 import * as taskNav from '../../stores/taskNavStore';
 import * as appStore from '../../stores/appManifestStore';
 import { isOneshotWorkspaceId } from '../../utils/oneshot';
+import { terminalService } from '@1agents/core/services/terminalService';
+import { Terminal } from '../terminal';
+import {
+    lightTermTheme,
+    darkTermTheme,
+    baseTermOptions,
+    wsUrl,
+    tokenUrl,
+    clientOptions,
+    flowControl,
+} from '../terminal/terminalConfig';
 
 interface RightPanelProps {
     activeDrawerTab: RightDrawerTab;
@@ -71,6 +84,21 @@ export function RightPanel({
     // reference). The header back arrow pops this so it returns to the task you
     // came from (GitHub-style), falling back to the list when empty.
     const taskNavStack = useSignal<string[]>([]);
+    const language = ui.language.value;
+    const theme = ui.theme.value;
+    const sideTabs = tabsStore.sidePanelTabs.value;
+    const activeSideTab = tabsStore.activeSidePanelTab.value;
+    const sidePanelDrawerActive =
+        activeDrawerTab === 'tasks' ||
+        activeDrawerTab === 'files' ||
+        activeDrawerTab === 'browser' ||
+        activeDrawerTab === 'git' ||
+        activeDrawerTab === 'terminal';
+    const sidePanelMode = !ui.isMobile.value && tabsStore.sidePanelOpen.value && sidePanelDrawerActive;
+    const sidePanelEmpty = sidePanelMode && sideTabs.length === 0;
+    const panelType = (
+        sidePanelMode && activeSideTab ? activeSideTab.type : sidePanelEmpty ? 'none' : activeDrawerTab
+    ) as RightDrawerTab;
     const selectTask = (id: string | null) => {
         const cur = taskSelectedId.value;
         if (id === null) {
@@ -83,7 +111,7 @@ export function RightPanel({
     // Task detail uses the same global header back icon on desktop and mobile.
     // Its higher-priority layer temporarily wins over project/roundtable back;
     // unregistering it restores the parent action automatically.
-    const hasTaskSelection = activeDrawerTab === 'tasks' && taskSelectedId.value !== null;
+    const hasTaskSelection = panelType === 'tasks' && (activeSideTab?.selectedTaskId ?? taskSelectedId.value) !== null;
     useEffect(() => {
         if (!hasTaskSelection) return;
         return taskNav.registerHeaderBackAction(
@@ -91,54 +119,39 @@ export function RightPanel({
             () => {
                 const stack = taskNavStack.value;
                 if (stack.length > 0) {
-                    taskSelectedId.value = stack[stack.length - 1];
+                    const nextId = stack[stack.length - 1];
+                    taskSelectedId.value = nextId;
+                    if (activeSideTab) tabsStore.updateSidePanelTab(activeSideTab.id, { selectedTaskId: nextId });
                     taskNavStack.value = stack.slice(0, -1);
                 } else {
                     taskSelectedId.value = null;
+                    if (activeSideTab) tabsStore.updateSidePanelTab(activeSideTab.id, { selectedTaskId: null });
                 }
             },
             taskNav.HEADER_BACK_PRIORITY.detail
         );
     }, [hasTaskSelection, activeWorkspaceId]);
 
-    const language = ui.language.value;
-    const theme = ui.theme.value;
     const viewMode = fs.viewMode.value;
     const selectedFsEntry = fs.selectedFsEntry.value;
+    useEffect(() => {
+        if (!sidePanelMode || panelType !== 'files' || !activeSideTab?.path) return;
+        const name = activeSideTab.path.split('/').filter(Boolean).pop() || activeSideTab.path;
+        void fs.openFileDetail(
+            { name, path: activeSideTab.path, isDir: false, size: 0, modTime: 0 },
+            activeSideTab.line,
+            activeSideTab.lineEnd
+        );
+    }, [sidePanelMode, panelType, activeSideTab?.id, activeSideTab?.path, activeSideTab?.line, activeSideTab?.lineEnd]);
     // cc-connect addresses projects by their name (== workspace display name).
     const activeWorkspaceName = wsStore.workspaces.value.find(w => w.id === activeWorkspaceId)?.name ?? '';
 
     let isSpinning = false;
-    if (activeDrawerTab === 'files') {
+    if (panelType === 'files') {
         isSpinning = fs.fsLoading.value || fs.flatFilesLoading.value;
-    } else if (activeDrawerTab === 'git') {
+    } else if (panelType === 'git') {
         isSpinning = gitLoading;
     }
-    const getDrawerTitle = (tab: RightDrawerTab) => {
-        switch (tab) {
-            case 'files':
-                return t('drawer.title.files', language);
-            case 'browser':
-                return t('app.browser.title', language);
-            case 'git':
-                return t('drawer.title.git', language);
-            case 'channels':
-                return t('drawer.title.channels', language);
-            case 'providers':
-                return t('drawer.title.providers', language);
-            case 'settings':
-                return t('drawer.title.settings', language);
-            case 'skills':
-                return t('drawer.title.skills', language);
-            case 'discovery':
-                return t('drawer.title.discovery', language);
-            case 'tasks':
-                return t('header.col.tasks', language);
-            default:
-                return '';
-        }
-    };
-
     // Desktop two-column passes an explicit flex/split style; otherwise fall
     // back to the legacy fixed px width (mobile full-width overlay).
     const asideStyle =
@@ -147,35 +160,66 @@ export function RightPanel({
     return (
         <aside class={`right-panel ${activeDrawerTab === 'none' ? 'collapsed' : ''}`} style={asideStyle}>
             <div class="panel-tabs-header">
-                <span class="panel-tab-title">{getDrawerTitle(activeDrawerTab)}</span>
+                {sidePanelMode ? (
+                    <div class="side-panel-tab-strip">
+                        {sideTabs.map(tab => (
+                            <button
+                                key={tab.id}
+                                class={`side-panel-tab ${activeSideTab?.id === tab.id ? 'active' : ''} ${tab.reclaimed ? 'reclaimed' : ''}`}
+                                onClick={() => tabsStore.selectSidePanelTab(tab.id)}
+                                title={tab.title}
+                            >
+                                <span class="side-panel-tab-title">{tab.title}</span>
+                                <span
+                                    class="side-panel-tab-close"
+                                    onClick={(e: MouseEvent) => {
+                                        e.stopPropagation();
+                                        tabsStore.closeSidePanelTab(tab.id);
+                                    }}
+                                    title={t('common.closeTab', language)}
+                                >
+                                    ×
+                                </span>
+                            </button>
+                        ))}
+                        {sideTabs.length === 0 && (
+                            <span class="panel-tab-title">{t('sidePanel.empty.title', language)}</span>
+                        )}
+                    </div>
+                ) : (
+                    <span class="panel-tab-title">{legacyDrawerTitle(panelType, language)}</span>
+                )}
                 <div class="panel-header-actions">
+                    {sidePanelMode && <SidePanelAddMenu language={language} />}
                     {/* Board-level create action (新建讨论 / 新建里程碑), published by
                         TaskList for the current view. Hidden while a task is open. */}
-                    {activeDrawerTab === 'tasks' && taskSelectedId.value === null && taskNav.taskAddAction.value && (
-                        <button
-                            class="panel-add-btn"
-                            title={taskNav.taskAddAction.value.title}
-                            onClick={() => taskNav.taskAddAction.value?.run()}
-                        >
-                            <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2.5"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
+                    {panelType === 'tasks' &&
+                        (activeSideTab?.selectedTaskId ?? taskSelectedId.value) === null &&
+                        taskNav.taskAddAction.value && (
+                            <button
+                                class="panel-add-btn"
+                                title={taskNav.taskAddAction.value.title}
+                                onClick={() => taskNav.taskAddAction.value?.run()}
                             >
-                                <line x1="12" y1="5" x2="12" y2="19" />
-                                <line x1="5" y1="12" x2="19" y2="12" />
-                            </svg>
-                        </button>
-                    )}
-                    {(activeDrawerTab === 'files' || activeDrawerTab === 'git') && (
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2.5"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <line x1="12" y1="5" x2="12" y2="19" />
+                                    <line x1="5" y1="12" x2="19" y2="12" />
+                                </svg>
+                            </button>
+                        )}
+                    {(panelType === 'files' || panelType === 'git') && (
                         <div
                             class={`panel-refresh-btn ${isSpinning ? 'spinning' : ''}`}
-                            onClick={activeDrawerTab === 'files' ? onRefreshFlatFiles : () => gitRefreshFn?.()}
+                            onClick={panelType === 'files' ? onRefreshFlatFiles : () => gitRefreshFn?.()}
                             title={
-                                activeDrawerTab === 'files'
+                                panelType === 'files'
                                     ? t('drawer.refresh.files', language)
                                     : t('drawer.refresh.git', language)
                             }
@@ -217,11 +261,13 @@ export function RightPanel({
                 </div>
             </div>
 
+            {sidePanelEmpty && <SidePanelEmpty language={language} />}
+
             {/* cc-connect channels panel (custom element, kept alive to avoid remount latency) */}
             <div
                 class="panel-body-iframe"
                 style={`flex: 1; overflow: hidden; display: ${
-                    activeDrawerTab === 'channels' ? 'flex' : 'none'
+                    panelType === 'channels' ? 'flex' : 'none'
                 }; flex-direction: column; height: 100%;`}
             >
                 {/* Per-channel agent binding now lives inside the cc-connect
@@ -243,10 +289,10 @@ export function RightPanel({
             <div
                 class="panel-body-tasks"
                 style={`flex: 1; overflow: hidden; display: ${
-                    activeDrawerTab === 'tasks' ? 'flex' : 'none'
+                    panelType === 'tasks' ? 'flex' : 'none'
                 }; flex-direction: column; height: 100%; min-height: 0;`}
             >
-                {activeDrawerTab === 'tasks' &&
+                {panelType === 'tasks' &&
                     // When a workspace is active and enabled apps contribute project
                     // tabs (#331), host the task list inside ProjectShell so the
                     // 动态/计划/任务/资产 scaffold + app tabs (素材/阶段追踪 …) show.
@@ -262,8 +308,12 @@ export function RightPanel({
                     ) : (
                         <TaskList
                             workspaceId={activeWorkspaceId}
-                            selectedTaskId={taskSelectedId.value}
-                            onTaskSelect={selectTask}
+                            selectedTaskId={activeSideTab?.selectedTaskId ?? taskSelectedId.value}
+                            onTaskSelect={id => {
+                                if (activeSideTab)
+                                    tabsStore.updateSidePanelTab(activeSideTab.id, { selectedTaskId: id });
+                                selectTask(id);
+                            }}
                             onSelectSession={onSelectSession}
                         />
                     ))}
@@ -273,53 +323,59 @@ export function RightPanel({
             <div
                 class="panel-body-browser"
                 style={`flex: 1; overflow: hidden; display: ${
-                    activeDrawerTab === 'browser' ? 'flex' : 'none'
+                    panelType === 'browser' ? 'flex' : 'none'
                 }; flex-direction: column; height: 100%; min-height: 0;`}
             >
-                {activeDrawerTab === 'browser' &&
-                    (() => {
-                        // Per-workspace: only the active project's browser tab is in `tabs`.
-                        let tab = tabsStore.tabs.value.find(tb => tb.type === 'browser');
-                        if (!tab) {
-                            tabsStore.openBrowserTab('');
-                            tab = tabsStore.tabs.value.find(tb => tb.type === 'browser');
-                        }
-                        if (!tab) {
-                            return (
-                                <div
-                                    class="browser-welcome-page"
-                                    style="flex:1;display:flex;align-items:center;justify-content:center;"
-                                >
-                                    <button class="shortcut-btn" onClick={() => tabsStore.openBrowserTab('')}>
-                                        {t('app.browser.title', language)}
-                                    </button>
-                                </div>
-                            );
-                        }
-                        return (
-                            <BuiltinBrowser
-                                tab={tab}
-                                active={true}
-                                onUrlChange={tabsStore.updateBrowserUrl}
-                                language={language}
-                            />
-                        );
-                    })()}
+                {panelType === 'browser' &&
+                    (sidePanelMode && activeSideTab ? (
+                        <BuiltinBrowser
+                            tab={{
+                                id: activeSideTab.id,
+                                title: activeSideTab.title,
+                                type: 'browser',
+                                url: activeSideTab.url || '',
+                                closable: true,
+                            }}
+                            active={true}
+                            onUrlChange={tabsStore.updateSidePanelBrowserUrl}
+                            language={language}
+                        />
+                    ) : (
+                        <LegacyBrowser language={language} />
+                    ))}
+            </div>
+
+            <div
+                class="panel-body-terminal"
+                style={`flex: 1; overflow: hidden; display: ${
+                    panelType === 'terminal' ? 'flex' : 'none'
+                }; flex-direction: column; height: 100%; min-height: 0;`}
+            >
+                {panelType === 'terminal' && sidePanelMode && activeSideTab && (
+                    <SidePanelTerminal
+                        tab={activeSideTab}
+                        activeWorkspaceId={activeWorkspaceId}
+                        activeWorkspacePath={activeWorkspacePath}
+                        theme={theme}
+                        language={language}
+                    />
+                )}
             </div>
 
             {/* Other drawer tab contents (files, git, settings) */}
             <div
                 class="panel-body-scroll"
                 style={`display: ${
-                    activeDrawerTab !== 'channels' &&
-                    activeDrawerTab !== 'tasks' &&
-                    activeDrawerTab !== 'browser' &&
-                    activeDrawerTab !== 'none'
+                    panelType !== 'channels' &&
+                    panelType !== 'tasks' &&
+                    panelType !== 'browser' &&
+                    panelType !== 'terminal' &&
+                    panelType !== 'none'
                         ? 'flex'
                         : 'none'
                 };`}
             >
-                {activeDrawerTab === 'files' &&
+                {panelType === 'files' &&
                     (activeWorkspaceId === 'oneshot' ? (
                         <div class="task-oneshot-empty">
                             <div class="task-oneshot-empty-inner">
@@ -377,7 +433,7 @@ export function RightPanel({
                         )
                     ))}
 
-                {activeDrawerTab === 'git' &&
+                {panelType === 'git' &&
                     (activeWorkspaceId === 'oneshot' ? (
                         <div class="task-oneshot-empty">
                             <div class="task-oneshot-empty-inner">
@@ -395,11 +451,7 @@ export function RightPanel({
                         />
                     ))}
 
-                {activeDrawerTab === 'tasks' && (
-                    <TaskList workspaceId={activeWorkspaceId} onSelectSession={onSelectSession} />
-                )}
-
-                {activeDrawerTab === 'settings' && (
+                {panelType === 'settings' && (
                     <ThemeSettings
                         theme={theme}
                         toggleTheme={ui.toggleTheme}
@@ -412,5 +464,199 @@ export function RightPanel({
                 )}
             </div>
         </aside>
+    );
+}
+
+function legacyDrawerTitle(tab: RightDrawerTab, language: typeof ui.language.value) {
+    switch (tab) {
+        case 'files':
+            return t('drawer.title.files', language);
+        case 'browser':
+            return t('app.browser.title', language);
+        case 'git':
+            return t('drawer.title.git', language);
+        case 'channels':
+            return t('drawer.title.channels', language);
+        case 'providers':
+            return t('drawer.title.providers', language);
+        case 'settings':
+            return t('drawer.title.settings', language);
+        case 'skills':
+            return t('drawer.title.skills', language);
+        case 'discovery':
+            return t('drawer.title.discovery', language);
+        case 'tasks':
+            return t('header.col.tasks', language);
+        case 'terminal':
+            return t('sidePanel.tab.terminal', language);
+        default:
+            return '';
+    }
+}
+
+function LegacyBrowser({ language }: { language: typeof ui.language.value }) {
+    let tab = tabsStore.tabs.value.find(tb => tb.type === 'browser');
+    if (!tab) {
+        tabsStore.openBrowserTab('');
+        tab = tabsStore.tabs.value.find(tb => tb.type === 'browser');
+    }
+    if (!tab) {
+        return (
+            <div class="browser-welcome-page" style="flex:1;display:flex;align-items:center;justify-content:center;">
+                <button class="shortcut-btn" onClick={() => tabsStore.openBrowserTab('')}>
+                    {t('app.browser.title', language)}
+                </button>
+            </div>
+        );
+    }
+    return <BuiltinBrowser tab={tab} active={true} onUrlChange={tabsStore.updateBrowserUrl} language={language} />;
+}
+
+function SidePanelAddMenu({ language }: { language: typeof ui.language.value }) {
+    const [open, setOpen] = useState(false);
+    const options: Array<{ type: tabsStore.SidePanelTabType; label: string }> = [
+        { type: 'tasks', label: t('sidePanel.tab.tasks', language) },
+        { type: 'files', label: t('sidePanel.tab.files', language) },
+        { type: 'browser', label: t('sidePanel.tab.browser', language) },
+        { type: 'git', label: t('sidePanel.tab.git', language) },
+        { type: 'terminal', label: t('sidePanel.tab.terminal', language) },
+    ];
+    return (
+        <div class="side-panel-add-menu">
+            <button class="panel-add-btn" title={t('sidePanel.addTab', language)} onClick={() => setOpen(!open)}>
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                >
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+            </button>
+            {open && (
+                <div class="side-panel-add-popover">
+                    {options.map(opt => (
+                        <button
+                            key={opt.type}
+                            onClick={() => {
+                                tabsStore.addSidePanelTab(opt.type);
+                                setOpen(false);
+                            }}
+                        >
+                            {opt.label}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function SidePanelEmpty({ language }: { language: typeof ui.language.value }) {
+    const options: Array<{ type: tabsStore.SidePanelTabType; label: string; desc: string }> = [
+        { type: 'tasks', label: t('sidePanel.tab.tasks', language), desc: t('sidePanel.empty.tasks', language) },
+        { type: 'files', label: t('sidePanel.tab.files', language), desc: t('sidePanel.empty.files', language) },
+        { type: 'browser', label: t('sidePanel.tab.browser', language), desc: t('sidePanel.empty.browser', language) },
+        { type: 'git', label: t('sidePanel.tab.git', language), desc: t('sidePanel.empty.git', language) },
+        {
+            type: 'terminal',
+            label: t('sidePanel.tab.terminal', language),
+            desc: t('sidePanel.empty.terminal', language),
+        },
+    ];
+    return (
+        <div class="side-panel-empty">
+            <div class="side-panel-empty-inner">
+                <h3>{t('sidePanel.empty.title', language)}</h3>
+                <p>{t('sidePanel.empty.desc', language)}</p>
+                <div class="side-panel-empty-grid">
+                    {options.map(opt => (
+                        <button key={opt.type} onClick={() => tabsStore.addSidePanelTab(opt.type)}>
+                            <strong>{opt.label}</strong>
+                            <span>{opt.desc}</span>
+                        </button>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function SidePanelTerminal({
+    tab,
+    activeWorkspaceId,
+    activeWorkspacePath,
+    theme,
+    language,
+}: {
+    tab: tabsStore.SidePanelTab;
+    activeWorkspaceId: string;
+    activeWorkspacePath: string;
+    theme: 'light' | 'dark';
+    language: typeof ui.language.value;
+}) {
+    const createAndBind = async () => {
+        if (!activeWorkspaceId) return;
+        const created = await terminalService.create(activeWorkspaceId, activeWorkspacePath || '.');
+        await sess.loadTerminals();
+        const active =
+            sess.terminalWindows.value.find(w => w.index === created.index) ||
+            sess.terminalWindows.value.find(w => w.active) ||
+            sess.terminalWindows.value[0];
+        if (active && typeof active.index === 'number') {
+            tabsStore.bindTerminalToSidePanelTab(tab.id, active.index);
+        }
+    };
+
+    useEffect(() => {
+        if (tab.reclaimed || typeof tab.terminalWindowIndex === 'number') return;
+        void createAndBind();
+    }, [tab.id, tab.reclaimed, tab.terminalWindowIndex, activeWorkspaceId, activeWorkspacePath]);
+
+    useEffect(() => {
+        if (typeof tab.terminalWindowIndex !== 'number') return;
+        void sess.switchTerminal(tab.terminalWindowIndex);
+        tabsStore.touchSidePanelTab(tab.id);
+    }, [tab.id, tab.terminalWindowIndex]);
+
+    if (tab.reclaimed) {
+        return (
+            <div class="side-panel-terminal-empty">
+                <h3>{t('sidePanel.terminal.reclaimedTitle', language)}</h3>
+                <p>{t('sidePanel.terminal.reclaimedDesc', language)}</p>
+                <button onClick={() => void createAndBind()}>{t('sidePanel.terminal.recreate', language)}</button>
+            </div>
+        );
+    }
+
+    if (typeof tab.terminalWindowIndex !== 'number') {
+        return <div class="side-panel-terminal-empty">{t('common.loading', language)}</div>;
+    }
+
+    const termOptions = {
+        ...baseTermOptions,
+        theme: theme === 'light' ? lightTermTheme : darkTermTheme,
+        fontSize: 13,
+    } as ITerminalOptions;
+
+    return (
+        <div class="side-panel-terminal-host" onFocus={() => tabsStore.touchSidePanelTab(tab.id)}>
+            <Terminal
+                key={tab.id}
+                id={`side-terminal-${tab.id}`}
+                wsUrl={wsUrl}
+                tokenUrl={tokenUrl}
+                clientOptions={clientOptions}
+                termOptions={termOptions}
+                flowControl={flowControl}
+                isMobile={ui.isMobile.value}
+                tmuxMouseOn={sess.tmuxMouseOn.value}
+                onTmuxMouseToggle={sess.toggleTmuxMouse}
+                language={language}
+            />
+        </div>
     );
 }

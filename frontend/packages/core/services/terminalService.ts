@@ -8,7 +8,7 @@ export const terminalService = {
         return data.windows || [];
     },
 
-    async create(workspaceId: string, cwd: string, initialCommand?: string): Promise<void> {
+    async create(workspaceId: string, cwd: string, initialCommand?: string): Promise<TmuxWindow> {
         const body: { workspaceId: string; cwd: string; initialCommand?: string } = { workspaceId, cwd };
         if (initialCommand) body.initialCommand = initialCommand;
         const res = await fetch('/api/terminal/create', {
@@ -17,6 +17,7 @@ export const terminalService = {
             body: JSON.stringify(body),
         });
         if (!res.ok) throw new Error(await res.text());
+        return await res.json();
     },
 
     async switch(windowIndex: number): Promise<void> {

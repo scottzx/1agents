@@ -70,12 +70,13 @@ export const openTaskById = (workspaceId: string, taskId: string): void => {
     if (ws) {
         void wsStore.selectWorkspace(ws);
     }
-    // Ensure the task board is the visible content (desktop = right column,
-    // mobile = legacy 任务 subview).
+    // Ensure the task board is the visible content. Desktop reuses the
+    // session-scoped default task tab so repeated ChatUI clicks do not create
+    // side-panel tab spam; mobile keeps the legacy subview path.
     if (ui.isMobile.value) {
         tabsStore.selectTab('tasks');
     } else {
-        tabsStore.openContentTab('tasks');
+        tabsStore.openOrReuseSidePanelTab('tasks', { selectedTaskId: taskId });
     }
     pendingTaskNav.value = { workspaceId, taskId };
 };
@@ -118,12 +119,12 @@ const openFileByPath = async (path: string, line?: number, lineEnd?: number): Pr
     }
 
     const name = path.split('/').pop() || path;
-    // Open the files pane (mobile = files subview, desktop = right column),
-    // then load the file into its detail view via the shared store action.
+    // Open the files pane (mobile = files subview, desktop = reusable side
+    // panel tab), then load the file into its detail view via the shared store.
     if (ui.isMobile.value) {
         tabsStore.selectTab('files');
     } else {
-        tabsStore.openContentTab('files');
+        tabsStore.openOrReuseSidePanelTab('files', { path, line, lineEnd, title: name });
     }
     void fsStore.openFileDetail({ name, path, isDir: false, size: 0, modTime: 0 }, line, lineEnd);
 };

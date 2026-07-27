@@ -62,6 +62,7 @@ export type RightDrawerTab =
     | 'discovery'
     | 'skills'
     | 'tasks'
+    | 'terminal'
     | 'reminders'
     | 'assistants'
     | 'contacts'

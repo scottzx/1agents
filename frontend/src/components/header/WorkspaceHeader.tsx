@@ -263,6 +263,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
     // "会话" view is active when no artifact drawer is open — the current
     // session's workbench (chat or terminal) is showing.
     const sessionActive = activeDrawerTab === 'none';
+    const sidePanelOpen = tabsStore.sidePanelOpen.value;
 
     // Entity context (breadcrumb L3): when the active workspace is an assistant
     // OR a project, the session view's header shows the full 助理/项目 › <name> ›
@@ -533,53 +534,21 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
 
                         <div class="divider" />
 
-                        {!isBeginnerMode.value && (
-                            <button
-                                id="hdr-btn-tasks"
-                                class={`shortcut-btn ${activeDrawerTab === 'tasks' ? 'active' : ''}`}
-                                onClick={() => toggleDrawerTab('tasks')}
-                                title={t('header.col.tasks', language)}
-                                aria-label={t('header.col.tasks', language)}
-                                aria-pressed={activeDrawerTab === 'tasks'}
-                            >
-                                {IconTasks}
-                            </button>
-                        )}
                         <button
-                            id="hdr-btn-files"
-                            class={`shortcut-btn ${activeDrawerTab === 'files' ? 'active' : ''}`}
-                            onClick={() => toggleDrawerTab('files')}
-                            title={t('header.col.files', language)}
-                            aria-label={t('header.col.files', language)}
-                            aria-pressed={activeDrawerTab === 'files'}
-                        >
-                            {IconFiles}
-                        </button>
-                        <button
-                            id="hdr-btn-browser"
-                            class={`shortcut-btn ${activeDrawerTab === 'browser' ? 'active' : ''}`}
+                            id="hdr-btn-side-panel"
+                            class={`shortcut-btn ${sidePanelOpen ? 'active' : ''}`}
                             onClick={() => {
-                                if (activeDrawerTab === 'browser') {
-                                    toggleDrawerTab('browser');
+                                if (sidePanelOpen) {
+                                    tabsStore.closeContentTab();
                                 } else {
-                                    tabsStore.openBrowserTab('');
+                                    tabsStore.openSidePanel();
                                 }
                             }}
-                            title={t('header.col.browser', language)}
-                            aria-label={t('header.col.browser', language)}
-                            aria-pressed={activeDrawerTab === 'browser'}
+                            title={t(sidePanelOpen ? 'sidePanel.close' : 'sidePanel.open', language)}
+                            aria-label={t(sidePanelOpen ? 'sidePanel.close' : 'sidePanel.open', language)}
+                            aria-pressed={sidePanelOpen}
                         >
-                            {IconBrowser}
-                        </button>
-                        <button
-                            id="hdr-btn-git"
-                            class={`shortcut-btn ${activeDrawerTab === 'git' ? 'active' : ''}`}
-                            onClick={() => toggleDrawerTab('git')}
-                            title={t('header.col.git', language)}
-                            aria-label={t('header.col.git', language)}
-                            aria-pressed={activeDrawerTab === 'git'}
-                        >
-                            {IconGit}
+                            {IconFiles}
                         </button>
                     </div>
                 )}
