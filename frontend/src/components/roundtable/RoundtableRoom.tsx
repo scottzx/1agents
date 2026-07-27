@@ -1,4 +1,4 @@
-import { h, Fragment } from 'preact';
+import { h } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import {
     roundtableService,
@@ -6,13 +6,16 @@ import {
     type RoundtableSeat,
     type RoundtableTurn,
 } from '@1agents/core/services/roundtableService';
-import { StageBar } from './StageBar';
-import { SeatBar } from './SeatBar';
-import { TurnCard } from './TurnCard';
+import { R1Workbench } from './R1Workbench';
+import { RoundtableRoomContent, type RoundtableMobilePane } from './RoundtableRoomContent';
+import { RoundtableHeader } from './RoundtableHeader';
+import { RoundRecoveryNotice } from './RoundRecoveryNotice';
 import { RoundtableSidebar } from './RoundtableSidebar';
+import { StageWorkbench } from './StageWorkbench';
 import { LaunchWizard } from './LaunchWizard';
 import { RoomList } from './RoomList';
 import { isTerminalState, pollIntervalMs } from './stage';
+import { primaryActionForRoom, type RoundtablePrimaryActionId } from './primaryAction';
 import { persistListView, persistRoomView, readStoredRoomId, resolveInitialNav } from './navState';
 import { roundtableBreadcrumbs } from './breadcrumbs';
 import * as taskNav from '../../stores/taskNavStore';
@@ -37,7 +40,7 @@ type ShellView = 'list' | 'room' | 'create';
  * Roundtable app shell:
  * - list: topic cards (4 per row)
  * - create: launch wizard
- * - room: active timeline + seats
+ * - room: controller-driven R1/R2/R3/Done workbench + Inspector
  * Last list/room position is restored when re-entering from the sidebar.
  */
 export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: RoundtableRoomProps) {
@@ -50,14 +53,13 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
-    const [briefTitle, setBriefTitle] = useState('');
-    const [briefQuestion, setBriefQuestion] = useState('');
-    const [briefConstraints, setBriefConstraints] = useState('');
-    const [briefSuccess, setBriefSuccess] = useState('');
-    const [showBriefForm, setShowBriefForm] = useState(false);
+    const [inspectorTab, setInspectorTab] = useState<'topic' | 'participants'>('topic');
+    const [mobilePane, setMobilePane] = useState<RoundtableMobilePane>('discussion');
     const [listRefreshKey, setListRefreshKey] = useState(0);
     const pollRef = useRef<number | null>(null);
-    const timelineRef = useRef<HTMLDivElement>(null);
+    const briefInspectorRef = useRef<HTMLElement>(null);
+    const roomStatusRef = useRef<HTMLDivElement>(null);
+    const pendingRecoveryFocusRef = useRef(false);
 
     const goList = useCallback(() => {
         setShell('list');
@@ -66,6 +68,7 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
         setTurns([]);
         setSeats([]);
         setError(null);
+        setMobilePane('discussion');
         persistListView();
         setListRefreshKey(k => k + 1);
     }, []);
@@ -73,6 +76,7 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
     const goRoom = useCallback((id: string) => {
         setError(null);
         setLoading(true);
+        setMobilePane('discussion');
         setRoomId(id);
         setShell('room');
         persistRoomView(id);
@@ -83,6 +87,7 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
         setRoomId(undefined);
         setRoom(null);
         setError(null);
+        setMobilePane('discussion');
         // Creating is transient; remember list so cancel/back returns to cards.
         persistListView();
     }, []);
@@ -115,7 +120,13 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
         };
     }, [shell, room?.title, defaultTitle, goList, leaveRoundtable]);
 
-    const refresh = useCallback(async (id: string, opts?: { quiet?: boolean }) => {
+    const applyRoom = useCallback((next: Room) => {
+        setRoom(next);
+        setSeats(next.seats || []);
+        setTurns(next.turns || []);
+    }, []);
+
+    const refresh = useCallback(async (id: string, opts?: { quiet?: boolean }): Promise<boolean> => {
         if (!opts?.quiet) setLoading(true);
         try {
             const r = await roundtableService.getRoom(id);
@@ -129,12 +140,20 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
             }
             setError(null);
             persistRoomView(id);
+            return true;
         } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
+            return false;
         } finally {
             if (!opts?.quiet) setLoading(false);
         }
     }, []);
+
+    useEffect(() => {
+        if (!room || !pendingRecoveryFocusRef.current) return;
+        pendingRecoveryFocusRef.current = false;
+        queueMicrotask(() => roomStatusRef.current?.focus({ preventScroll: true }));
+    }, [room]);
 
     useEffect(() => {
         if (roomIdProp && roomIdProp !== roomId) {
@@ -177,12 +196,6 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
         };
     }, [shell, roomId, room?.state, anySpeaking, busy, refresh]);
 
-    useEffect(() => {
-        const el = timelineRef.current;
-        if (!el) return;
-        el.scrollTop = el.scrollHeight;
-    }, [turns.length]);
-
     const createRoom = async (title: string) => {
         setBusy(true);
         setError(null);
@@ -203,42 +216,12 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
         }
     };
 
-    const briefFormReady =
-        briefTitle.trim().length > 0 &&
-        briefQuestion.trim().length > 0 &&
-        briefConstraints.trim().length > 0 &&
-        briefSuccess.trim().length > 0 &&
-        !['—', '-', '–', 'TBD', 'tbd', 'N/A', 'n/a'].includes(briefConstraints.trim()) &&
-        !['—', '-', '–', 'TBD', 'tbd', 'N/A', 'n/a'].includes(briefSuccess.trim());
-
-    const confirmBrief = async () => {
-        if (!roomId) return;
-        const title = briefTitle.trim();
-        const question = briefQuestion.trim();
-        const constraints = briefConstraints.trim();
-        const success = briefSuccess.trim();
-        // Never silent-fill with room title / "—" — empty Brief must not enter R2.
-        if (!title || !question || !constraints || !success) {
-            setError('请完整填写 Brief 四字段（标题 / 议题 / 约束 / 成功标准），不可用「—」占位');
-            return;
-        }
-        if (
-            ['—', '-', '–', 'TBD', 'tbd', 'N/A', 'n/a'].includes(constraints) ||
-            ['—', '-', '–', 'TBD', 'tbd', 'N/A', 'n/a'].includes(success)
-        ) {
-            setError('约束与成功标准不能使用占位符，请填写真实内容');
-            return;
-        }
+    const sendR1 = async (text: string) => {
+        if (!roomId || busy) return;
         setBusy(true);
         setError(null);
         try {
-            await roundtableService.setBriefLegacy(roomId, {
-                title,
-                question,
-                constraints,
-                success_criteria: success,
-            });
-            setShowBriefForm(false);
+            await roundtableService.chat(roomId, { text });
             await refresh(roomId, { quiet: true });
         } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
@@ -247,12 +230,31 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
         }
     };
 
+    const focusBriefInspector = useCallback(() => {
+        setInspectorTab('topic');
+        setMobilePane('brief');
+        queueMicrotask(() => {
+            const inspector = briefInspectorRef.current;
+            if (!inspector) return;
+            inspector.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            inspector.focus({ preventScroll: true });
+        });
+    }, []);
+
+    const openSeatSession = async (seat: RoundtableSeat) => {
+        if (!room) return;
+        const { openSeatSession: open } = await import('./openSeatSession');
+        await open(seat, { roomId: room.id, roomTitle: room.title });
+    };
+
     const runR2 = async () => {
         if (!roomId) return;
         setBusy(true);
         setError(null);
         try {
-            await roundtableService.runR2(roomId);
+            const result = await roundtableService.runR2(roomId);
+            setMobilePane('discussion');
+            applyRoom(result.room);
             await refresh(roomId, { quiet: true });
         } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
@@ -266,13 +268,61 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
         setBusy(true);
         setError(null);
         try {
-            await roundtableService.runR3(roomId);
+            const result = await roundtableService.runR3(roomId);
+            setMobilePane('discussion');
+            applyRoom(result.room);
             await refresh(roomId, { quiet: true });
         } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
         } finally {
             setBusy(false);
         }
+    };
+
+    const recover = async (action: () => Promise<{ room: Room }>) => {
+        if (!roomId || busy) return;
+        setBusy(true);
+        setError(null);
+        try {
+            const result = await action();
+            pendingRecoveryFocusRef.current = true;
+            applyRoom(result.room);
+            await refresh(roomId, { quiet: true });
+        } catch (e) {
+            setError(e instanceof Error ? e.message : String(e));
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const reloadAfterFailure = async () => {
+        if (!roomId || busy) return;
+        setBusy(true);
+        pendingRecoveryFocusRef.current = true;
+        const restored = await refresh(roomId, { quiet: true });
+        if (!restored) pendingRecoveryFocusRef.current = false;
+        setBusy(false);
+    };
+
+    const selectMobilePane = (pane: RoundtableMobilePane) => {
+        setMobilePane(pane);
+        if (pane === 'brief') setInspectorTab('topic');
+        if (pane === 'participants') setInspectorTab('participants');
+    };
+
+    const retrySeat = (role: RoundtableSeat['role']) => {
+        if (!roomId || !room?.active_run) return;
+        return recover(() => roundtableService.retrySeat(roomId, room.active_run!.id, role));
+    };
+
+    const skipFailedSeats = () => {
+        if (!roomId || !room?.active_run) return;
+        return recover(() => roundtableService.skipFailedSeats(roomId, room.active_run!.id));
+    };
+
+    const retrySummary = () => {
+        if (!roomId || !room?.active_run) return;
+        return recover(() => roundtableService.retrySummary(roomId, room.active_run!.id));
     };
 
     if (shell === 'list') {
@@ -315,7 +365,15 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
                         {loading ? (
                             <div class="rt-room-loading">加载圆桌…</div>
                         ) : (
-                            <div class="rt-error">{error || '无法加载圆桌'}</div>
+                            <div class="rt-recovery is-room" role="alert">
+                                <div>
+                                    <strong>房间加载失败</strong>
+                                    <p>{error || '无法从服务端恢复当前圆桌。'}</p>
+                                </div>
+                                <button type="button" class="rt-btn" onClick={() => void reloadAfterFailure()}>
+                                    重新加载房间
+                                </button>
+                            </div>
                         )}
                     </div>
                 </div>
@@ -323,162 +381,91 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
         );
     }
 
-    const showR2 = room.state === 'waiting_r2';
-    const showR3 = room.state === 'waiting_r3';
+    const primaryAction = primaryActionForRoom(room);
+    const invokePrimaryAction = (id: RoundtablePrimaryActionId) => {
+        if (id === 'confirm_brief') return focusBriefInspector();
+        if (id === 'start_r2') return void runR2();
+        if (id === 'start_r3') return void runR3();
+        if (id === 'inspect_failure') return void reloadAfterFailure();
+    };
+    const headerAction = !primaryAction ? null : primaryAction.kind === 'status' ? (
+        <span class="rt-room-waiting" role="status">
+            {primaryAction.label}
+        </span>
+    ) : (
+        <button
+            type="button"
+            class={`rt-btn${primaryAction.primary ? ' rt-btn-primary' : ''}`}
+            disabled={busy || loading}
+            onClick={() => invokePrimaryAction(primaryAction.id)}
+        >
+            {primaryAction.label}
+        </button>
+    );
+
+    const header = (
+        <RoundtableHeader
+            room={room}
+            busy={busy}
+            loading={loading}
+            action={headerAction}
+            statusRef={roomStatusRef}
+        />
+    );
 
     return (
-        <div class="rt-room">
-            <div class="rt-room-main">
-                <header class="rt-room-header">
-                    <div class="rt-room-title-row">
-                        <h1 class="rt-room-title">{room.title || '圆桌'}</h1>
-                        {loading && <span class="rt-room-loading">刷新中</span>}
-                        <button
-                            type="button"
-                            class="rt-btn rt-btn-ghost"
-                            disabled={busy || loading}
-                            onClick={() => void refresh(roomId)}
-                        >
-                            刷新
-                        </button>
-                    </div>
-                    <StageBar state={room.state} />
-                    <SeatBar seats={seats} />
-                    {(showR2 || showR3 || drafting) && (
-                        <div class="rt-room-actions">
-                            {drafting && (
-                                <button
-                                    type="button"
-                                    class="rt-btn"
-                                    disabled={busy}
-                                    onClick={() => {
-                                        setShowBriefForm(v => !v);
-                                    }}
-                                >
-                                    {showBriefForm ? '收起 Brief' : '确认 Brief'}
-                                </button>
-                            )}
-                            {showR2 && (
-                                <button
-                                    type="button"
-                                    class="rt-btn rt-btn-primary"
-                                    disabled={busy}
-                                    onClick={() => void runR2()}
-                                >
-                                    启动 R2 首轮
-                                </button>
-                            )}
-                            {showR3 && (
-                                <button
-                                    type="button"
-                                    class="rt-btn rt-btn-primary"
-                                    disabled={busy}
-                                    onClick={() => void runR3()}
-                                >
-                                    启动 R3 次轮
-                                </button>
-                            )}
+        <RoundtableRoomContent
+            room={room}
+            seats={seats}
+            turns={turns}
+            header={header}
+            mobilePane={mobilePane}
+            onMobilePaneChange={selectMobilePane}
+            notice={
+                <div class="rt-room-notices">
+                    {error && (
+                        <div class="rt-error" role="alert">
+                            {error}
                         </div>
                     )}
-                    {/* CLI-confirmed brief is already on room; show read-only card when past drafting. */}
-                    {!drafting && room.brief && (
-                        <div class="rt-brief-readonly bento-card" aria-label="已确认 Brief">
-                            <div class="bento-zone-header">
-                                <span class="bento-card-title">Brief（已确认）</span>
-                            </div>
-                            <div class="bento-zone-body">
-                                <dl class="rt-brief-dl">
-                                    <dt>标题</dt>
-                                    <dd>{room.brief.title}</dd>
-                                    <dt>议题</dt>
-                                    <dd>{room.brief.question}</dd>
-                                    <dt>约束</dt>
-                                    <dd>{room.brief.constraints}</dd>
-                                    <dt>成功标准</dt>
-                                    <dd>{room.brief.success_criteria}</dd>
-                                    {room.brief.product_kind ? (
-                                        <>
-                                            <dt>品类</dt>
-                                            <dd>{room.brief.product_kind}</dd>
-                                        </>
-                                    ) : null}
-                                </dl>
-                            </div>
-                        </div>
-                    )}
-                    {drafting && showBriefForm && (
-                        <div class="rt-brief-form">
-                            <p class="rt-brief-hint">
-                                四字段均必填；请填真实内容。裁判也可在 seat cwd 用 <code>roundtable set-brief</code>{' '}
-                                写入（开发环境用二进制绝对路径或 ONEAGENTS_CLI；刷新后可见）。
-                            </p>
-                            <label class="rt-field">
-                                <span class="rt-field-label">标题</span>
-                                <input
-                                    class="rt-input"
-                                    value={briefTitle}
-                                    onInput={e => setBriefTitle((e.target as HTMLInputElement).value)}
-                                    required
-                                />
-                            </label>
-                            <label class="rt-field">
-                                <span class="rt-field-label">议题 / 问题</span>
-                                <input
-                                    class="rt-input"
-                                    value={briefQuestion}
-                                    onInput={e => setBriefQuestion((e.target as HTMLInputElement).value)}
-                                    required
-                                />
-                            </label>
-                            <label class="rt-field">
-                                <span class="rt-field-label">约束</span>
-                                <input
-                                    class="rt-input"
-                                    value={briefConstraints}
-                                    onInput={e => setBriefConstraints((e.target as HTMLInputElement).value)}
-                                    required
-                                />
-                            </label>
-                            <label class="rt-field">
-                                <span class="rt-field-label">成功标准</span>
-                                <input
-                                    class="rt-input"
-                                    value={briefSuccess}
-                                    onInput={e => setBriefSuccess((e.target as HTMLInputElement).value)}
-                                    required
-                                />
-                            </label>
-                            <button
-                                type="button"
-                                class="rt-btn rt-btn-primary"
-                                disabled={busy || !briefFormReady}
-                                onClick={() => void confirmBrief()}
-                            >
-                                提交 Brief → waiting_r2
-                            </button>
-                        </div>
-                    )}
-                    {error && <div class="rt-error">{error}</div>}
-                </header>
-
-                <div class="rt-timeline" ref={timelineRef} role="log" aria-live="polite" aria-label="主时间线">
-                    {turns.length === 0 ? (
-                        <div class="rt-timeline-empty">
-                            {drafting
-                                ? '点击右侧「裁判」席位打开完整 ChatUI 澄清议题；确认 Brief 后进入 R2。'
-                                : '尚无发言。'}
-                        </div>
-                    ) : (
-                        <Fragment>
-                            {turns.map(t => (
-                                <TurnCard key={t.id} turn={t} seats={seats} />
-                            ))}
-                        </Fragment>
-                    )}
+                    <RoundRecoveryNotice
+                        room={room}
+                        busy={busy}
+                        onRetrySeat={retrySeat}
+                        onSkip={skipFailedSeats}
+                        onRetrySummary={retrySummary}
+                        onReload={reloadAfterFailure}
+                    />
                 </div>
-            </div>
-
-            <RoundtableSidebar room={room} seats={seats} />
-        </div>
+            }
+            primaryContent={
+                drafting ? (
+                    <R1Workbench
+                        room={room}
+                        seats={seats}
+                        turns={turns}
+                        sending={busy}
+                        onSend={sendR1}
+                        onFocusBrief={focusBriefInspector}
+                        onOpenReferee={openSeatSession}
+                    />
+                ) : (
+                    <StageWorkbench room={room} seats={seats} turns={turns} onOpenSeat={openSeatSession} />
+                )
+            }
+            sidebar={
+                <RoundtableSidebar
+                    room={room}
+                    seats={seats}
+                    turns={turns}
+                    loading={loading}
+                    activeTab={inspectorTab}
+                    onTabChange={setInspectorTab}
+                    inspectorRef={briefInspectorRef}
+                    onRoomUpdate={applyRoom}
+                    onReload={() => refresh(roomId, { quiet: true })}
+                />
+            }
+        />
     );
 }

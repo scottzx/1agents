@@ -3,14 +3,14 @@ import { useState } from 'preact/hooks';
 import { ROLE_LABELS } from './roleLabels';
 import type { SeatRole } from '@1agents/core/services/roundtableService';
 
-/** Fixed MVP roster (design §3 / §6.3) — display only, not user-editable. */
-export const FIXED_ROSTER: { role: SeatRole; harness: string }[] = [
-    { role: 'referee', harness: 'Grok Build' },
-    { role: 'market', harness: 'Grok Build' },
-    { role: 'product', harness: 'Grok Build' },
-    { role: 'eng', harness: 'Grok Build' },
-    { role: 'ops', harness: 'Grok Build' },
-    { role: 'finance', harness: 'Grok Build' },
+/** Fixed roles shown as user-facing responsibilities, not implementation details. */
+export const FIXED_ROSTER: { role: SeatRole; responsibility: string }[] = [
+    { role: 'referee', responsibility: '澄清问题并综合判断' },
+    { role: 'market', responsibility: '用户需求与市场机会' },
+    { role: 'product', responsibility: '产品价值与体验取舍' },
+    { role: 'eng', responsibility: '技术路径与交付风险' },
+    { role: 'ops', responsibility: '落地运营与增长验证' },
+    { role: 'finance', responsibility: '成本、收益与资金约束' },
 ];
 
 export interface LaunchWizardProps {
@@ -43,18 +43,18 @@ export function LaunchWizard({
                 <div class="bento-zone-header">
                     <div class="bento-card-title">新建圆桌</div>
                     <div class="bento-card-desc">
-                        真多 session 编排 · 裁判 + 五职能 · 固定 3 轮。开始后进入 R1 与裁判澄清议题。
+                        写下你真正要解决的问题。主持人会先帮你澄清，再邀请五个职能独立判断、交叉回应。
                     </div>
                 </div>
 
                 <div class="bento-zone-body rt-wizard-body">
                     <label class="rt-field">
-                        <span class="rt-field-label">议题草稿（可选）</span>
+                        <span class="rt-field-label">你希望圆桌解决什么问题？</span>
                         <input
                             class="rt-input"
                             type="text"
                             value={title}
-                            placeholder="例如：是否自研 vs 外采"
+                            placeholder="例如：新客服系统应该自研还是采购？"
                             disabled={busy}
                             onInput={e => setTitle((e.target as HTMLInputElement).value)}
                             onKeyDown={e => {
@@ -67,12 +67,12 @@ export function LaunchWizard({
                     </label>
 
                     <div class="rt-wizard-roster">
-                        <div class="rt-wizard-roster-label">固定编制（6 席）</div>
-                        <ul class="rt-wizard-seats" aria-label="圆桌固定编制">
+                        <div class="rt-wizard-roster-label">这场讨论会从六个角度审视问题</div>
+                        <ul class="rt-wizard-seats" aria-label="圆桌参与职能">
                             {FIXED_ROSTER.map(s => (
                                 <li key={s.role} class="rt-wizard-seat">
                                     <span class="rt-wizard-seat-role">{ROLE_LABELS[s.role]}</span>
-                                    <span class="rt-wizard-seat-agent">{s.harness}</span>
+                                    <span class="rt-wizard-seat-agent">{s.responsibility}</span>
                                 </li>
                             ))}
                         </ul>
@@ -88,7 +88,7 @@ export function LaunchWizard({
                         disabled={busy}
                         onClick={() => void onStart(title.trim())}
                     >
-                        {busy ? '创建中…' : '开始'}
+                        {busy ? '正在召集…' : '带着问题开始'}
                     </button>
                     {previousRoomId && onContinue && (
                         <button
@@ -97,7 +97,7 @@ export function LaunchWizard({
                             disabled={busy}
                             onClick={() => onContinue(previousRoomId)}
                         >
-                            继续上一局
+                            回到上次讨论
                         </button>
                     )}
                 </div>

@@ -71,7 +71,7 @@ export function stateLabel(state: RoomState | string | undefined): string {
         case 'failed':
             return '失败';
         default:
-            return state || '—';
+            return state ? '状态更新中' : '待开始';
     }
 }
 

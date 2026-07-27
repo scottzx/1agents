@@ -1,7 +1,9 @@
 import { h } from 'preact';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { Fragment } from 'preact';
 import { Session, isChat } from '../types';
 import { t, type Lang } from '../i18n';
-import { AgentAvatar, normalizeAgentStatus } from '../chat/AgentAvatar';
+import { AgentAvatar, AgentAvatarStatus, AgentLoadingSpinner, normalizeAgentStatus } from '../chat/AgentAvatar';
 import {
     liveSessionStatus,
     computeSessionAvatarStatus,
@@ -265,19 +267,30 @@ export function SessionRow({
 
     // Leading icon: assistant avatar (task list) / agent harness logo (project
     // chats) / terminal glyph. Status corner light is kept in all cases.
+    const isBusy = statusKey === 'busy';
     let leadingIcon;
     if (useAssistantLogo) {
         const hasImg = !!assistantAvatar && assistantAvatar.startsWith('/');
         leadingIcon = (
-            <span class="chat-sidebar-avatar chat-assistant-avatar" title={assistantName} aria-hidden="true">
-                {hasImg ? (
-                    <img class="chat-assistant-avatar-img" src={assistantAvatar} alt="" />
+            <span
+                class={`chat-sidebar-avatar chat-assistant-avatar${isBusy ? ' is-busy' : ''}`}
+                title={assistantName}
+                aria-hidden="true"
+            >
+                {isBusy ? (
+                    <AgentLoadingSpinner />
                 ) : (
-                    <span class="agent-avatar-fallback chat-assistant-avatar-fallback" aria-hidden="true">
-                        {'\u{1F464}'}
-                    </span>
+                    <Fragment>
+                        {hasImg ? (
+                            <img class="chat-assistant-avatar-img" src={assistantAvatar} alt="" />
+                        ) : (
+                            <span class="agent-avatar-fallback chat-assistant-avatar-fallback" aria-hidden="true">
+                                {'\u{1F464}'}
+                            </span>
+                        )}
+                        <AgentAvatarStatus status={statusKey} />
+                    </Fragment>
                 )}
-                <span class={`agent-avatar-status agent-avatar-status--${statusKey}`} />
             </span>
         );
     } else if (chat) {
@@ -300,9 +313,15 @@ export function SessionRow({
         );
     } else {
         leadingIcon = (
-            <span class="chat-sidebar-avatar chat-terminal-icon" aria-hidden="true">
-                <TerminalGlyph />
-                <span class={`agent-avatar-status agent-avatar-status--${statusKey}`} />
+            <span class={`chat-sidebar-avatar chat-terminal-icon${isBusy ? ' is-busy' : ''}`} aria-hidden="true">
+                {isBusy ? (
+                    <AgentLoadingSpinner />
+                ) : (
+                    <Fragment>
+                        <TerminalGlyph />
+                        <AgentAvatarStatus status={statusKey} />
+                    </Fragment>
+                )}
             </span>
         );
     }

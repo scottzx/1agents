@@ -893,6 +893,15 @@
         height: 8px;
         right: -1px;
         bottom: -1px;
+
+        &.agent-avatar-status--busy {
+          width: 10px;
+          height: 10px;
+          right: -2px;
+          bottom: -2px;
+          border: none;
+          background: transparent;
+        }
       }
     }
 

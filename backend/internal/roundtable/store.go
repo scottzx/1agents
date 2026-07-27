@@ -116,6 +116,44 @@ func (s *Store) ensureSchema() error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_agents_roundtable_turns_room
 			ON agents_roundtable_turns(room_id, created_at)`,
+		`CREATE TABLE IF NOT EXISTS agents_roundtable_runs (
+			id TEXT PRIMARY KEY,
+			room_id TEXT NOT NULL,
+			round INTEGER NOT NULL,
+			status TEXT NOT NULL,
+			idempotency_key TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			started_at TEXT,
+				finished_at TEXT,
+				error TEXT NOT NULL DEFAULT '',
+				error_scope TEXT NOT NULL DEFAULT '',
+				UNIQUE(room_id, round)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_agents_roundtable_runs_room
+			ON agents_roundtable_runs(room_id, round DESC)`,
+		`CREATE TABLE IF NOT EXISTS agents_roundtable_run_seats (
+			run_id TEXT NOT NULL,
+			role TEXT NOT NULL,
+			status TEXT NOT NULL,
+			started_at TEXT,
+			finished_at TEXT,
+			error TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY(run_id, role)
+		)`,
+		`CREATE TABLE IF NOT EXISTS agents_roundtable_events (
+			seq INTEGER PRIMARY KEY AUTOINCREMENT,
+			room_id TEXT NOT NULL,
+			run_id TEXT NOT NULL,
+			round INTEGER NOT NULL,
+			kind TEXT NOT NULL,
+			status TEXT NOT NULL,
+			role TEXT NOT NULL DEFAULT '',
+			error TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_agents_roundtable_events_room_seq
+			ON agents_roundtable_events(room_id, seq)`,
 	}
 	for _, ddl := range ddls {
 		if _, err := sqlDB.Exec(ddl); err != nil {
@@ -138,6 +176,13 @@ func (s *Store) ensureSchema() error {
 			`ALTER TABLE agents_roundtable_rooms ADD COLUMN %s INTEGER NOT NULL DEFAULT 0`, col,
 		)); err != nil {
 			return fmt.Errorf("roundtable migrate %s: %w", col, err)
+		}
+	}
+	if !columnExists(sqlDB, "agents_roundtable_runs", "error_scope") {
+		if _, err := sqlDB.Exec(
+			`ALTER TABLE agents_roundtable_runs ADD COLUMN error_scope TEXT NOT NULL DEFAULT ''`,
+		); err != nil {
+			return fmt.Errorf("roundtable migrate error_scope: %w", err)
 		}
 	}
 	return s.migrateLegacyBriefs()

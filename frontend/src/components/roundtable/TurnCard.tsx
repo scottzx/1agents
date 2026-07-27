@@ -20,11 +20,32 @@ export function TurnCard({ turn, seats }: TurnCardProps) {
     const name = resolveTurnAuthor(turn, seats);
     const kind = turn.kind || 'chat';
     const content = (turn.content_text || '').trim();
+    const briefConfirmed = isBriefConfirmedTurn(turn);
     const hasContent = Boolean(content);
     const html = useMemo(() => (hasContent ? renderMarkdown(content) : ''), [content, hasContent]);
 
+    if (briefConfirmed) {
+        return (
+            <article
+                id={`rt-turn-${turn.id}`}
+                class="rt-turn-event kind-brief-confirmed"
+                data-turn-id={turn.id}
+                aria-label="Brief 已确认"
+            >
+                <span class="rt-turn-event-dot" aria-hidden="true" />
+                <span class="rt-turn-event-text">Brief 已确认</span>
+                <span class="rt-turn-event-detail">进入首轮</span>
+            </article>
+        );
+    }
+
     return (
-        <article class={`rt-turn-card kind-${kind}`} data-turn-id={turn.id} data-seat-id={turn.seat_id || undefined}>
+        <article
+            id={`rt-turn-${turn.id}`}
+            class={`rt-turn-card kind-${kind}`}
+            data-turn-id={turn.id}
+            data-seat-id={turn.seat_id || undefined}
+        >
             <header class="rt-turn-head">
                 <div class="rt-turn-author">
                     <span class="rt-turn-role">{name}</span>
@@ -60,15 +81,30 @@ export function TurnCard({ turn, seats }: TurnCardProps) {
                     </button>
                     {processOpen && (
                         <div class="rt-process-panel chat-tool-output-box" role="region" aria-label="过程详情">
-                            <div class="rt-process-note">
-                                Tool / thinking 不进主时间线。过程绑定底层 seat session（可在右侧席位打开完整 ChatUI）：
-                            </div>
-                            <code class="rt-process-ref">{turn.process_ref}</code>
+                            <div class="rt-process-note">详细过程可在右侧对应席位的会话中查看。</div>
                         </div>
                     )}
                 </div>
             )}
         </article>
+    );
+}
+
+/**
+ * New records may use a dedicated kind; persisted rooms used a system turn
+ * whose body starts with “Brief 已确认” and then repeats every Brief field.
+ */
+export function isBriefConfirmedTurn(turn: RoundtableTurn): boolean {
+    const kind = (turn.kind || '').trim().toLowerCase();
+    if (kind === 'brief_confirmed' || kind === 'system/brief_confirmed' || kind === 'system:brief_confirmed') {
+        return true;
+    }
+    if (kind !== 'system') return false;
+
+    const content = (turn.content_text || '').trim();
+    return (
+        /(?:已确认|confirmed)[\s\S]{0,24}brief/iu.test(content) ||
+        /brief(?:[\s*_：:-]*v?\s*\d+)?[\s*_：:-]*(?:已确认|confirmed)/iu.test(content)
     );
 }
 
@@ -83,6 +119,6 @@ function kindLabel(kind: string): string {
         case 'chat':
             return '对话';
         default:
-            return kind;
+            return '事件';
     }
 }

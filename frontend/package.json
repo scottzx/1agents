@@ -17,6 +17,7 @@
     "start": "NODE_ENV=development && webpack serve",
     "build": "NODE_ENV=production webpack && gulp",
     "inline": "NODE_ENV=production webpack && gulp inline",
+    "test:roundtable": "node --import tsx --test src/components/roundtable/*.test.ts",
     "check": "gts check",
     "fix": "gts fix"
   },
@@ -41,6 +42,7 @@
     "gulp-rename": "^2.0.0",
     "html-webpack-plugin": "^5.6.0",
     "mini-css-extract-plugin": "^2.8.1",
+    "preact-render-to-string": "^6.5.0",
     "safe-regex": "^2.1.1",
     "sass": "^1.71.1",
     "sass-loader": "^14.1.1",
@@ -49,6 +51,7 @@
     "terser-webpack-plugin": "^5.3.10",
     "through2": "^4.0.2",
     "ts-loader": "^9.5.1",
+    "tsx": "^4.23.0",
     "typescript": "^5.3.3",
     "util": "^0.12.5",
     "webpack": "^5.90.3",

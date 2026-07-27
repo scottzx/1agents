@@ -1,4 +1,4 @@
-import { h } from 'preact';
+import { h, type ComponentChildren } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import { MessageBubble, GroupedChatItem, GroupedToolCall, ToolGroupElement } from './MessageBubble';
 import type { ChatItem } from './hooks';
@@ -29,6 +29,8 @@ interface MessageListProps {
      * which only stops `activeTurn` and leaves the queue running.
      */
     onCancelQueued?: (queueRequestId: string) => void;
+    /** Optional references rendered inside the same scroll timeline. */
+    timelineFooter?: ComponentChildren;
 }
 
 function isCallRenderable(call: GroupedToolCall): boolean {
@@ -347,7 +349,15 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
     return grouped;
 }
 
-export function MessageList({ items, typing, emptyHint, loading, loadingHint, onCancelQueued }: MessageListProps) {
+export function MessageList({
+    items,
+    typing,
+    emptyHint,
+    loading,
+    loadingHint,
+    onCancelQueued,
+    timelineFooter,
+}: MessageListProps) {
     const scrollRef = useRef<HTMLDivElement | null>(null);
     // Whether the user is currently stuck to the bottom. Tracked from
     // real scroll events (before content updates) rather than measured
@@ -373,7 +383,7 @@ export function MessageList({ items, typing, emptyHint, loading, loadingHint, on
         if (!el) return;
         if (!pinnedRef.current || interactingRef.current) return;
         el.scrollTop = el.scrollHeight;
-    }, [items, typing]);
+    }, [items, typing, timelineFooter]);
 
     if (loading) {
         // Spinner takes priority over the empty hint: while the bridge is
@@ -388,7 +398,7 @@ export function MessageList({ items, typing, emptyHint, loading, loadingHint, on
         );
     }
 
-    if (items.length === 0) {
+    if (items.length === 0 && !timelineFooter) {
         // Speaking / mid-turn with no bubbles yet: still show typing wave so
         // embed cards (roundtable seats) are never a blank "empty" void.
         if (typing) {
@@ -504,6 +514,7 @@ export function MessageList({ items, typing, emptyHint, loading, loadingHint, on
                         <span class="chat-typing-dot" />
                     </div>
                 )}
+                {timelineFooter}
             </div>
         </div>
     );

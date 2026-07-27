@@ -17,7 +17,7 @@ export type RoomState =
 export type SeatRole = 'referee' | 'market' | 'product' | 'eng' | 'ops' | 'finance';
 
 /** Backend seat status; UI maps failed → error. */
-export type SeatStatus = 'ready' | 'speaking' | 'done' | 'failed';
+export type SeatStatus = 'ready' | 'speaking' | 'done' | 'failed' | 'skipped';
 
 export type TurnKind = 'chat' | 'speech' | 'summary' | 'system';
 
@@ -34,6 +34,60 @@ export interface RoundtableBrief {
 export type BriefStatus = 'draft' | 'proposed' | 'confirmed' | 'superseded';
 
 export type BriefProposer = 'user' | 'referee';
+
+export type RoundRunStatus =
+    | 'queued'
+    | 'running'
+    | 'summarizing'
+    | 'completed'
+    | 'partial_failed'
+    | 'failed'
+    | 'canceled';
+
+export type RoundtablePhase = 'r1' | 'r2' | 'r3' | 'done' | 'failed';
+export type RoundRunErrorScope = 'room' | 'seat' | 'summary';
+export type RoundRecoveryAction =
+    | 'confirm_brief'
+    | 'start_r2'
+    | 'start_r3'
+    | 'retry_failed_seats'
+    | 'skip_and_summarize'
+    | 'retry_summary'
+    | 'reload_room';
+
+export interface RoundRun {
+    id: string;
+    room_id: string;
+    round: 2 | 3;
+    status: RoundRunStatus;
+    idempotency_key: string;
+    created_at: string;
+    updated_at: string;
+    started_at?: string;
+    finished_at?: string;
+    error?: string;
+    error_scope?: RoundRunErrorScope;
+}
+
+export interface RoundProgress {
+    completed: number;
+    total: number;
+    active_roles: SeatRole[];
+    failed_roles: SeatRole[];
+    skipped_roles?: SeatRole[];
+}
+
+export interface RoundEvent {
+    seq: number;
+    room_id: string;
+    run_id: string;
+    round: 2 | 3;
+    kind: 'run' | 'seat' | 'summary';
+    status: string;
+    role?: SeatRole;
+    error?: string;
+    created_at: string;
+}
 
 export interface RoundtableBriefVersion {
     room_id: string;
@@ -86,6 +140,22 @@ export interface RoundtableRoom {
     summary_r3?: string;
     created_at: string;
     updated_at: string;
+    phase: RoundtablePhase;
+    phase_status: RoundRunStatus | 'ready';
+    next_action:
+        | 'confirm_brief'
+        | 'start_r2'
+        | 'start_r3'
+        | 'wait'
+        | 'retry_failed_seats'
+        | 'skip_and_summarize'
+        | 'retry_summary'
+        | 'reload_room'
+        | 'inspect_failure'
+        | 'none';
+    available_actions?: RoundRecoveryAction[];
+    progress: RoundProgress;
+    active_run?: RoundRun;
     seats?: RoundtableSeat[];
     turns?: RoundtableTurn[];
 }
@@ -130,6 +200,20 @@ export interface ConfirmBriefRequest {
 
 /** Deprecated one-shot management contract; agents must use proposeBrief. */
 export type LegacySetBriefRequest = BriefContentRequest;
+
+export interface StartRoundResponse {
+    run_id: string;
+    run: RoundRun;
+    room: RoundtableRoom;
+    reused: boolean;
+}
+
+export type RecoverRoundResponse = StartRoundResponse;
+
+export interface RoundEventPage {
+    events: RoundEvent[];
+    last_seq: number;
+}
 
 export class BriefVersionConflictError extends Error {
     readonly status = 409;
@@ -277,18 +361,88 @@ export const roundtableService = {
         return (await res.json()) as RoundtableRoom;
     },
 
-    /** POST /api/roundtable/rooms/{id}/r2 */
-    async runR2(id: string): Promise<RoundtableRoom | unknown> {
+    /** POST /api/roundtable/rooms/{id}/r2 — 202, execution continues asynchronously. */
+    async runR2(id: string, idempotencyKey?: string): Promise<StartRoundResponse> {
         const res = await apiFetch(`/roundtable/rooms/${encodeURIComponent(id)}/r2`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idempotency_key: idempotencyKey || '' }),
+        });
+        if (!res.ok) throw new Error(await readError(res));
+        return (await res.json()) as StartRoundResponse;
+    },
+
+    /** POST /api/roundtable/rooms/{id}/r3 — 202, execution continues asynchronously. */
+    async runR3(id: string, idempotencyKey?: string): Promise<StartRoundResponse> {
+        const res = await apiFetch(`/roundtable/rooms/${encodeURIComponent(id)}/r3`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idempotency_key: idempotencyKey || '' }),
+        });
+        if (!res.ok) throw new Error(await readError(res));
+        return (await res.json()) as StartRoundResponse;
+    },
+
+    /** Retry exactly one failed panelist while preserving the same RoundRun. */
+    async retrySeat(id: string, runId: string, role: SeatRole): Promise<RecoverRoundResponse> {
+        const res = await apiFetch(
+            `/roundtable/rooms/${encodeURIComponent(id)}/runs/${encodeURIComponent(runId)}/seats/${encodeURIComponent(
+                role
+            )}/retry`,
+            { method: 'POST' }
+        );
+        if (!res.ok) throw new Error(await readError(res));
+        return (await res.json()) as RecoverRoundResponse;
+    },
+
+    /** Mark every currently failed seat absent and continue with only the summary. */
+    async skipFailedSeats(id: string, runId: string): Promise<RecoverRoundResponse> {
+        const res = await apiFetch(
+            `/roundtable/rooms/${encodeURIComponent(id)}/runs/${encodeURIComponent(runId)}/skip`,
+            { method: 'POST' }
+        );
+        if (!res.ok) throw new Error(await readError(res));
+        return (await res.json()) as RecoverRoundResponse;
+    },
+
+    /** Retry only the failed referee summary; panelist execution gates stay closed. */
+    async retrySummary(id: string, runId: string): Promise<RecoverRoundResponse> {
+        const res = await apiFetch(
+            `/roundtable/rooms/${encodeURIComponent(id)}/runs/${encodeURIComponent(runId)}/summary/retry`,
+            { method: 'POST' }
+        );
+        if (!res.ok) throw new Error(await readError(res));
+        return (await res.json()) as RecoverRoundResponse;
+    },
+
+    /**
+     * GET /events?after=<seq> — durable reconnect cursor. Call again with
+     * last_seq after refresh/network recovery; no event at or before it repeats.
+     */
+    async listEvents(id: string, after = 0, limit = 200): Promise<RoundEventPage> {
+        const query = new URLSearchParams({
+            after: String(Math.max(0, after)),
+            limit: String(Math.max(1, limit)),
+        });
+        const res = await apiFetch(`/roundtable/rooms/${encodeURIComponent(id)}/events?${query.toString()}`, {
+            cache: 'no-store',
+        });
+        if (!res.ok) throw new Error(await readError(res));
+        return (await res.json()) as RoundEventPage;
+    },
+
+    /** @deprecated Explicit synchronous compatibility path for pre-RoundRun clients. */
+    async runR2Legacy(id: string): Promise<unknown> {
+        const res = await apiFetch(`/roundtable/rooms/${encodeURIComponent(id)}/r2?wait=1`, {
             method: 'POST',
         });
         if (!res.ok) throw new Error(await readError(res));
         return res.json();
     },
 
-    /** POST /api/roundtable/rooms/{id}/r3 */
-    async runR3(id: string): Promise<RoundtableRoom | unknown> {
-        const res = await apiFetch(`/roundtable/rooms/${encodeURIComponent(id)}/r3`, {
+    /** @deprecated Explicit synchronous compatibility path for pre-RoundRun clients. */
+    async runR3Legacy(id: string): Promise<unknown> {
+        const res = await apiFetch(`/roundtable/rooms/${encodeURIComponent(id)}/r3?wait=1`, {
             method: 'POST',
         });
         if (!res.ok) throw new Error(await readError(res));

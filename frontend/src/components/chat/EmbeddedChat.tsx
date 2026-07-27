@@ -72,6 +72,13 @@ import {
 
 export type { EmbeddedChatSessionInput };
 
+export interface EmbeddedChatEvent {
+    id: string;
+    label: string;
+    detail?: string;
+    createdAt?: string;
+}
+
 export interface EmbeddedChatProps extends EmbeddedChatSessionInput {
     /**
      * Container max-height. Number is treated as px; string is used as-is
@@ -93,7 +100,7 @@ export interface EmbeddedChatProps extends EmbeddedChatSessionInput {
      * Use for orchestrated flows (e.g. POST /roundtable/.../chat) that must
      * still show the same session stream via useBridge.
      */
-    onSend?: (text: string) => void;
+    onSend?: (text: string) => void | Promise<void>;
     /**
      * Force Composer "running" (cancel affordance / disable send). Defaults
      * to bridge `typing` when omitted.
@@ -102,6 +109,9 @@ export interface EmbeddedChatProps extends EmbeddedChatSessionInput {
     /** Extra class on the shell (e.g. parent card variants). */
     className?: string;
     emptyHint?: string;
+    /** Compact domain events shown as references inside the chat timeline. */
+    events?: EmbeddedChatEvent[];
+    onEventActivate?: (event: EmbeddedChatEvent) => void;
 }
 
 export function EmbeddedChat({
@@ -117,6 +127,8 @@ export function EmbeddedChat({
     isRunning: isRunningProp,
     className,
     emptyHint,
+    events = [],
+    onEventActivate,
 }: EmbeddedChatProps) {
     // Resolve once per identity change. chatSessions is a signal — reading
     // .value here keeps store-backed sessions in sync when the list updates.
@@ -157,6 +169,30 @@ export function EmbeddedChat({
     const heightCss = formatMaxHeight(maxHeight);
     const composerSend = onSendProp ?? send;
     const composerRunning = isRunningProp ?? typing;
+    const latestEvent = events[events.length - 1];
+    const eventRefs =
+        events.length > 0 ? (
+            <div>
+                <span class="rt-visually-hidden" role="status" aria-live="polite" aria-atomic="true">
+                    {latestEvent.label}
+                    {latestEvent.detail ? `：${latestEvent.detail}` : ''}
+                </span>
+                <div class="embedded-chat-events" aria-label="会话事件" aria-live="off">
+                    {events.map(event => (
+                        <button
+                            key={event.id}
+                            type="button"
+                            class="embedded-chat-event"
+                            onClick={() => onEventActivate?.(event)}
+                        >
+                            <span class="embedded-chat-event-dot" aria-hidden="true" />
+                            <span class="embedded-chat-event-label">{event.label}</span>
+                            {event.detail && <span class="embedded-chat-event-detail">{event.detail}</span>}
+                        </button>
+                    ))}
+                </div>
+            </div>
+        ) : null;
 
     if (!session) {
         return (
@@ -168,6 +204,7 @@ export function EmbeddedChat({
                 <div class="chat-empty">
                     <p>{emptyHint ?? t('chat.empty.send', ui.language.value)}</p>
                 </div>
+                {eventRefs}
             </div>
         );
     }
@@ -191,6 +228,7 @@ export function EmbeddedChat({
                 }
                 loading={showInitLoading}
                 onCancelQueued={composerVisible ? cancelQueued : undefined}
+                timelineFooter={eventRefs}
             />
             {composerVisible && (
                 <Composer

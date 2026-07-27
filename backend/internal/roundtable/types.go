@@ -13,13 +13,13 @@ import "time"
 type RoomState string
 
 const (
-	StateDraftingBrief  RoomState = "drafting_brief"
-	StateWaitingR2      RoomState = "waiting_r2"
-	StateSummarizingR2  RoomState = "summarizing_r2"
-	StateWaitingR3      RoomState = "waiting_r3"
-	StateSummarizingR3  RoomState = "summarizing_r3"
-	StateDone           RoomState = "done"
-	StateFailed         RoomState = "failed"
+	StateDraftingBrief RoomState = "drafting_brief"
+	StateWaitingR2     RoomState = "waiting_r2"
+	StateSummarizingR2 RoomState = "summarizing_r2"
+	StateWaitingR3     RoomState = "waiting_r3"
+	StateSummarizingR3 RoomState = "summarizing_r3"
+	StateDone          RoomState = "done"
+	StateFailed        RoomState = "failed"
 )
 
 // Role is a fixed seat role (design §3).
@@ -111,6 +111,7 @@ const (
 	SeatSpeaking SeatStatus = "speaking"
 	SeatDone     SeatStatus = "done"
 	SeatFailed   SeatStatus = "failed"
+	SeatSkipped  SeatStatus = "skipped"
 )
 
 // ProductKind optionally tags the domain of the brief.
@@ -175,6 +176,67 @@ type BriefVersion struct {
 	ConfirmedAt  *time.Time    `json:"confirmed_at,omitempty"`
 }
 
+// RunStatus is the durable lifecycle of an asynchronous R2/R3 execution.
+type RunStatus string
+
+const (
+	RunQueued        RunStatus = "queued"
+	RunRunning       RunStatus = "running"
+	RunSummarizing   RunStatus = "summarizing"
+	RunCompleted     RunStatus = "completed"
+	RunPartialFailed RunStatus = "partial_failed"
+	RunFailed        RunStatus = "failed"
+	RunCanceled      RunStatus = "canceled"
+)
+
+// RunErrorScope tells clients which recovery controls are safe to offer.
+type RunErrorScope string
+
+const (
+	RunErrorNone    RunErrorScope = ""
+	RunErrorRoom    RunErrorScope = "room"
+	RunErrorSeat    RunErrorScope = "seat"
+	RunErrorSummary RunErrorScope = "summary"
+)
+
+// RoundRun is the idempotent execution record for one room round.
+type RoundRun struct {
+	ID             string        `json:"id"`
+	RoomID         string        `json:"room_id"`
+	Round          int           `json:"round"`
+	Status         RunStatus     `json:"status"`
+	IdempotencyKey string        `json:"idempotency_key"`
+	CreatedAt      time.Time     `json:"created_at"`
+	UpdatedAt      time.Time     `json:"updated_at"`
+	StartedAt      *time.Time    `json:"started_at,omitempty"`
+	FinishedAt     *time.Time    `json:"finished_at,omitempty"`
+	Error          string        `json:"error,omitempty"`
+	ErrorScope     RunErrorScope `json:"error_scope,omitempty"`
+}
+
+// RoundProgress is projected from durable per-run seat execution records.
+type RoundProgress struct {
+	Completed    int      `json:"completed"`
+	Total        int      `json:"total"`
+	ActiveRoles  []string `json:"active_roles"`
+	FailedRoles  []string `json:"failed_roles"`
+	SkippedRoles []string `json:"skipped_roles"`
+}
+
+// RoundEvent is an append-only, room-scoped event. Seq is the reconnect
+// cursor: clients request events after the last sequence they persisted.
+type RoundEvent struct {
+	Seq       int64     `json:"seq"`
+	RoomID    string    `json:"room_id"`
+	RunID     string    `json:"run_id"`
+	Round     int       `json:"round"`
+	Kind      string    `json:"kind"` // run | seat | summary
+	Status    string    `json:"status"`
+	Role      Role      `json:"role,omitempty"`
+	Error     string    `json:"error,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // Room is one roundtable session (design §5.3).
 type Room struct {
 	ID                    string        `json:"id"`
@@ -192,17 +254,23 @@ type Room struct {
 	CreatedAt             time.Time     `json:"created_at"`
 	UpdatedAt             time.Time     `json:"updated_at"`
 	Seats                 []Seat        `json:"seats,omitempty"`
+	Phase                 string        `json:"phase"`
+	PhaseStatus           string        `json:"phase_status"`
+	NextAction            string        `json:"next_action"`
+	AvailableActions      []string      `json:"available_actions"`
+	Progress              RoundProgress `json:"progress"`
+	ActiveRun             *RoundRun     `json:"active_run,omitempty"`
 	// Turns is the main timeline (content_text only); loaded on GetRoom / ListTurns.
 	Turns []Turn `json:"turns,omitempty"`
 }
 
 // Seat is one role session binding (design §5.3).
 type Seat struct {
-	ID           string     `json:"id"`
-	RoomID       string     `json:"room_id"`
-	Role         Role       `json:"role"`
-	AgentType    string     `json:"agent_type"` // MVP: grok-build
-	WorkspaceID  string     `json:"workspace_id"`
+	ID          string `json:"id"`
+	RoomID      string `json:"room_id"`
+	Role        Role   `json:"role"`
+	AgentType   string `json:"agent_type"` // MVP: grok-build
+	WorkspaceID string `json:"workspace_id"`
 	// SessionID is the 1agents ChatSessionRecord id (sidebar / chat WS).
 	SessionID string `json:"session_id,omitempty"`
 	// AcpSessionID is the agent harness session id (1acp resume).
@@ -216,9 +284,9 @@ type Seat struct {
 type Turn struct {
 	ID          string    `json:"id"`
 	RoomID      string    `json:"room_id"`
-	Round       int       `json:"round"` // 1|2|3
+	Round       int       `json:"round"`             // 1|2|3
 	SeatID      string    `json:"seat_id,omitempty"` // seat uuid or TurnSeatUser
-	Kind        string    `json:"kind"`             // chat | speech | summary | system
+	Kind        string    `json:"kind"`              // chat | speech | summary | system
 	ContentText string    `json:"content_text"`
 	ProcessRef  string    `json:"process_ref,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`

@@ -55,14 +55,35 @@ export function normalizeAgentStatus(status?: string | null): AgentRunStatus | u
     }
 }
 
+export function AgentLoadingSpinner() {
+    return (
+        <svg class="agent-avatar-loading-spinner" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-opacity="0.2" stroke-width="1.8" />
+            <path d="M8 2A6 6 0 0 1 14 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+        </svg>
+    );
+}
+
+export function AgentAvatarStatus({ status }: { status?: AgentRunStatus }) {
+    if (status === undefined || status === 'busy') return null;
+    return <span class={`agent-avatar-status agent-avatar-status--${status}`} aria-hidden="true" />;
+}
+
 export function AgentAvatar({ agentType, class: className, title, status }: AgentAvatarProps) {
     const logoSrc = AGENT_LOGOS[agentType];
     const runStatus = normalizeAgentStatus(status);
-    const classes = ['agent-avatar', className].filter(Boolean).join(' ');
-    const statusEl =
-        runStatus !== undefined ? (
-            <span class={`agent-avatar-status agent-avatar-status--${runStatus}`} aria-hidden="true" />
-        ) : null;
+    const isBusy = runStatus === 'busy';
+    const classes = ['agent-avatar', isBusy ? 'is-busy' : '', className].filter(Boolean).join(' ');
+
+    if (isBusy) {
+        return (
+            <span class={classes} title={title} aria-hidden="true">
+                <AgentLoadingSpinner />
+            </span>
+        );
+    }
+
+    const statusEl = <AgentAvatarStatus status={runStatus} />;
 
     if (!logoSrc) {
         // Fallback: render first two letters in uppercase

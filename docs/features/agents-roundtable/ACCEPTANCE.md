@@ -1,171 +1,221 @@
-# Agents 圆桌 · design.md §7 验收
+# Agents 圆桌 · 验收清单
 
-**切片:** #251 切片 7 / 任务 #258；布局补丁 #260 / #263  
-**真源:** [design.md §7](./design.md#7-acceptance-ship-criteria) · [design.md §6 UI](./design.md#6-ui)  
-**自动化:** `TestE2E_Smoke_DesignSection7` + 相关 unit tests  
-**手工:** 下方 UI 清单（入口、过程折叠、**底栏裁判嵌入 Chat**）
+**范围:** MVP 编排回归 + 交互改版 vNext
+**真源:** [PRD](./prd.md) · [Design §6–§8](./design.md)
+**Updated:** 2026-07-27
 
 ---
 
-## 1. 一键跑自动化（可复现）
+## 1. 自动化入口
 
 在仓库根目录：
 
 ```bash
-# 推荐：验收脚本（后端 §7 E2E + 注册表 + 前端 stage 单元）
 ./scripts/roundtable-acceptance.sh
-
-# 或逐步：
-cd backend && go test ./internal/roundtable/ -count=1 -run 'TestE2E_Smoke_DesignSection7|TestAgentsRoundtableManifestRegistered|TestCLI_|TestResolve|TestValidateBrief|TestCreateRoom_WritesSidecar'
-cd frontend && npx --yes tsx --test src/components/roundtable/stage.test.ts src/components/roundtable/breadcrumbs.test.ts
 ```
 
-期望：全部 PASS；`TestE2E_Smoke_DesignSection7` 日志中出现 `§7.1`…`§7.8 PASS`。  
-§7.9 / 布局 L1–L5 为**前端手工**（见 §3b），不在上述 Go E2E 内。
-
-> 自动化使用 `StaticSeatPrompter`，**不依赖** 真 1acp / 真 Grok 二进制。  
-> 真 agent 端到端（可选）见 §4。
-
----
-
-## 2. design.md §7 对照（含 #260 布局）
-
-| # | 验收项 | 自动化 | 手工 UI |
-|---|--------|--------|---------|
-| 1 | 发现中心 → 应用（或更多）能打开圆桌并创建 room | Manifest `agents-roundtable` 注册 + `CreateRoom` | 见 §3 步骤 1–2 |
-| 2 | 一局 **6** 个 Grok Build session（1 裁判 + 5 职能） | R2 后 6×`session_id` + chat index | 侧栏可见 6 会话名 |
-| 3 | R1：与裁判多轮后确认 Brief（输入走底栏裁判 Composer；或裁判 CLI set-brief） | 2×chat + `ConfirmBrief` / CLI → `waiting_r2`；拒绝「—」 | 步骤 3–4、§3c |
-| 4 | R2：五席**隔离**各一条发言 + 裁判 Summary₂ | 隔离注入审计 + 5 speech + Summary₂ | 步骤 5 |
-| 5 | R3：各席 **resume**；上下文含 R2 全文 + Summary₂；Summary₃ | 同 `acp_session_id` + 公开包 + `done` | 步骤 6 |
-| 6 | 主 UI **默认只见正文**；过程可折叠 | turn `content_text` 绑定；前端 `TurnCard` 默认 `open=false` | 步骤 7 |
-| 7 | 刷新后 room 可恢复；未结束席位可继续 resume | `GetRoom` 恢复 state/brief/turns/acp | 步骤 8 |
-| 8 | Summary 能区分职能来源；研发与产品可区分 | Summary₃ 含「产品」「研发」；seed 契约不同 | 读终稿正文 |
-| 9 | **布局（#260）**：底栏=裁判嵌入 Chat；时间线不嵌裁判；无简易 `chatText` 底栏 | 见 §3b（前端布局） | 步骤 3、§3b |
-| 10 | 全局标题栏同时提供返回图标和列表 / 圆桌 / 会话路径；路径无「返回」文字节点 | 面包屑纯函数验证路径与点击目标 | 步骤 2a |
-| 11 | 裁判与五个职能席位的 workspace 全部为 `kind=app` | `CreateRoom` 逐席检查 project kind | 不出现在任务区 / 项目列表 |
-| 12 | 六个席位在创建时具有完整 role prompt 和明确行为设置 | 实际 workspace 的 `AGENTS.md` / `Claude.md` 完整性断言；R1/R2 `SystemContext` 注入断言 | 抽查六席 seed 的使命/框架/行为/边界/输出结构 |
-
----
-
-## 3. 手工清单（入口 → 终稿）
-
-前置：
-
-1. 使用**含 roundtable 路由**的后端二进制（源码 `server.go` 注册 `/api/roundtable/rooms`）。若 `POST /api/roundtable/rooms` 返回 404，请 `make backend` 后重启 daemon。
-2. 本地已起 `1agents`（含 frontend dist）与 1acp bridge。默认监听见 `~/.1agents/daemon.json`（常见 `127.0.0.1:38080`）。
-
-| 步骤 | 操作 | 期望 |
-|------|------|------|
-| 1 入口 | 打开发现中心 → **应用**（或「更多应用」）→ 卡片 **Agents 圆桌** | 进入启动向导；展示固定 6 席编制 |
-| 2 建房 | 填可选议题草稿 → **开始** | 创建 room，`state=drafting_brief`，进入 R1 |
-| 2a 面包屑 | 在列表、具体圆桌、席位完整会话间切换，并点左侧返回图标/各级目录 | 全局标题栏显示「返回图标」+ `圆桌列表 › <圆桌> › <会话>`；图标始终只退一级，路径中无「返回」文字 |
-| 2b 角色 seed | 抽查六个 seat workspace 中的 `AGENTS.md` 和 `Claude.md` | 每席均包含使命、职能分析框架、明确行为设置、输出边界、圆桌行为协议和默认输出结构 |
-| 3 R1 对话 | 在**底部固定裁判嵌入 Chat**的 Composer 中与裁判多轮澄清（至少 2 轮） | 底栏可见历史+实时流+typing；时间线可出现用户/裁判 `chat` 正文摘要；**无**旧版简易 `chatText` 底栏；**时间线不再**嵌第二份裁判 Chat 卡 |
-| 4 确认 Brief | 点确认 Brief，填**完整** title/question/constraints/success_criteria（不可空/「—」）；或裁判 CLI 写入后刷新 | `state=waiting_r2`；侧栏/主区显示真实 Brief 四字段 |
-| 5 R2 | 触发 R2（开始首轮） | 五职能各 1 条发言 + 裁判 Summary₂；席位条 done/error；裁判流仍在底栏（不在时间线再嵌裁判卡） |
-| 6 R3 | 触发 R3（次轮/终稿） | 各席 resume 后再发；终稿 Summary₃；`state=done` |
-| 7 正文 UI | 浏览时间线；有 process 的卡片点「查看过程」 | **默认**仅 `content_text`；过程折叠；展开后可见 process_ref |
-| 8 刷新恢复 | 浏览器刷新（或重开应用） | 回到同一 room（localStorage `oneagents.roundtable.activeRoomId`）；Brief/turns/总结仍在；底栏裁判会话可恢复 |
-
-### 3c. Brief CLI 同步（#264）
-
-裁判 seat 在独立 cwd，对话不会自动回写 app。R1 结束后应用 CLI 写入 Brief：
+或逐步：
 
 ```bash
-# 开发环境常无 PATH 上的 1agents：用 make backend 产物或 help 打印的绝对路径
-BIN=./build/1agents   # 或 help 输出的 binary: 行
-$BIN roundtable help
-$BIN roundtable get --json
-$BIN roundtable set-brief \
-  --title "…" --question "…" --constraints "…" --success-criteria "…" \
-  [--product-kind software|hardware|hybrid] [--json]
-# 也可：export ONEAGENTS_CLI=$PWD/build/1agents  （与 project-items 相同）
+cd backend
+go test ./internal/roundtable/ -count=1
+
+cd ../frontend
+yarn check
+npx --yes tsx --test \
+  src/components/roundtable/stage.test.ts \
+  src/components/roundtable/breadcrumbs.test.ts
 ```
+
+vNext 实施时，需要在上述命令中补入 Brief 版本、RoundRun 幂等、页面交互和失败恢复测试。只通过现有 stage/breadcrumb 单测不代表交互验收完成。
+
+## 2. MVP 编排回归
 
 | # | 验收项 | 期望 |
 |---|--------|------|
-| C1 | CLI help / get | help 打印**已解析二进制绝对路径**（非仅 bare `1agents`）；`get --json` 含 id/state/brief；mention `ONEAGENTS_CLI` |
-| C2 | 跨 cwd 解析 | 裁判 app seat cwd 下可不传 `--room` 成功 set-brief |
-| C3 | 写入对齐 ConfirmBrief | set-brief 后 GetRoom.brief 一致、`state=waiting_r2`、system turn 存在 |
-| C4 | 拒绝占位 | constraints/success_criteria=`—` 时非 0 exit；UI 提交按钮在字段不全时禁用 |
-| C5 | 裁判 seed | 新建房间后裁判 AGENTS.md 含 set-brief 示例；cwd 有 `.1agents-roundtable.json` |
+| M1 | 创建圆桌 | 创建 1 裁判 + 市场/产品/研发/运营/财务，共 6 席 |
+| M2 | R1 | 裁判多轮澄清；Brief 四个必填字段不得为空或使用占位符 |
+| M3 | R2 隔离 | 五席只获得确认 Brief 和各自角色指令，不获得其他席位正文 |
+| M4 | R2 总结 | 裁判 Summary₂ 标注来源、共识、分歧、缺失证据 |
+| M5 | R3 resume | 各席恢复原 `acp_session_id`，获得 R2 公开上下文 |
+| M6 | R3 总结 | Summary₃ 包含最终判断、取舍、行动项和未决风险 |
+| M7 | 正文契约 | 主 UI 默认只展示 `content_text`；tool/thinking 按需展开 |
+| M8 | 持久化 | 刷新后 room、seat、turn、Brief 和 summary 可恢复 |
+| M9 | 角色区分 | 产品和研发等席位的使命、分析框架和输出边界可区分 |
+| M10 | 导航 | 全局返回图标与圆桌面包屑能回到圆桌/列表 |
 
-自动化：`go test ./internal/roundtable/ -count=1 -run 'TestCLI_|TestResolve|TestValidateBrief|TestCreateRoom_WritesSidecar'`
+## 3. P0 交互止血
 
-### 3b. 布局清单（#260 · design §6）
+### 3.1 Brief 唯一正文
 
-> **一句话：** 底栏 = 裁判嵌入 Chat；时间线不嵌裁判。  
-> **与 #256：** #256 = 时间线壳（阶段条 / 席位条 / turn 卡 / 侧栏）；#260 = 壳底部固定裁判会话。
+创建并确认一份包含长文本的 Brief，检查圆桌页面：
 
-| # | 验收项 | 期望 |
-|---|--------|------|
-| L1 | 底栏固定 ChatUI 嵌入区 | 绑定裁判 `seat.session_id`；历史 + 实时流 + typing；sticky/fixed，不随时间线滚走 |
-| L2 | 时间线 / 席位区无裁判第二份嵌入卡 | 裁判 speaking 时**只**在底栏出现嵌入 Chat，不在 turn/speaking 卡再嵌一份 |
-| L3 | 无旧版自定义简易底栏 | 无 `chatText` 纯文本 + 简易 send；R1 输入走底栏裁判 Composer |
-| L4 | 复用 Chat 嵌入组件 | 使用 #261 `EmbeddedChat`（或等价 MessageList + typing + Composer），非自绘气泡 |
-| L5 | 职能席（可选 / 正交） | panelist 实时可在时间线各自嵌入；**绝不**占底栏；P0 以裁判底栏为准 |
+- [ ] 只有 Inspector 中存在一份完整 Brief 正文。
+- [ ] 房间头部没有第二张完整 Brief 卡。
+- [ ] `brief_confirmed` 只显示紧凑事件，不复制四字段全文。
+- [ ] 右侧没有再复制 Summary 全文。
+- [ ] 列表页只显示 Brief question 的一句预览。
 
-**实现对照（代码路径，便于自查）：**
+### 3.2 R1 圆桌内对话
 
-| 区域 | 组件 / 约定 |
-|------|-------------|
-| 时间线壳 | `RoundtableRoom` + `StageBar` / `SeatBar` / `TurnCard`（#256） |
-| 底栏裁判 | 主栏底部 sticky `EmbeddedChat`，`sessionId = referee.session_id`，R1 `readOnly=false` |
-| 禁止 | 时间线对 `role=referee` 再渲染 `SpeakingSeatCard` / 第二份嵌入；`rt-composer` + `chatText` 简易底栏 |
+- [ ] 创建圆桌后，R1 主区直接展示裁判 `EmbeddedChat`。
+- [ ] 能在圆桌内发送消息并看到历史、typing 和流式回复。
+- [ ] 不需要点击右侧席位离开圆桌才能完成 R1。
+- [ ] R1 相同消息不会同时出现在 EmbeddedChat 和普通时间线卡。
+- [ ] 仍可按需打开裁判底层完整会话，并能返回原圆桌。
 
----
+### 3.3 用户文案
 
-### API 等价路径（无 UI 时）
+- [ ] 主按钮使用“确认议题”“开始独立分析”“开始交叉讨论”等用户语言。
+- [ ] 页面不显示 `waiting_r2`、`summarizing_r2`、`seat cwd`、`ONEAGENTS_CLI`。
+- [ ] 常驻标题区不同时展示阶段条、六席 Chip、六席列表和完整 Brief。
+- [ ] 手工刷新不作为常驻主操作；断线或失败时才出现恢复入口。
 
-```bash
-BASE=http://127.0.0.1:38080
+## 4. BriefVersion
 
-# 建房
-ROOM=$(curl -sS -X POST "$BASE/api/roundtable/rooms" \
-  -H 'Content-Type: application/json' \
-  -d '{"title":"§7 手工冒烟"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['id'])")
-echo "room=$ROOM"
+### 4.1 提案与确认
 
-# R1 chat（需真 bridge 时才有真实模型回复）
-curl -sS -X POST "$BASE/api/roundtable/rooms/$ROOM/chat" \
-  -H 'Content-Type: application/json' \
-  -d '{"text":"议题：两周验证协作工具 PMF"}' | head -c 400; echo
+- [ ] 裁判使用结构化 proposal 更新 Brief，不依赖 Markdown 解析。
+- [ ] Chat 只显示“Brief 草案已更新至 vN”的事件引用。
+- [ ] Inspector 显示草案版本、状态和最后更新时间。
+- [ ] 用户可编辑并保存草案。
+- [ ] Agent 不能把 proposal 直接标记为 confirmed。
+- [ ] 用户确认时提交明确 version。
+- [ ] 确认后，R2 读取该 version 的不可变快照。
 
-# 确认 Brief
-curl -sS -X POST "$BASE/api/roundtable/rooms/$ROOM/brief" \
-  -H 'Content-Type: application/json' \
-  -d '{"title":"协作 PMF","question":"如何两周验证？","constraints":"3人","success_criteria":"5种子用户"}'
+### 4.2 版本冲突
 
-# R2 / R3（真 agent，耗时与费用取决于 harness）
-curl -sS -X POST "$BASE/api/roundtable/rooms/$ROOM/r2"
-curl -sS -X POST "$BASE/api/roundtable/rooms/$ROOM/r3"
+用两个客户端同时打开同一 R1：
 
-# 刷新等价：GET
-curl -sS "$BASE/api/roundtable/rooms/$ROOM" | python3 -m json.tool | head -80
-```
+1. 客户端 A 保存 v2。
+2. 客户端 B 基于 v1 保存。
 
----
+期望：
 
-## 4. 真 agent 可选冒烟（非门禁）
+- [ ] B 不覆盖 A。
+- [ ] B 看到“Brief 已被更新”的冲突提示。
+- [ ] 用户可以重新加载 v2 或复制自己的修改再提交。
 
-当需要验证真实 1acp resume / Grok Build 进程时：
+### 4.3 R2 后修改
 
-1. 确认 `ACPX_PORT`（或 daemon 配置）指向运行中的 bridge。
-2. 走 §3 手工或 §3 API 路径。
-3. 在 R2 后检查 6 个 chat session 的 `agent_type=grok-build`。
-4. R3 后比对各席 `acp_session_id` 与 R2 一致（GET seats / room）。
+- [ ] R2 开始后，不能静默修改已使用的 Brief。
+- [ ] “修改议题并重新讨论”创建新版本。
+- [ ] 旧 R2/R3 输出明确标注基于旧 Brief version。
+- [ ] MVP 可从 R2 重新开始，不要求复用旧输出。
 
-失败时：把 HTTP 状态、room id、state、failed_roles 记入任务评论。
+## 5. RoundRun 可靠运行
 
----
+### 5.1 幂等启动
 
-## 5. 失败点记录模板
+两个客户端同时发起 R2：
 
-```
-§7.N FAIL: <简述>
-证据: <测试名 / HTTP 码 / 日志摘录 / 截图路径>
-影响: 阻塞 / 不阻塞
-```
+- [ ] 服务端只创建一个 `RoundRun(round=2)`。
+- [ ] 只调用五个 panelist 各一次。
+- [ ] 第二个请求返回已有 run，而不是再次执行。
+- [ ] 状态在执行开始前原子切到 running。
 
-任务 #258 评论应粘贴完整 §7 条 PASS/FAIL 表。  
-任务 #260 / #263：另附 §3b 布局 L1–L5 PASS/FAIL（与 design §6「底栏=裁判嵌入 Chat，时间线不嵌裁判」一致）。
+R3 重复同样测试。
+
+### 5.2 真实进度
+
+- [ ] 运行中显示 `completed / total`。
+- [ ] 当前运行席位可见。
+- [ ] 已完成、失败、进行中和等待状态同时有文字，不只靠颜色。
+- [ ] 裁判总结阶段与五席发言阶段可区分。
+- [ ] 断线重连后恢复到同一 run 和最后事件序号。
+
+### 5.3 部分失败
+
+模拟一个 panelist 失败：
+
+- [ ] 其他四席结果仍保留。
+- [ ] 用户可以只重试失败席位。
+- [ ] 用户可以选择跳过并继续总结。
+- [ ] Summary 明确标注缺席席位。
+- [ ] 重试不会重复执行已完成席位。
+
+模拟裁判总结失败：
+
+- [ ] 五席正文仍保留。
+- [ ] 用户可以只重试总结。
+- [ ] 不要求重新运行五席。
+
+## 6. 阶段化工作台
+
+### R1
+
+- [ ] 首屏主任务是与主持人澄清议题。
+- [ ] Brief proposal 到达时，Inspector 有明确更新提示。
+
+### R2
+
+- [ ] 首屏主任务是查看独立分析进度和五席观点。
+- [ ] 每席可展开正文和过程。
+- [ ] Summary₂ 只有一个完整正文实例。
+
+### R3
+
+- [ ] 每席明确展示“保留 / 修正 / 反驳 / 新增证据”。
+- [ ] 能追溯回应对象和上一轮观点。
+- [ ] Summary₃ 只有一个完整正文实例。
+
+### Done
+
+- [ ] 默认首屏展示最终建议。
+- [ ] 接着展示关键取舍、行动项、负责职能和未决风险。
+- [ ] R2/R3 历史默认折叠，可按需查看。
+- [ ] 用户不需要滚到长时间线底部寻找最终结论。
+
+## 7. 移动端与可访问性
+
+在 375px 宽度下：
+
+- [ ] 提供“讨论 / 议题 / 参与者”分段视图。
+- [ ] 不把桌面 Inspector 直接堆到页面底部。
+- [ ] 不存在两个需要同时操作的嵌套滚动区。
+- [ ] Composer 与主操作位于安全区内并保持可达。
+- [ ] 所有触摸目标至少 44×44px。
+
+键盘与读屏：
+
+- [ ] 所有操作可通过键盘完成。
+- [ ] Brief 保存错误后聚焦首个错误字段。
+- [ ] 过程弹层关闭后焦点恢复到触发按钮。
+- [ ] 运行进度使用短 `aria-live` 消息。
+- [ ] 轮询或事件更新不会导致整条时间线重复朗读。
+
+## 8. 必须新增的自动化测试
+
+### Frontend
+
+- [ ] 同一页面只渲染一个完整 Brief。
+- [ ] `brief_proposed` 更新 Inspector，Chat 只渲染事件引用。
+- [ ] `brief_confirmed` 不渲染四字段正文。
+- [ ] R1 EmbeddedChat 与时间线不重复消息。
+- [ ] 每个房间状态只出现正确主操作。
+- [ ] 部分失败显示重试/跳过。
+- [ ] Done 默认渲染最终结论。
+- [ ] 移动端三个分段可切换且主操作可达。
+
+### Backend
+
+- [ ] Brief version proposal / edit / confirm。
+- [ ] stale version 冲突。
+- [ ] R2 使用确认 version 快照。
+- [ ] R2/R3 并发启动只创建一个 run。
+- [ ] 单席重试不重复已完成席位。
+- [ ] 总结失败只重试总结。
+- [ ] 事件序号断线续传。
+- [ ] 旧 room/brief 数据迁移后仍可读取。
+
+## 9. Ship gate
+
+以下条件全部满足才能关闭“圆桌交互改版”顶层需求：
+
+1. P0、BriefVersion、RoundRun、阶段化工作台和恢复任务全部完成。
+2. `go test ./internal/roundtable/ -count=1` 通过。
+3. `yarn check` 通过。
+4. 新增前端交互测试和后端并发/版本测试全部通过。
+5. 手工完成一次真实 Agent R1 → R2 → R3 → Done。
+6. 375px 移动端与键盘/读屏清单通过。
+7. 页面中不存在重复 Brief/Summary 完整正文。

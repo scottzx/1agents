@@ -1,10 +1,10 @@
 # Agents 圆桌脑暴 MVP
 
-**Status:** 已定稿（待实现）  
+**Status:** MVP 已实现；交互改版 vNext 待实施
 **Author:** scott + Grok  
 **Date:** 2026-07-23  
 **Scope:** 真多 session 编排（路线 B）、tmp 席位、1acp resume、发现中心/应用入口、固定 3 轮剧本  
-**成功标准:** 功能上线可跑通 3 轮（有这个功能）  
+**成功标准:** 三轮可可靠运行；Brief 单一真源；用户无需离开圆桌即可完成 R1；完成态优先展示最终结论
 **执行人:** grok-build  
 
 ---
@@ -187,80 +187,176 @@ Brief {
 
 持久化：以 **刷新可恢复 room + 可 resume session** 为准（meta.db 或等价存储，实现时选型）。
 
+### 5.4 vNext interaction data
+
+MVP 的 `room.brief` 只表达最终值，无法区分 Chat 草案、Agent 提案和用户确认。vNext 增加两个最小领域对象：
+
+```text
+BriefVersion {
+  room_id, version
+  status: draft | proposed | confirmed | superseded
+  content_json
+  proposed_by: user | referee
+  source_turn_id?
+  created_at, updated_at, confirmed_at?
+}
+
+RoundRun {
+  id, room_id, round
+  status: queued | running | summarizing | completed |
+          partial_failed | failed | canceled
+  idempotency_key
+  started_at, finished_at?, error?
+}
+```
+
+- Room 保存当前/已确认 Brief version，不再把 Chat Markdown 当作 Brief 数据源。
+- Agent 只能 propose；用户确认指定 version。
+- R2/R3 启动必须先原子抢占状态并创建唯一 RoundRun。
+- 房间响应向前端提供 `phase`、`phase_status`、`next_action` 和席位进度。
+- 增加可恢复的房间事件序列：Brief 更新、阶段变化、席位开始/完成/失败、总结开始/完成。
+
+RoundRun API 兼容约定：
+
+- `POST /api/roundtable/rooms/{id}/r2|r3` 默认返回 `202` 和
+  `{ run_id, run, room, reused }`，不等待五席或总结完成。
+- 请求体 `idempotency_key` 或 `Idempotency-Key` 头可标识调用；即使多窗口使用不同
+  key，同一房间同一轮也只会创建一个 Run，后续请求返回 `reused=true`。
+- 旧同步调用方可显式传 `?wait=1`，继续获得原
+  `RunR2Response`/`RunR3Response` 和 `200`；这是迁移兼容路径，新 UI 不使用。
+- `GET /api/roundtable/rooms/{id}/events?after=<seq>` 返回持久化增量事件和
+  `last_seq`；也接受 `Last-Event-ID`，重连时从最后已处理序号继续。
+
 ---
 
 ## 6. UI
 
-> **布局定稿（2026-07-23，#260）**：**底栏 = 裁判嵌入 Chat**；**时间线不嵌裁判**。  
-> 与 #256 关系：#256 提供时间线壳（阶段条 / 席位条 / turn 卡 / 侧栏）；本节省 **固定底栏裁判会话**（历史 + 实时流 + Composer）。
+> **vNext 交互决策（2026-07-27）**：圆桌是一个**按阶段变化的讨论工作台**。
+> R1、R2、R3 和完成态分别突出该阶段的主任务；Brief、Summary₂、Summary₃ 各自只有一个完整正文实例。
+> 本节替代 2026-07-23 的“固定底栏 Chat + 平铺时间线”布局决策。
+
+### 6.1 Overall workbench
 
 ```
-┌─────────────────────────────────────┐
-│  阶段条 / 席位条 / 时间线 turn 卡    │  ← 主区（#256）：R2/R3 职能发言等
-│  （裁判席位 **不** 再挂一张嵌入卡）  │
-├─────────────────────────────────────┤
-│  【固定底部】ChatUI 嵌入卡           │  ← **唯一**裁判会话组件（#260）
-│  = 裁判 seat.session_id              │
-│  历史记录 + 实时流式 + typing        │
-│  + R1 输入（Composer，复用 ChatUI）  │
-└─────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────┐
+│ 圆桌标题            当前阶段 · 进度              主操作   │
+├───────────────────────────────────────┬───────────────────┤
+│                                       │ Inspector         │
+│ 当前阶段的主工作区                     │ [议题] [参与者]    │
+│                                       │                   │
+│ R1：裁判对话                           │ 唯一 Brief 正文    │
+│ R2：独立观点                           │ 版本 / 状态        │
+│ R3：立场变化与交叉回应                  │ 席位状态 / 来源     │
+│ Done：最终结论                         │                   │
+├───────────────────────────────────────┴───────────────────┤
+│ 仅在需要用户输入或确认时出现的阶段操作区                   │
+└───────────────────────────────────────────────────────────┘
 ```
 
-### 6.1 Main timeline（#256 壳）
+- 标题区只回答：当前圆桌、当前阶段、真实进度、下一动作。
+- 席位完整状态移入 Inspector；标题区只显示总进度和当前运行席位。
+- 常驻刷新按钮移除；断线或错误时提供恢复动作。
+- 界面不出现 `waiting_r2`、`seat cwd`、`ONEAGENTS_CLI` 等内部术语。
 
-- 阶段条：R1 命题 · R2 首轮 · R3 次轮 · 终稿  
-- Turn 卡片：职能名 + 正文 only（`content_text`）  
-- 「查看过程」展开 process（可选）  
-- 进行中：席位条 `speaking / done / error`  
-- **裁判不在时间线重复嵌卡**：时间线 / 席位「发言卡」区**不得**再挂一份裁判 `EmbeddedChat`（避免与底栏双份 UI）  
-- 职能席（panelist）发言过程：可在时间线用各自嵌入或正文卡展示实时（与底栏正交；P0 可先保证裁判底栏）
+### 6.2 R1 · Referee conversation + Brief Inspector
 
-### 6.2 固定底栏 · 裁判嵌入 Chat（#260）
+- R1 主区直接嵌入裁判 `EmbeddedChat`，绑定裁判 `seat.session_id`。
+- 用户不需要离开圆桌打开普通 ChatUI。
+- R1 Chat 消息不再同时复制为普通时间线卡。
+- 裁判使用结构化 `propose-brief` 更新 Brief 草案；Chat 只显示“Brief 草案已更新至 vN”的紧凑事件。
+- Inspector 是桌面端唯一完整 Brief 正文，支持编辑、保存、版本状态和用户确认。
+- Agent 只能提案，只有用户可以确认。
+- 确认事件显示“你已确认 Brief vN”，不得复制四字段全文。
 
-- **底栏 = 裁判嵌入 Chat**：页面主栏底部 **sticky/fixed** 一条嵌入 `EmbeddedChat`（或等价），绑定 **裁判** `seat.session_id`  
-- 能力：会话**历史** + **实时流式** + **typing** + R1 **Composer**（复用 #261 Chat 嵌入组件，非自绘气泡）  
-- **无自定义简易底栏**：去掉 `chatText` 类纯文本输入；R1 用户输入只走底栏裁判 Composer / bridge  
-- 底栏不随时间线滚动消失  
-- 非目标：底栏再绑 panelist session；开放式 GroupChat
+### 6.3 R2 · Independent analysis
 
-### 6.3 Side (minimal)
+- 开始后立即显示真实 `completed / total`、当前运行席位和失败席位。
+- 每席默认展示职能、状态、一句话结论和可展开正文。
+- `process_ref` 默认折叠；完整底层会话按需打开。
+- 单席失败时提供“重试”和“跳过并继续”，不丢失其他已完成席位。
+- Summary₂ 全文只出现在主区；Inspector 只提供状态和锚点。
 
-- 当前 Brief、最新 Summary、席位列表  
-- 不接 Diff / 文件树（app seat 纯对话）
+### 6.4 R3 · Cross review
 
-### 6.4 Global breadcrumb
+- R3 继续 resume 同一席位 session。
+- UI 优先呈现每席的“保留 / 修正 / 反驳 / 新增证据”，而不是再次平铺五张同质卡片。
+- Summary₃ 是最终结论的数据来源，正文不在侧栏重复。
 
-- 使用全局 `WorkspaceHeader` 导航，左侧固定为独立、无外边框的「返回上一级」图标按钮，不在内容区重复放返回按钮。
-- 图标右侧才是可点击的路径面包屑：`圆桌列表 › <具体圆桌> › <具体会话>`；路径中不出现「返回」文字节点。
-- 返回图标始终回到当前层的上一级；在列表层则回到发现中心的应用列表。
-- 从席位打开完整 ChatUI 后保留圆桌上下文，可经面包屑回到原圆桌或圆桌列表。
+### 6.5 Done · Final-first
 
-### 6.5 Entry
+完成态首屏按以下顺序展示：
+
+1. 最终建议；
+2. 关键取舍；
+3. 行动项与负责职能；
+4. 未决风险；
+5. Brief；
+6. R2/R3 证据；
+7. Agent 底层会话和 process。
+
+历史时间线默认折叠，不再要求用户滚到页面底部查找最终结论。
+
+### 6.6 Canonical artifact rule
+
+- 同一页面中，Brief、Summary₂、Summary₃ 各自只能有一个完整正文实例。
+- 其他位置只允许状态、版本、摘要、锚点或事件引用。
+- 房间头部不渲染完整 Brief 卡。
+- system turn 使用结构化 `event_type` / `artifact_ref`，渲染为紧凑事件行。
+- 列表页允许展示 Brief question 的一句预览，因为它是跨房间导航摘要，不是房间内第二正文。
+
+### 6.7 Inspector
+
+- 桌面端右侧提供“议题 / 参与者”两个页签。
+- “议题”展示当前 Brief 版本、状态、内容和确认动作。
+- “参与者”展示六席状态、当前运行、失败恢复和底层会话入口。
+- Summary 全文不再复制到 Inspector。
+
+### 6.8 Global navigation
+
+- 使用全局 `WorkspaceHeader` 导航，左侧为独立返回图标。
+- 面包屑：`圆桌列表 › <具体圆桌> › <具体会话>`。
+- 打开席位底层会话后保留圆桌上下文，可返回原圆桌。
+
+### 6.9 Entry
 
 | 入口 | 行为 |
 |------|------|
-| 发现中心 → 应用 | 卡片「Agents 圆桌」→ 启动 |
+| 发现中心 → 应用 | 卡片「Agents 圆桌」→ 打开圆桌列表 |
 | 更多应用 | 同一 App |
-| App manifest | 如 `id: agents-roundtable`，mount 进应用中心 |
+| App manifest | `id: agents-roundtable`，mount 进应用中心 |
 
-启动向导 MVP：议题草稿（可空）→ 固定编制展示 → 「开始」。
+启动向导只要求用户输入要讨论的问题；固定六席折叠展示。主按钮为“创建并开始澄清”，不展示底层 harness/session 术语。
+
+### 6.10 Mobile and accessibility
+
+- 移动端使用“讨论 / 议题 / 参与者”分段视图，不把桌面侧栏简单堆到底部。
+- R1 Composer 和主操作保持在安全区内可达。
+- 触摸目标不小于 44×44px。
+- 状态必须同时有文字/图标，不只靠颜色。
+- 运行进度使用短 `aria-live` 消息；不得因轮询重绘而重复朗读整条时间线。
+- 保存错误后聚焦首个错误字段；弹层关闭后恢复触发按钮焦点。
 
 ---
 
 ## 7. Acceptance (ship criteria)
 
-1. 从 **发现中心 → 应用**（或更多）能打开圆桌并创建 room。  
-2. 一局创建 **6** 个 Grok Build session（1 裁判 + 5 职能）。  
-3. R1：与裁判多轮后确认 Brief（输入走 **底栏裁判嵌入 Composer**，非自定义简易底栏）。  
-4. R2：五席在 **隔离上下文** 下各一条发言；裁判 Summary₂。  
-5. R3：各席 **resume** 后再发；上下文含 **R2 全部正文 + Summary₂**；裁判 Summary₃。  
-6. 主 UI **默认只见正文**；过程可折叠。  
-7. 刷新后 room 可恢复；未结束席位可继续 resume。  
-8. Summary 能区分职能来源；研发与产品观点可区分。  
-9. **布局（#260）**：底栏固定裁判 `EmbeddedChat`（历史 + 实时 + typing + Composer）；时间线/席位区**不**再渲染裁判第二份嵌入卡；无旧版 `chatText` 简易底栏。
-10. **导航**：全局标题栏同时提供独立的返回图标和「圆桌列表 › 具体圆桌 › 具体会话」路径面包屑；图标回上一级，路径节点按名称跳转。
-11. **工作空间**：裁判与五个职能席位全部持久化为 `kind=app`。
-12. **角色提示词**：六个席位在创建时都写入完整 role prompt，包含使命、职能分析框架、明确行为设置、边界与输出结构；首次 ACP 调用注入同份完整契约。
+1. 从发现中心能打开圆桌并创建 room。
+2. 一局创建 6 个独立 Agent session（1 裁判 + 5 职能）。
+3. R1 无需离开圆桌即可与裁判多轮澄清。
+4. 同一页面只有一份完整 Brief 正文；proposal、编辑、确认指向明确版本。
+5. Agent 不能替用户确认 Brief；确认事件不复制四字段全文。
+6. R2 五席在隔离上下文下各一条发言；裁判生成 Summary₂。
+7. R3 各席 resume；上下文含 R2 正文与 Summary₂；裁判生成 Summary₃。
+8. 两个客户端并发启动同一轮时只创建一个 RoundRun。
+9. 运行中显示真实 `n/5` 进度、当前席位和失败席位。
+10. 单席失败可重试或跳过继续；其他结果不丢失。
+11. 刷新或重连后恢复 room、Brief 版本和运行进度。
+12. 完成态默认展示最终结论、行动项和未决风险。
+13. 主 UI 默认只见正文；过程可折叠。
+14. Summary 能区分职能来源；R3 能体现保留、修正和反驳。
+15. 全局标题栏提供返回图标与圆桌路径面包屑。
+16. 375px 宽度下，无嵌套滚动即可访问讨论、议题、参与者和主操作。
+17. 关键交互、幂等启动、Brief 版本冲突和失败恢复有自动化测试。
 
 ---
 
@@ -276,6 +372,18 @@ Brief {
 | 5b | 固定底栏裁判嵌入 Chat（历史+流式+Composer）；时间线不嵌裁判 — #260 | design §6.2 / §7.9 |
 | 6 | App / 发现中心入口 + 启动向导 | 从应用位一键进入 |
 | 7 | 端到端冒烟（创建→R1→R2→R3→终稿） | 验收清单 §7 全绿 |
+
+### 8.1 vNext interaction slices
+
+| # | 切片 | 验证 |
+|---|------|------|
+| 8 | Brief UI 去重 + system event 紧凑渲染 | 房间内只有一个完整 Brief 正文 |
+| 9 | R1 圆桌内裁判 Chat + 对话去重 | 不离开圆桌可完成 R1；无双份消息 |
+| 10 | BriefVersion + propose/confirm 契约 | Agent 只能提案；用户确认明确版本 |
+| 11 | RoundRun 异步/幂等/进度事件 | 并发启动一次；刷新可恢复真实进度 |
+| 12 | R2/R3 阶段化工作台 + Final-first | 每阶段主任务明确；完成态先见结论 |
+| 13 | 单席重试/跳过 + 总结恢复 | 部分失败不要求整场重来 |
+| 14 | 移动端/a11y/交互自动化验收 | 375px、键盘、读屏和核心测试通过 |
 
 ---
 

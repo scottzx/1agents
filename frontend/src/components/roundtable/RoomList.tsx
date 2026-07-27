@@ -40,9 +40,9 @@ export function RoomList({ onOpenRoom, onCreate, refreshKey = 0 }: RoomListProps
         <div class="rt-room rt-room-list">
             <header class="rt-list-header">
                 <div class="rt-list-title-block">
-                    <span class="rt-list-kicker">Agents · Roundtable</span>
-                    <h1 class="rt-list-title">圆桌话题</h1>
-                    <p class="rt-list-desc">真多 session 编排 · 裁判 + 五职能 · 固定三轮。点卡片进入，或新建一局。</p>
+                    <span class="rt-list-kicker">多职能共议</span>
+                    <h1 class="rt-list-title">我的圆桌问题</h1>
+                    <p class="rt-list-desc">从你的问题出发，优先继续标有“等待我操作”的讨论。</p>
                 </div>
                 <div class="rt-list-actions">
                     <button
@@ -96,8 +96,8 @@ export function RoomList({ onOpenRoom, onCreate, refreshKey = 0 }: RoomListProps
                                 <path d="M9.5 9.5 7.5 13M14.5 9.5l2 3.5M8.5 15.5h7" stroke-linecap="round" />
                             </svg>
                         </div>
-                        <h2 class="rt-list-empty-title">还没有圆桌话题</h2>
-                        <p class="rt-list-empty-desc">创建一局后会出现在这里。一行最多四张卡片，随时从侧栏回来继续。</p>
+                        <h2 class="rt-list-empty-title">还没有要讨论的问题</h2>
+                        <p class="rt-list-empty-desc">写下一个真实问题，六个职能会先独立判断，再共同收敛行动建议。</p>
                         <button type="button" class="rt-btn rt-btn-primary" onClick={onCreate}>
                             新建第一局
                         </button>
@@ -110,7 +110,7 @@ export function RoomList({ onOpenRoom, onCreate, refreshKey = 0 }: RoomListProps
                             +
                         </span>
                         <span class="rt-topic-new-label">新建圆桌</span>
-                        <span class="rt-topic-new-hint">议题草稿 · 固定 6 席</span>
+                        <span class="rt-topic-new-hint">从一个需要决策的问题开始</span>
                     </button>
 
                     {rooms.map(room => (
@@ -125,11 +125,12 @@ export function RoomList({ onOpenRoom, onCreate, refreshKey = 0 }: RoomListProps
 function TopicCard({ room, onOpen }: { room: RoundtableRoom; onOpen: () => void }) {
     const stageIdx = stageIndexFromState(room.state);
     const tone = stateTone(room.state);
+    const needsAction = waitsForUser(room);
 
     return (
         <button type="button" class={`rt-topic-card is-${tone}`} role="listitem" onClick={onOpen}>
             <div class="rt-topic-card-top">
-                <span class={`rt-topic-badge is-${tone}`}>{stateLabel(room.state)}</span>
+                <span class={`rt-topic-badge is-${needsAction ? 'wait' : tone}`}>{roomCardStatus(room)}</span>
                 <span class="rt-topic-enter" aria-hidden="true">
                     进入
                     <svg class="rt-topic-enter-arrow" viewBox="0 0 16 16" width="14" height="14" fill="none">
@@ -149,7 +150,7 @@ function TopicCard({ room, onOpen }: { room: RoundtableRoom; onOpen: () => void 
             {room.brief?.question ? (
                 <p class="rt-topic-question">{room.brief.question}</p>
             ) : (
-                <p class="rt-topic-question is-muted">尚未确认 Brief · 可在 R1 与裁判澄清</p>
+                <p class="rt-topic-question is-muted">进入后先和主持人把问题、约束与成功标准说清楚。</p>
             )}
 
             <div class="rt-topic-stages" aria-hidden="true">
@@ -188,10 +189,19 @@ function TopicCard({ room, onOpen }: { room: RoundtableRoom; onOpen: () => void 
 
             <div class="rt-topic-card-foot">
                 <span class="rt-topic-time">{formatTime(room.updated_at)}</span>
-                {room.summary_r3 || room.summary_r2 ? <span class="rt-topic-meta">有总结</span> : null}
+                {room.summary_r3 || room.summary_r2 ? <span class="rt-topic-meta">已有阶段结论</span> : null}
             </div>
         </button>
     );
+}
+
+function waitsForUser(room: RoundtableRoom): boolean {
+    if (['confirm_brief', 'start_r2', 'start_r3', 'inspect_failure'].includes(room.next_action)) return true;
+    return room.state === 'drafting_brief' || room.state === 'waiting_r2' || room.state === 'waiting_r3';
+}
+
+export function roomCardStatus(room: RoundtableRoom): string {
+    return waitsForUser(room) ? '等待我操作' : stateLabel(room.state);
 }
 
 type StateTone = 'active' | 'wait' | 'done' | 'error' | 'idle';

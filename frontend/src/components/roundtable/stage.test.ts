@@ -118,6 +118,6 @@ test('launch wizard fixed roster is 6 seats with role labels', () => {
     );
     for (const s of FIXED_ROSTER) {
         assert.ok(ROLE_LABELS[s.role], `missing label for ${s.role}`);
-        assert.equal(s.harness, 'Grok Build');
+        assert.ok(s.responsibility.trim(), `missing responsibility for ${s.role}`);
     }
 });

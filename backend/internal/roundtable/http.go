@@ -76,9 +76,19 @@ func (h *Handler) HandleRoomsRoot(w http.ResponseWriter, r *http.Request) {
 //	GET  /api/roundtable/rooms/{id}/seats   — list seats
 //	GET  /api/roundtable/rooms/{id}/turns   — list turns (main timeline)
 //	POST /api/roundtable/rooms/{id}/chat    — R1 user↔referee multi-turn
-//	POST /api/roundtable/rooms/{id}/brief   — confirm Brief → waiting_r2
-//	POST /api/roundtable/rooms/{id}/r2      — R2 parallel speeches + Summary₂ → waiting_r3
-//	POST /api/roundtable/rooms/{id}/r3      — R3 resume + public context + Summary₃ → done
+//	POST /api/roundtable/rooms/{id}/brief/draft   — save user draft
+//	POST /api/roundtable/rooms/{id}/brief/propose — agent proposal
+//	POST /api/roundtable/rooms/{id}/brief/confirm — user confirms version
+//	POST /api/roundtable/rooms/{id}/brief         — legacy management set+confirm
+//	POST /api/roundtable/rooms/{id}/r2      — async R2 start; 202 + run_id
+//	POST /api/roundtable/rooms/{id}/r3      — async R3 start; 202 + run_id
+//	GET  /api/roundtable/rooms/{id}/events  — recoverable events after ?after=<seq>
+//	POST /api/roundtable/rooms/{id}/runs/{run}/seats/{role}/retry
+//	POST /api/roundtable/rooms/{id}/runs/{run}/skip
+//	POST /api/roundtable/rooms/{id}/runs/{run}/summary/retry
+//
+// Compatibility: old clients may explicitly use r2/r3?wait=1. That opt-in
+// path waits and returns the original RunR2Response/RunR3Response with 200.
 func (h *Handler) HandleRoomsItem(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/api/roundtable/rooms/")
 	rest = strings.Trim(rest, "/")
@@ -105,6 +115,12 @@ func (h *Handler) HandleRoomsItem(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			h.listTurns(w, r, id)
+		case "events":
+			if r.Method != http.MethodGet {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			h.listEvents(w, r, id)
 		case "chat":
 			if r.Method != http.MethodPost {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -148,6 +164,10 @@ func (h *Handler) HandleRoomsItem(w http.ResponseWriter, r *http.Request) {
 			}
 			h.runR3(w, r, id)
 		default:
+			if strings.HasPrefix(action, "runs/") {
+				h.recoverRun(w, r, id, action)
+				return
+			}
 			http.Error(w, "unknown action: "+action, http.StatusNotFound)
 		}
 		return
@@ -157,6 +177,57 @@ func (h *Handler) HandleRoomsItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.getRoom(w, r, id)
+}
+
+func (h *Handler) recoverRun(w http.ResponseWriter, r *http.Request, roomID, action string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	parts := strings.Split(strings.Trim(action, "/"), "/")
+	if len(parts) < 3 || parts[0] != "runs" || strings.TrimSpace(parts[1]) == "" {
+		http.Error(w, "invalid recovery action", http.StatusNotFound)
+		return
+	}
+	runID := parts[1]
+	var (
+		response *RecoverRoundResponse
+		err      error
+	)
+	switch {
+	case len(parts) == 5 && parts[2] == "seats" && parts[4] == "retry":
+		response, err = h.svc.RetryRoundSeat(roomID, runID, Role(parts[3]))
+	case len(parts) == 3 && parts[2] == "skip":
+		response, err = h.svc.SkipFailedSeatsAndSummarize(roomID, runID)
+	case len(parts) == 4 && parts[2] == "summary" && parts[3] == "retry":
+		response, err = h.svc.RetryRoundSummary(roomID, runID)
+	default:
+		http.Error(w, "unknown recovery action", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		writeRecoveryErr(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	writeJSON(w, response)
+}
+
+func writeRecoveryErr(w http.ResponseWriter, err error) {
+	if errors.Is(err, meta.ErrNotFound) {
+		http.Error(w, "run or room not found", http.StatusNotFound)
+		return
+	}
+	message := err.Error()
+	if strings.Contains(message, "unavailable") ||
+		strings.Contains(message, "does not belong") ||
+		strings.Contains(message, "invalid panelist") ||
+		strings.Contains(message, "no failed seats") {
+		http.Error(w, message, http.StatusConflict)
+		return
+	}
+	http.Error(w, message, http.StatusInternalServerError)
 }
 
 func (h *Handler) listRooms(w http.ResponseWriter, r *http.Request) {
@@ -217,6 +288,45 @@ func (h *Handler) listTurns(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 	writeJSON(w, map[string]any{"turns": turns})
+}
+
+func (h *Handler) listEvents(w http.ResponseWriter, r *http.Request, id string) {
+	afterText := strings.TrimSpace(r.URL.Query().Get("after"))
+	if afterText == "" {
+		afterText = strings.TrimSpace(r.Header.Get("Last-Event-ID"))
+	}
+	var after int64
+	if afterText != "" {
+		value, err := strconv.ParseInt(afterText, 10, 64)
+		if err != nil || value < 0 {
+			http.Error(w, "after must be a non-negative event sequence", http.StatusBadRequest)
+			return
+		}
+		after = value
+	}
+	limit := 200
+	if text := strings.TrimSpace(r.URL.Query().Get("limit")); text != "" {
+		value, err := strconv.Atoi(text)
+		if err != nil || value <= 0 {
+			http.Error(w, "limit must be positive", http.StatusBadRequest)
+			return
+		}
+		limit = value
+	}
+	events, err := h.svc.ListRoundEvents(id, after, limit)
+	if err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	lastSeq := after
+	if len(events) > 0 {
+		lastSeq = events[len(events)-1].Seq
+	}
+	w.Header().Set("X-Last-Event-Seq", strconv.FormatInt(lastSeq, 10))
+	writeJSON(w, map[string]any{
+		"events":   events,
+		"last_seq": lastSeq,
+	})
 }
 
 func (h *Handler) chat(w http.ResponseWriter, r *http.Request, id string) {
@@ -350,60 +460,101 @@ func writeBriefMutationErr(w http.ResponseWriter, err error) {
 }
 
 func (h *Handler) runR2(w http.ResponseWriter, r *http.Request, id string) {
+	var req struct {
+		IdempotencyKey string `json:"idempotency_key"`
+	}
 	if r.Body != nil {
 		defer r.Body.Close()
-		// Drain optional empty body.
-		_, _ = io.Copy(io.Discard, r.Body)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
 	}
-	resp, err := h.svc.RunR2(id)
+	if req.IdempotencyKey == "" {
+		req.IdempotencyKey = r.Header.Get("Idempotency-Key")
+	}
+	start, err := h.svc.StartR2(id, req.IdempotencyKey)
 	if err != nil {
-		if errors.Is(err, meta.ErrNotFound) {
-			http.Error(w, "room not found", http.StatusNotFound)
-			return
-		}
-		msg := err.Error()
-		if strings.Contains(msg, "only allowed") || strings.Contains(msg, "required") ||
-			strings.Contains(msg, "brief") {
-			http.Error(w, msg, http.StatusBadRequest)
-			return
-		}
-		if strings.Contains(msg, "bridge unavailable") || strings.Contains(msg, "r2 summary") ||
-			strings.Contains(msg, "agent error") {
-			http.Error(w, msg, http.StatusBadGateway)
-			return
-		}
-		http.Error(w, msg, http.StatusInternalServerError)
+		writeRoundStartErr(w, err)
 		return
 	}
-	writeJSON(w, resp)
+	if r.URL.Query().Get("wait") == "1" {
+		run, err := h.svc.WaitRoundRun(r.Context(), start.RunID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusGatewayTimeout)
+			return
+		}
+		if run.Status == RunFailed || run.Status == RunCanceled {
+			http.Error(w, run.Error, http.StatusBadGateway)
+			return
+		}
+		response, err := h.svc.buildRunR2Response(id)
+		if err != nil {
+			writeStoreErr(w, err)
+			return
+		}
+		writeJSON(w, response)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	writeJSON(w, start)
 }
 
 func (h *Handler) runR3(w http.ResponseWriter, r *http.Request, id string) {
+	var req struct {
+		IdempotencyKey string `json:"idempotency_key"`
+	}
 	if r.Body != nil {
 		defer r.Body.Close()
-		_, _ = io.Copy(io.Discard, r.Body)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
 	}
-	resp, err := h.svc.RunR3(id)
+	if req.IdempotencyKey == "" {
+		req.IdempotencyKey = r.Header.Get("Idempotency-Key")
+	}
+	start, err := h.svc.StartR3(id, req.IdempotencyKey)
 	if err != nil {
-		if errors.Is(err, meta.ErrNotFound) {
-			http.Error(w, "room not found", http.StatusNotFound)
-			return
-		}
-		msg := err.Error()
-		if strings.Contains(msg, "only allowed") || strings.Contains(msg, "required") ||
-			strings.Contains(msg, "brief") || strings.Contains(msg, "summary_r2") {
-			http.Error(w, msg, http.StatusBadRequest)
-			return
-		}
-		if strings.Contains(msg, "bridge unavailable") || strings.Contains(msg, "r3 summary") ||
-			strings.Contains(msg, "agent error") {
-			http.Error(w, msg, http.StatusBadGateway)
-			return
-		}
-		http.Error(w, msg, http.StatusInternalServerError)
+		writeRoundStartErr(w, err)
 		return
 	}
-	writeJSON(w, resp)
+	if r.URL.Query().Get("wait") == "1" {
+		run, err := h.svc.WaitRoundRun(r.Context(), start.RunID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusGatewayTimeout)
+			return
+		}
+		if run.Status == RunFailed || run.Status == RunCanceled {
+			http.Error(w, run.Error, http.StatusBadGateway)
+			return
+		}
+		response, err := h.svc.buildRunR3Response(id)
+		if err != nil {
+			writeStoreErr(w, err)
+			return
+		}
+		writeJSON(w, response)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	writeJSON(w, start)
+}
+
+func writeRoundStartErr(w http.ResponseWriter, err error) {
+	if errors.Is(err, meta.ErrNotFound) {
+		http.Error(w, "room not found", http.StatusNotFound)
+		return
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "only allowed") || strings.Contains(msg, "required") ||
+		strings.Contains(msg, "brief") || strings.Contains(msg, "round must") {
+		http.Error(w, msg, http.StatusBadRequest)
+		return
+	}
+	http.Error(w, msg, http.StatusInternalServerError)
 }
 
 func writeStoreErr(w http.ResponseWriter, err error) {

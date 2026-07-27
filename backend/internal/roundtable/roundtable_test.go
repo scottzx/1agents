@@ -969,7 +969,7 @@ func TestHTTP_R2(t *testing.T) {
 	}
 
 	rr = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/api/roundtable/rooms/"+room.ID+"/r2", nil)
+	req = httptest.NewRequest(http.MethodPost, "/api/roundtable/rooms/"+room.ID+"/r2?wait=1", nil)
 	h.HandleRoomsItem(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("r2 status %d: %s", rr.Code, rr.Body.String())
@@ -1357,14 +1357,14 @@ func TestHTTP_R3(t *testing.T) {
 	}
 
 	rr = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/api/roundtable/rooms/"+room.ID+"/r2", nil)
+	req = httptest.NewRequest(http.MethodPost, "/api/roundtable/rooms/"+room.ID+"/r2?wait=1", nil)
 	h.HandleRoomsItem(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("r2 status %d: %s", rr.Code, rr.Body.String())
 	}
 
 	rr = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/api/roundtable/rooms/"+room.ID+"/r3", nil)
+	req = httptest.NewRequest(http.MethodPost, "/api/roundtable/rooms/"+room.ID+"/r3?wait=1", nil)
 	h.HandleRoomsItem(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("r3 status %d: %s", rr.Code, rr.Body.String())

@@ -1,6 +1,6 @@
 import { h } from 'preact';
 import type { RoomState } from '@1agents/core/services/roundtableService';
-import { STAGES, stageIndexFromState, stateLabel } from './stage';
+import { STAGES, stageIndexFromState } from './stage';
 
 interface StageBarProps {
     state: RoomState | string | undefined;
@@ -16,9 +16,6 @@ export function StageBar({ state }: StageBarProps) {
 
     return (
         <div class="rt-stage-bar" role="list" aria-label="圆桌阶段">
-            <div class="rt-stage-bar-meta">
-                <span class={`rt-stage-state${failed ? ' is-error' : ''}`}>{stateLabel(state)}</span>
-            </div>
             <ol class="rt-stage-steps">
                 {STAGES.map((s, i) => {
                     let cls = 'rt-stage-step';

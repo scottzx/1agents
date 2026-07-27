@@ -146,6 +146,9 @@ func (svc *Service) CreateRoom(req CreateRoomRequest) (*Room, error) {
 		cleanup()
 		return nil, fmt.Errorf("persist room: %w", err)
 	}
+	if err := svc.projectRoomRuntime(room); err != nil {
+		return nil, err
+	}
 	return room, nil
 }
 
@@ -184,7 +187,16 @@ func (svc *Service) ListRooms(limit int) ([]Room, error) {
 	if svc == nil || svc.store == nil {
 		return nil, fmt.Errorf("roundtable: service not configured")
 	}
-	return svc.store.ListRooms(limit)
+	rooms, err := svc.store.ListRooms(limit)
+	if err != nil {
+		return nil, err
+	}
+	for i := range rooms {
+		if err := svc.projectRoomRuntime(&rooms[i]); err != nil {
+			return nil, err
+		}
+	}
+	return rooms, nil
 }
 
 // GetRoom returns room + seats + turns (main timeline).
@@ -203,6 +215,9 @@ func (svc *Service) GetRoom(id string) (*Room, error) {
 		return nil, err
 	}
 	room.Turns = turns
+	if err := svc.projectRoomRuntime(room); err != nil {
+		return nil, err
+	}
 	return room, nil
 }
 
@@ -674,6 +689,21 @@ func BuildR2SummaryPrompt(brief *Brief, items []r2SpeechItem) string {
 	return sb.String()
 }
 
+// appendMissingRoleRecord makes absence part of the persisted artifact instead
+// of relying on the referee model to follow the prompt perfectly.
+func appendMissingRoleRecord(summary string, items []r2SpeechItem) string {
+	var missing []string
+	for _, item := range items {
+		if item.Failed {
+			missing = append(missing, fmt.Sprintf("- %s：%s", RoleLabel(item.Role), strings.TrimSpace(item.FailMsg)))
+		}
+	}
+	if len(missing) == 0 {
+		return summary
+	}
+	return strings.TrimSpace(summary) + "\n\n## 缺席角色（系统记录）\n" + strings.Join(missing, "\n")
+}
+
 // RunR2Response is the result of POST .../r2.
 type RunR2Response struct {
 	Room        *Room    `json:"room"`
@@ -697,6 +727,12 @@ type panelistPromptResult struct {
 //  2. Extract content_text → turns kind=speech; failed seats marked failed (不阻断)
 //  3. Referee Summary₂ (kind=summary); room.summary_r2 set; state → waiting_r3
 func (svc *Service) RunR2(roomID string) (*RunR2Response, error) {
+	return svc.runR2(roomID, nil)
+}
+
+// runR2 executes either the original direct service path (run=nil) or a run
+// that was already atomically claimed by StartR2.
+func (svc *Service) runR2(roomID string, run *RoundRun) (*RunR2Response, error) {
 	if svc == nil || svc.store == nil {
 		return nil, fmt.Errorf("roundtable: service not configured")
 	}
@@ -704,12 +740,29 @@ func (svc *Service) RunR2(roomID string) (*RunR2Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	if room.State != StateWaitingR2 {
-		return nil, fmt.Errorf("roundtable: r2 only allowed in waiting_r2 (state=%s)", room.State)
-	}
-	briefVersion, err := svc.store.CaptureConfirmedBriefForR2(roomID)
-	if err != nil {
-		return nil, err
+	var briefVersion *BriefVersion
+	if run == nil {
+		if room.State != StateWaitingR2 {
+			return nil, fmt.Errorf("roundtable: r2 only allowed in waiting_r2 (state=%s)", room.State)
+		}
+		briefVersion, err = svc.store.CaptureConfirmedBriefForR2(roomID)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		if run.RoomID != roomID || run.Round != 2 {
+			return nil, fmt.Errorf("roundtable: invalid claimed r2 run")
+		}
+		if room.State != StateSummarizingR2 {
+			return nil, fmt.Errorf("roundtable: claimed r2 requires summarizing_r2 (state=%s)", room.State)
+		}
+		if room.R2BriefVersion <= 0 {
+			return nil, fmt.Errorf("roundtable: r2 brief snapshot required")
+		}
+		briefVersion, err = svc.store.GetBriefVersion(roomID, room.R2BriefVersion)
+		if err != nil {
+			return nil, err
+		}
 	}
 	briefSnapshot := briefVersion.Content
 	if err := ValidateBrief(&briefSnapshot); err != nil {
@@ -756,6 +809,15 @@ func (svc *Service) RunR2(roomID string) (*RunR2Response, error) {
 		if strings.TrimSpace(seat.SessionID) == "" {
 			if err := svc.indexSeatSession(&seat, room.Title, cwd); err != nil {
 				return nil, fmt.Errorf("index session %s: %w", seat.Role, err)
+			}
+		}
+		if run != nil {
+			started, err := svc.store.StartRunSeat(run.ID, seat.Role)
+			if err != nil {
+				return nil, err
+			}
+			if !started {
+				return nil, fmt.Errorf("roundtable: r2 seat %s already started", seat.Role)
 			}
 		}
 		seat.Status = SeatSpeaking
@@ -805,6 +867,11 @@ func (svc *Service) RunR2(roomID string) (*RunR2Response, error) {
 			if err := svc.store.InsertTurn(&turn); err != nil {
 				return nil, err
 			}
+			if run != nil {
+				if err := svc.store.FinishRunSeat(run.ID, seat.Role, true, r.err.Error()); err != nil {
+					return nil, err
+				}
+			}
 			speechTurns = append(speechTurns, turn)
 			items = append(items, r2SpeechItem{
 				Role: seat.Role, SeatID: seat.ID, Failed: true, FailMsg: failMsg,
@@ -842,17 +909,41 @@ func (svc *Service) RunR2(roomID string) (*RunR2Response, error) {
 		if err := svc.store.InsertTurn(&turn); err != nil {
 			return nil, err
 		}
+		if run != nil {
+			if err := svc.store.FinishRunSeat(run.ID, seat.Role, false, ""); err != nil {
+				return nil, err
+			}
+		}
 		speechTurns = append(speechTurns, turn)
 		items = append(items, r2SpeechItem{
 			Role: seat.Role, SeatID: seat.ID, Text: text,
 		})
 	}
 
-	// --- summarizing_r2 ---
-	if err := Transition(room, StateSummarizingR2); err != nil {
-		return nil, err
+	if run != nil && len(failedRoles) > 0 {
+		if err := svc.store.PauseRoundRunForSeats(run.ID); err != nil {
+			return nil, err
+		}
+		full, err := svc.GetRoom(roomID)
+		if err != nil {
+			return nil, err
+		}
+		return &RunR2Response{
+			Room:        full,
+			SpeechTurns: speechTurns,
+			FailedRoles: failedRoles,
+		}, nil
 	}
-	if err := svc.store.UpdateRoomState(room); err != nil {
+
+	// --- summarizing_r2 ---
+	if run == nil {
+		if err := Transition(room, StateSummarizingR2); err != nil {
+			return nil, err
+		}
+		if err := svc.store.UpdateRoomState(room); err != nil {
+			return nil, err
+		}
+	} else if err := svc.store.UpdateRunStatus(run.ID, RunSummarizing, ""); err != nil {
 		return nil, err
 	}
 
@@ -860,17 +951,36 @@ func (svc *Service) RunR2(roomID string) (*RunR2Response, error) {
 	summaryTurn, summaryText, err := svc.runR2RefereeSummary(room, &briefSnapshot, referee, items)
 	if err != nil {
 		// Room-level failure only if summary cannot complete after speeches.
-		_ = Transition(room, StateFailed)
-		_ = svc.store.UpdateRoomState(room)
+		if run == nil {
+			_ = Transition(room, StateFailed)
+			_ = svc.store.UpdateRoomState(room)
+		}
 		return nil, fmt.Errorf("r2 summary: %w", err)
 	}
 
 	room.SummaryR2 = summaryText
-	if err := Transition(room, StateWaitingR3); err != nil {
-		return nil, err
-	}
-	if err := svc.store.UpdateRoomSummaryR2AndState(room); err != nil {
-		return nil, err
+	if run == nil {
+		if err := Transition(room, StateWaitingR3); err != nil {
+			return nil, err
+		}
+		if err := svc.store.UpdateRoomSummaryR2AndState(room); err != nil {
+			return nil, err
+		}
+	} else {
+		status := RunCompleted
+		if len(failedRoles) > 0 {
+			status = RunPartialFailed
+		}
+		if err := svc.store.FinalizeRoundRun(
+			run.ID,
+			status,
+			StateWaitingR3,
+			summaryText,
+			"",
+			RunErrorNone,
+		); err != nil {
+			return nil, err
+		}
 	}
 
 	full, err := svc.GetRoom(roomID)
@@ -976,6 +1086,7 @@ func (svc *Service) runR2RefereeSummary(room *Room, brief *Brief, referee *Seat,
 	if summaryText == "" {
 		summaryText = "（裁判 Summary₂ 无正文输出）"
 	}
+	summaryText = appendMissingRoleRecord(summaryText, items)
 	turn := Turn{
 		ID:          meta.NewID(),
 		RoomID:      room.ID,
@@ -1148,6 +1259,12 @@ func (svc *Service) collectR2SpeechItems(roomID string, seats []Seat) ([]r2Speec
 //  2. Inject Brief + 五席 Speech₂ 全文 + Summary₂（仅正文，无 tool trace）
 //  3. 各 1 speech turn；裁判 Summary₃；state=done
 func (svc *Service) RunR3(roomID string) (*RunR3Response, error) {
+	return svc.runR3(roomID, nil)
+}
+
+// runR3 executes either the original direct service path (run=nil) or a run
+// that was already atomically claimed by StartR3.
+func (svc *Service) runR3(roomID string, run *RoundRun) (*RunR3Response, error) {
 	if svc == nil || svc.store == nil {
 		return nil, fmt.Errorf("roundtable: service not configured")
 	}
@@ -1155,8 +1272,15 @@ func (svc *Service) RunR3(roomID string) (*RunR3Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	if room.State != StateWaitingR3 {
-		return nil, fmt.Errorf("roundtable: r3 only allowed in waiting_r3 (state=%s)", room.State)
+	wantState := StateWaitingR3
+	if run != nil {
+		if run.RoomID != roomID || run.Round != 3 {
+			return nil, fmt.Errorf("roundtable: invalid claimed r3 run")
+		}
+		wantState = StateSummarizingR3
+	}
+	if room.State != wantState {
+		return nil, fmt.Errorf("roundtable: r3 only allowed in %s (state=%s)", wantState, room.State)
 	}
 	if room.R2BriefVersion <= 0 {
 		return nil, fmt.Errorf("roundtable: r2 brief snapshot required before r3")
@@ -1216,6 +1340,15 @@ func (svc *Service) RunR3(roomID string) (*RunR3Response, error) {
 				return nil, fmt.Errorf("index session %s: %w", seat.Role, err)
 			}
 		}
+		if run != nil {
+			started, err := svc.store.StartRunSeat(run.ID, seat.Role)
+			if err != nil {
+				return nil, err
+			}
+			if !started {
+				return nil, fmt.Errorf("roundtable: r3 seat %s already started", seat.Role)
+			}
+		}
 		// Seats that never got an ACP session in R2 cannot resume — fail later in parallel path.
 		seat.Status = SeatSpeaking
 		if err := svc.store.UpdateSeatSession(&seat); err != nil {
@@ -1265,6 +1398,11 @@ func (svc *Service) RunR3(roomID string) (*RunR3Response, error) {
 			if err := svc.store.InsertTurn(&turn); err != nil {
 				return nil, err
 			}
+			if run != nil {
+				if err := svc.store.FinishRunSeat(run.ID, seat.Role, true, r.err.Error()); err != nil {
+					return nil, err
+				}
+			}
 			speechTurns = append(speechTurns, turn)
 			r3Items = append(r3Items, r2SpeechItem{
 				Role: seat.Role, SeatID: seat.ID, Failed: true, FailMsg: failMsg,
@@ -1303,34 +1441,77 @@ func (svc *Service) RunR3(roomID string) (*RunR3Response, error) {
 		if err := svc.store.InsertTurn(&turn); err != nil {
 			return nil, err
 		}
+		if run != nil {
+			if err := svc.store.FinishRunSeat(run.ID, seat.Role, false, ""); err != nil {
+				return nil, err
+			}
+		}
 		speechTurns = append(speechTurns, turn)
 		r3Items = append(r3Items, r2SpeechItem{
 			Role: seat.Role, SeatID: seat.ID, Text: text,
 		})
 	}
 
-	// --- summarizing_r3 ---
-	if err := Transition(room, StateSummarizingR3); err != nil {
-		return nil, err
+	if run != nil && len(failedRoles) > 0 {
+		if err := svc.store.PauseRoundRunForSeats(run.ID); err != nil {
+			return nil, err
+		}
+		full, err := svc.GetRoom(roomID)
+		if err != nil {
+			return nil, err
+		}
+		return &RunR3Response{
+			Room:        full,
+			SpeechTurns: speechTurns,
+			FailedRoles: failedRoles,
+		}, nil
 	}
-	if err := svc.store.UpdateRoomState(room); err != nil {
+
+	// --- summarizing_r3 ---
+	if run == nil {
+		if err := Transition(room, StateSummarizingR3); err != nil {
+			return nil, err
+		}
+		if err := svc.store.UpdateRoomState(room); err != nil {
+			return nil, err
+		}
+	} else if err := svc.store.UpdateRunStatus(run.ID, RunSummarizing, ""); err != nil {
 		return nil, err
 	}
 
 	// --- Referee Summary₃ (终稿) ---
 	summaryTurn, summaryText, err := svc.runR3RefereeSummary(room, &briefSnapshot, referee, r2Items, r3Items)
 	if err != nil {
-		_ = Transition(room, StateFailed)
-		_ = svc.store.UpdateRoomState(room)
+		if run == nil {
+			_ = Transition(room, StateFailed)
+			_ = svc.store.UpdateRoomState(room)
+		}
 		return nil, fmt.Errorf("r3 summary: %w", err)
 	}
 
 	room.SummaryR3 = summaryText
-	if err := Transition(room, StateDone); err != nil {
-		return nil, err
-	}
-	if err := svc.store.UpdateRoomSummaryR3AndState(room); err != nil {
-		return nil, err
+	if run == nil {
+		if err := Transition(room, StateDone); err != nil {
+			return nil, err
+		}
+		if err := svc.store.UpdateRoomSummaryR3AndState(room); err != nil {
+			return nil, err
+		}
+	} else {
+		status := RunCompleted
+		if len(failedRoles) > 0 {
+			status = RunPartialFailed
+		}
+		if err := svc.store.FinalizeRoundRun(
+			run.ID,
+			status,
+			StateDone,
+			summaryText,
+			"",
+			RunErrorNone,
+		); err != nil {
+			return nil, err
+		}
 	}
 
 	full, err := svc.GetRoom(roomID)
@@ -1446,6 +1627,7 @@ func (svc *Service) runR3RefereeSummary(room *Room, brief *Brief, referee *Seat,
 	if summaryText == "" {
 		summaryText = "（裁判 Summary₃ 无正文输出）"
 	}
+	summaryText = appendMissingRoleRecord(summaryText, r3Items)
 	turn := Turn{
 		ID:          meta.NewID(),
 		RoomID:      room.ID,
