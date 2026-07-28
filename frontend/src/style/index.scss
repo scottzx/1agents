@@ -17500,6 +17500,9 @@ body {
   --chat-bg-page: #fbfcfd;
   --chat-bg-panel: rgba(255, 255, 255, 0.9);
   --chat-bg-card: #ffffff;
+  --chat-msg-pad-top: 12px;
+  --chat-msg-pad-x: 14px;
+  --chat-msg-pad-bottom: 12px;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -17508,18 +17511,17 @@ body {
   color: var(--text-main);
   border: 1px solid var(--border-color);
   border-radius: var(--bento-radius-sm, 8px);
-  // Compact timeline padding inside cards (full chat keeps 24px).
-  --chat-msg-pad-x: 14px;
-
   .chat-messages {
     flex: 1 1 auto;
     min-height: 0;
   }
 
-  .chat-messages-body {
-    --chat-msg-pad-top: 12px;
-    padding-top: var(--chat-msg-pad-top);
-    padding-bottom: 12px;
+  // The embedded shell already owns the scroll boundary. Let tool and
+  // thinking content grow naturally so Round cards keep one wheel track.
+  .chat-thinking-body {
+    max-height: none;
+    overflow-y: visible;
+    scrollbar-gutter: auto;
   }
 
   .chat-empty,
@@ -18151,7 +18153,10 @@ body {
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
-  padding: 20px 24px 24px;
+  padding:
+    var(--chat-msg-pad-top, 20px)
+    var(--chat-msg-pad-x, 24px)
+    var(--chat-msg-pad-bottom, 24px);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -18169,7 +18174,6 @@ body {
   }
 
   /* Inner blocks that need their own scroll (tool results, long text, thinking) now use the single main track. */
-  .chat-bubble-tool-group,
   .chat-nested-content {
     max-height: 280px;
     overflow-y: auto;
@@ -18334,7 +18338,7 @@ body {
 }
 
 @media (max-width: 768px) {
-  .chat-messages-body {
+  .chat-message-track {
     --chat-msg-pad-x: 8px;
   }
 
@@ -18472,6 +18476,8 @@ body {
 
 .chat-thinking-body {
   max-height: 320px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   // Scroll track via .chat-nested-scroll (shared outer edge + wheel chain)
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -18615,14 +18621,22 @@ body {
 }
 
 .chat-tool-group-header {
+  appearance: none;
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 8px 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
+  touch-action: manipulation;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
   background: transparent;
+  border: 0;
   border-bottom: 1px solid var(--border-color);
   transition: color 0.12s ease;
 
@@ -18736,7 +18750,7 @@ body {
 }
 
 .chat-turn-header {
-  // Pin the current turn summary inside .chat-messages-body. The enclosing
+  // Pin the current turn summary inside .chat-message-track. The enclosing
   // .chat-turn supplies the boundary, so the next turn naturally pushes this
   // header away instead of requiring scroll listeners or derived UI state.
   position: sticky;
@@ -18766,6 +18780,10 @@ body {
   gap: 0;
   padding-top: 0;
 
+  > .chat-bubble-tool-group {
+    padding-left: 2ch;
+  }
+
   > .chat-message-row-assistant,
   > .chat-bubble-error {
     margin-top: 12px;
@@ -18785,11 +18803,13 @@ body {
   animation: chat-loading-spin 0.8s linear infinite;
 }
 
-/* Expanded tool group body — max-height keeps the list nested; .chat-nested-scroll
- * aligns the thumb with the outer timeline and chains wheel at edges. */
+/* Expanded tools grow the group naturally. The outer message track owns
+ * vertical scrolling, so opening a row never creates a second list scroller. */
 .chat-tool-calls-list {
   position: relative;
-  max-height: min(50vh, 480px);
+  max-height: none;
+  overflow-y: visible;
+  scrollbar-gutter: auto;
   display: flex;
   flex-direction: column;
   // No top border / fill — header underline already separates the list.
@@ -18817,21 +18837,18 @@ body {
   }
 }
 
-.chat-tool-row.is-current {
-  position: sticky;
-  top: 0;
-  z-index: 15;
-  background-color: var(--chat-bg-page);
-  border-bottom: 1px solid var(--border-color);
-  /* Keep the hairline divider for the expanded tool */
-}
-
 .chat-tool-group-header.is-current {
   position: sticky;
   top: 0;
   z-index: 20;
   background-color: var(--chat-bg-page);
   border-bottom: 1px solid var(--border-color);
+}
+
+.chat-turn-items .chat-tool-group-header.is-current {
+  position: static;
+  z-index: auto;
+  background: transparent;
 }
 
 .chat-tool-row-body {
@@ -26157,7 +26174,7 @@ body {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * Agents 圆桌脑暴 — timeline UI (design §6, codex-minimal)
+ * 圆桌讨论 — timeline UI (design §6, codex-minimal)
  * Flat surfaces, hairline dividers, accent only for active/primary.
  * ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -26204,7 +26221,7 @@ body {
   width: 100%;
 }
 
-/* ── Topic list (4-up cards · codex-minimal / bento) ─────────────────────── */
+/* ── Topic list (responsive cards · codex-minimal / bento) ──────────────── */
 
 .rt-room-list {
   display: flex;
@@ -26270,8 +26287,49 @@ body {
   padding-bottom: 2px;
 }
 
+.rt-list-default-actions {
+  display: contents;
+}
+
 .rt-list-error {
   margin-bottom: 14px;
+}
+
+.rt-selection-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: -4px 0 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--text-main);
+  border-radius: var(--bento-radius, 10px);
+  background: var(--bg-card);
+}
+
+.rt-selection-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+
+  strong {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+
+  span {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+}
+
+.rt-selection-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
 }
 
 /* Empty state — centered flat card */
@@ -26319,22 +26377,12 @@ body {
   color: var(--text-secondary);
 }
 
-/* 4-up grid */
+/* Responsive reading-width grid */
 .rt-topic-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
   gap: var(--bento-gap, 12px);
   align-content: start;
-
-  @media (max-width: 1200px) {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-  @media (max-width: 860px) {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  @media (max-width: 520px) {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* Topic card surface */
@@ -26345,10 +26393,10 @@ body {
   font: inherit;
   color: inherit;
   width: 100%;
-  min-height: 196px;
+  min-height: 228px;
   text-align: left;
-  gap: 10px;
-  padding: 16px;
+  gap: 0;
+  padding: 0;
   position: relative;
   overflow: hidden;
 
@@ -26385,34 +26433,42 @@ body {
     opacity: 0.55;
   }
 
-  &:focus-visible {
+  &:focus-within {
     outline: 2px solid var(--accent-color);
     outline-offset: 2px;
   }
 }
 
-.rt-topic-card-select {
-    position: absolute;
-    top: 12px;
-    left: 12px;
-    z-index: 2;
-    pointer-events: auto;
+.rt-topic-card.is-selecting {
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--accent-color);
+  }
 }
 
-.rt-topic-card.selected {
-    border-color: var(--accent-color) !important;
-    background: var(--bg-card);
-    box-shadow: 0 0 0 2px var(--accent-color);
+.rt-topic-card.is-selected {
+  border-color: var(--accent-color);
+  background: var(--accent-light, rgba(var(--accent-rgb, 37, 99, 235), 0.08));
 }
 
 .rt-topic-card-content {
-    width: 100%;
-    appearance: none;
-    background: none;
-    border: none;
-    padding: 0;
-    margin: 0;
-    text-align: left;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  min-height: 226px;
+  appearance: none;
+  color: inherit;
+  font: inherit;
+  background: none;
+  border: none;
+  padding: 16px;
+  margin: 0;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
 }
 
 .rt-topic-card-top {
@@ -26468,13 +26524,31 @@ body {
 }
 
 .rt-topic-card:hover .rt-topic-enter,
-.rt-topic-card:focus-visible .rt-topic-enter {
+.rt-topic-card:focus-within .rt-topic-enter {
   opacity: 1;
   transform: translateX(0);
 }
 
 .rt-topic-enter-arrow {
   flex: none;
+}
+
+.rt-topic-selection-mark {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--text-muted);
+  border-radius: 999px;
+  color: var(--bg-card);
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.rt-topic-card.is-selected .rt-topic-selection-mark {
+  border-color: var(--accent-color);
+  background: var(--accent-color);
 }
 
 .rt-topic-card-title {
@@ -26515,6 +26589,20 @@ body {
   flex-direction: column;
   gap: 6px;
   padding-top: 2px;
+}
+
+.rt-topic-stage-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--text-muted);
+
+  span:last-child {
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
 }
 
 .rt-topic-stage-track {
@@ -26598,7 +26686,7 @@ body {
   appearance: none;
   font: inherit;
   width: 100%;
-  min-height: 196px;
+  min-height: 228px;
   text-align: center;
   align-items: center;
   justify-content: center;
@@ -26656,7 +26744,8 @@ body {
 .rt-topic-skeleton {
   pointer-events: none;
   cursor: default;
-  min-height: 196px;
+  min-height: 228px;
+  padding: 16px;
   gap: 12px;
 
   &:hover {
@@ -26665,6 +26754,40 @@ body {
 
   &::before {
     display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .rt-room-list {
+    padding: 18px 16px calc(28px + env(safe-area-inset-bottom));
+  }
+
+  .rt-list-header {
+    align-items: flex-start;
+    margin-bottom: 16px;
+    padding-bottom: 14px;
+  }
+
+  .rt-list-actions {
+    width: 100%;
+
+    .rt-btn-primary {
+      margin-left: auto;
+    }
+  }
+
+  .rt-selection-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .rt-selection-actions {
+    justify-content: space-between;
+
+    .rt-btn {
+      flex: 1;
+    }
   }
 }
 

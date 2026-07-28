@@ -1499,9 +1499,11 @@ export function LeftSidebar({
                                                             }}
                                                         >
                                                             <FolderToggleIcon open={expanded} />
-                                                            <span class="l1-nav-item-icon" aria-hidden="true">
-                                                                {entry.icon || '◇'}
-                                                            </span>
+                                                            {!isRoundtable ? (
+                                                                <span class="l1-nav-item-icon" aria-hidden="true">
+                                                                    {entry.icon || '◇'}
+                                                                </span>
+                                                            ) : null}
                                                             <span class="l1-nav-item-label">{entry.label}</span>
                                                         </button>
                                                         <button

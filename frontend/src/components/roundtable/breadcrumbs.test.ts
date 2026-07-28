@@ -8,11 +8,11 @@ const noop = () => undefined;
 test('roundtable breadcrumb levels match list, room, and session hierarchy', () => {
     assert.deepEqual(
         roundtableBreadcrumbs({ view: 'list' }).map(c => c.label),
-        ['圆桌列表']
+        ['圆桌讨论']
     );
     assert.deepEqual(
         roundtableBreadcrumbs({ view: 'room', roomTitle: '新品讨论', onList: noop }).map(c => c.label),
-        ['圆桌列表', '新品讨论']
+        ['圆桌讨论', '新品讨论']
     );
     assert.deepEqual(
         roundtableBreadcrumbs({
@@ -22,7 +22,7 @@ test('roundtable breadcrumb levels match list, room, and session hierarchy', () 
             onList: noop,
             onRoom: noop,
         }).map(c => c.label),
-        ['圆桌列表', '新品讨论', '新品讨论·裁判']
+        ['圆桌讨论', '新品讨论', '新品讨论·裁判']
     );
 });
 

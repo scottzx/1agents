@@ -122,6 +122,35 @@ test('every server next_action maps to one correct user-facing status or action'
         assert.equal(action?.label, label);
     }
     assert.equal(primaryActionForRoom(room({ next_action: 'none' })), null);
+
+    assert.deepEqual(
+        primaryActionForRoom(
+            room({
+                state: 'summarizing_r2',
+                phase_status: 'summarizing',
+                next_action: 'wait',
+            })
+        ),
+        {
+            id: 'wait',
+            kind: 'status',
+            label: '等待裁判提交独立分析总结',
+        }
+    );
+    assert.deepEqual(
+        primaryActionForRoom(
+            room({
+                state: 'summarizing_r3',
+                phase_status: 'summarizing',
+                next_action: 'wait',
+            })
+        ),
+        {
+            id: 'wait',
+            kind: 'status',
+            label: '等待裁判提交交叉验证终稿',
+        }
+    );
 });
 
 test('R2 shows real progress, five independent viewpoints, full bodies, and on-demand process', () => {
@@ -292,7 +321,7 @@ test('roundtable list prioritizes the user question and waiting-for-me status', 
             onCreate: () => undefined,
         })
     );
-    assert.match(html, /我的圆桌问题/);
+    assert.match(html, /圆桌讨论/);
     assert.match(html, /等待我操作/);
     assert.equal(/Grok Build|harness|session/iu.test(html), false);
 });

@@ -1009,7 +1009,7 @@ export const zhCN: Record<string, string> = {
     'discovery.appsLoading': '正在加载应用…',
     'discovery.appsEmpty': '暂无已注册应用',
     'discovery.roundtableDesc':
-        'Agents 圆桌脑暴：与裁判澄清议题后，市场/产品/研发/运营/财务五职能隔离发言两轮，裁判总结。真多 session 编排。',
+        '圆桌讨论：与主持人澄清议题后，市场、产品、研发、运营、财务五职能独立发言两轮，再由主持人总结。',
 
     // ── Task list (TaskList.tsx) ──────────────────────────────────────────
     'taskList.t1': '移除了顶部全局导航栏以呈现 Coze 极简风格',
@@ -2956,7 +2956,7 @@ export const enUS: Record<string, string> = {
     'discovery.appsLoading': 'Loading apps…',
     'discovery.appsEmpty': 'No registered apps yet',
     'discovery.roundtableDesc':
-        'Agents Roundtable: clarify the topic with a referee, then market/product/eng/ops/finance speak in isolated sessions for two rounds with referee summaries.',
+        'Roundtable Discussion: clarify the topic with a host, hear two independent rounds from five functions, then converge on a final summary.',
 
     // ── Task list ────────────────────────────────────────────────────────
     'taskList.t1': 'Removed the top global nav bar for a Coze-style minimal look',

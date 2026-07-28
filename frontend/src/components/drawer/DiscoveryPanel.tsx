@@ -29,13 +29,13 @@ const CATEGORIES: { id: CategoryId; titleKey: string }[] = [
 
 /**
  * Static discovery cards.
- * Agents 圆桌 is listed under「应用」so the path 更多 → 发现中心 → 应用 always
+ * 圆桌讨论 is listed under「应用」so the path 更多 → 发现中心 → 应用 always
  * shows the card even before / while manifests load; launch still goes through
  * onOpenApp(appId) → openAppById (enable check via /api/apps).
  */
 const STATIC_LINKS: LinkCard[] = [
     {
-        title: 'Agents 圆桌',
+        title: '圆桌讨论',
         descriptionKey: 'discovery.roundtableDesc',
         badgeKey: 'discovery.appBadge',
         url: '#app/agents-roundtable',
@@ -122,7 +122,7 @@ export function DiscoveryPanel({
     }, [manifests.length, loadingApps]);
 
     // Prefer enabled apps; still list disabled with badge so enable state is visible.
-    // Dedupe by appId so static Agents 圆桌 card is not doubled when manifest loads.
+    // Dedupe by appId so the static 圆桌讨论 card is not doubled when manifest loads.
     const fromManifest = manifests.map(manifestToCard).filter((c): c is LinkCard => c !== null);
     fromManifest.sort((a, b) => Number(b.enabled !== false) - Number(a.enabled !== false));
     const staticAppIds = new Set(STATIC_LINKS.map(c => c.appId).filter(Boolean));

@@ -19,6 +19,24 @@ import type { RoundtableRoom, RoundtableSeat } from '@1agents/core/services/roun
 
 // ── Manifest state ────────────────────────────────────────────────────────────
 
+const ROUNDTABLE_APP_ID = 'agents-roundtable';
+const ROUNDTABLE_APP_LABEL = '圆桌讨论';
+
+const canonicalAppLabel = (appId: string, fallback: string): string =>
+    appId === ROUNDTABLE_APP_ID ? ROUNDTABLE_APP_LABEL : fallback;
+
+const canonicalizeManifest = (app: AppManifest): AppManifest => {
+    if (app.id !== ROUNDTABLE_APP_ID) return app;
+    return {
+        ...app,
+        name: ROUNDTABLE_APP_LABEL,
+        mountPoints: app.mountPoints.map(mount => ({
+            ...mount,
+            label: ROUNDTABLE_APP_LABEL,
+        })),
+    };
+};
+
 /** All installed app manifests (enabled + disabled). */
 export const appManifests = signal<AppManifest[]>([]);
 
@@ -30,7 +48,7 @@ export const loadApps = async (): Promise<void> => {
     appsLoading.value = true;
     try {
         const list = await getApps();
-        appManifests.value = list;
+        appManifests.value = list.map(canonicalizeManifest);
     } finally {
         appsLoading.value = false;
     }
@@ -162,7 +180,7 @@ const loadOpenL1Apps = (): OpenL1App[] => {
         const raw = localStorage.getItem(OPEN_L1_APPS_KEY);
         const parsed = raw ? JSON.parse(raw) : [];
         if (!Array.isArray(parsed)) return [];
-        return parsed.filter(
+        const valid = parsed.filter(
             (e: unknown): e is OpenL1App =>
                 !!e &&
                 typeof e === 'object' &&
@@ -170,6 +188,14 @@ const loadOpenL1Apps = (): OpenL1App[] => {
                 typeof (e as OpenL1App).appId === 'string' &&
                 typeof (e as OpenL1App).label === 'string'
         );
+        const normalized = valid.map(entry => ({
+            ...entry,
+            label: canonicalAppLabel(entry.appId, entry.label),
+        }));
+        if (normalized.some((entry, index) => entry.label !== valid[index].label)) {
+            localStorage.setItem(OPEN_L1_APPS_KEY, JSON.stringify(normalized));
+        }
+        return normalized;
     } catch {
         return [];
     }
@@ -190,7 +216,13 @@ const persistOpenL1Apps = (list: OpenL1App[]): void => {
 /** Pin an app into the open strip (idempotent; moves to front). */
 export const pinOpenL1App = (entry: OpenL1App): void => {
     const rest = openL1Apps.value.filter(a => a.mountId !== entry.mountId);
-    persistOpenL1Apps([entry, ...rest]);
+    persistOpenL1Apps([
+        {
+            ...entry,
+            label: canonicalAppLabel(entry.appId, entry.label),
+        },
+        ...rest,
+    ]);
 };
 
 /**

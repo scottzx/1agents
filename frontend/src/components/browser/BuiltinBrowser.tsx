@@ -264,13 +264,7 @@ export class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowse
         const { tab } = this.props;
         if (!tab.url || tab.url === 'about:blank') return;
 
-        const isDesktopEnv =
-            IS_DESKTOP || (typeof window !== 'undefined' && !!(window as unknown as { __TAURI__?: object }).__TAURI__);
-        if (isDesktopEnv) {
-            this.invokeTauri('open_in_external_browser', { url: tab.url });
-        } else {
-            window.open(tab.url, '_blank');
-        }
+        window.open(tab.url, '_blank');
     };
 
     render() {

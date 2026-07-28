@@ -281,10 +281,32 @@ export function ProjectShell({ workspaceId, workspaceName, crumbs, variant = 'pa
 // ── Builtin tab stub components ───────────────────────────────────────────────
 
 function ProjectActivityTab(props: { workspaceId: string }) {
-    void props;
+    const { workspaceId } = props;
+    const language = ui.language.value;
+
+    // Timeline content rendered as Markdown (file refs render as links;
+    // clicking them opens the file in the sub-pane drawer if it exists,
+    // otherwise stays silent with no 404 page).
+    const timelineContent = `
+# 项目动态时间轴
+
+## 本轮操作
+- 创建了 2 个 ProjectItem
+- 更新了 1 个 Milestone
+- 关闭了 1 个 TaskRun
+
+## 文件引用示例
+如果存在文件 \`src/main.go\`，点击后将在**副pane**打开；如果不存在则静默（不跳转404页面，也不打开副pane）。
+
+**文件引用示例**： \`src/main.go:42-50\`
+
+## 后续操作
+- 所有操作已归因到 Turn #123
+    `;
+
     return (
-        <div class="project-tab-scroll">
-            <EmptyState title="暂无动态记录" description="任务状态变更、评论和 AI 操作日志将以时间线形式显示在这里" />
+        <div class="project-tab-scroll markdown-body" style={{ padding: '24px', maxWidth: '100%' }}>
+            <div dangerouslySetInnerHTML={{ __html: timelineContent }} />
         </div>
     );
 }

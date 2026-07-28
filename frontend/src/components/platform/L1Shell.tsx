@@ -38,7 +38,7 @@ export interface L1NavEntry {
 
 /**
  * Apps launched only from 发现中心 / 更多应用 (not permanent left-sidebar L1 nav).
- * design §6.3: Agents 圆桌 entry now appears in sidebar 「应用」 as folder.
+ * design §6.3: 圆桌讨论 entry now appears in sidebar 「应用」 as folder.
  */
 const DISCOVERY_ONLY_APP_IDS = new Set<string>();
 
@@ -130,27 +130,29 @@ interface L1NavItemProps {
 export function L1NavItem({ entry, isActive, onClick }: L1NavItemProps) {
     return (
         <button class={`l1-nav-item${isActive ? ' is-active' : ''}`} onClick={onClick} title={entry.label}>
-            {entry.icon ? (
-                <span class="l1-nav-item-icon" aria-hidden="true">
-                    {entry.icon}
-                </span>
-            ) : (
-                <span class="l1-nav-item-icon l1-nav-item-icon-default" aria-hidden="true">
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.8"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                    >
-                        <rect x="3" y="3" width="7" height="7" rx="1" />
-                        <rect x="14" y="3" width="7" height="7" rx="1" />
-                        <rect x="3" y="14" width="7" height="7" rx="1" />
-                        <rect x="14" y="14" width="7" height="7" rx="1" />
-                    </svg>
-                </span>
-            )}
+            {entry.appId !== 'agents-roundtable' ? (
+                entry.icon ? (
+                    <span class="l1-nav-item-icon" aria-hidden="true">
+                        {entry.icon}
+                    </span>
+                ) : (
+                    <span class="l1-nav-item-icon l1-nav-item-icon-default" aria-hidden="true">
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.8"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <rect x="3" y="3" width="7" height="7" rx="1" />
+                            <rect x="14" y="3" width="7" height="7" rx="1" />
+                            <rect x="3" y="14" width="7" height="7" rx="1" />
+                            <rect x="14" y="14" width="7" height="7" rx="1" />
+                        </svg>
+                    </span>
+                )
+            ) : null}
             <span class="l1-nav-item-label">{entry.label}</span>
         </button>
     );

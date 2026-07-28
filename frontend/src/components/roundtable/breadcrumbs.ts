@@ -22,10 +22,10 @@ export function roundtableBreadcrumbs({
     onRoom,
 }: RoundtableBreadcrumbOptions): RoundtableCrumb[] {
     if (view === 'list') {
-        return [{ label: '圆桌列表' }];
+        return [{ label: '圆桌讨论' }];
     }
 
-    const crumbs: RoundtableCrumb[] = [{ label: '圆桌列表', onClick: onList }];
+    const crumbs: RoundtableCrumb[] = [{ label: '圆桌讨论', onClick: onList }];
     if (view === 'create') {
         crumbs.push({ label: '新建圆桌' });
         return crumbs;

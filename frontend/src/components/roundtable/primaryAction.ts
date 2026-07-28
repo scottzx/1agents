@@ -18,6 +18,12 @@ export interface RoundtablePrimaryAction {
 
 /** User-facing action derived from the server-owned room state. */
 export function primaryActionForRoom(room: RoundtableRoom): RoundtablePrimaryAction | null {
+    if (room.state === 'summarizing_r2' && room.phase_status === 'summarizing') {
+        return { id: 'wait', kind: 'status', label: '等待裁判提交独立分析总结' };
+    }
+    if (room.state === 'summarizing_r3' && room.phase_status === 'summarizing') {
+        return { id: 'wait', kind: 'status', label: '等待裁判提交交叉验证终稿' };
+    }
     switch (room.next_action) {
         case 'confirm_brief':
             return { id: 'confirm_brief', kind: 'button', label: '完善并确认议题', primary: true };

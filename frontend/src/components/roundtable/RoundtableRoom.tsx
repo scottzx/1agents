@@ -45,7 +45,7 @@ type ShellView = 'list' | 'room' | 'create';
 
 /**
  * Roundtable app shell:
- * - list: topic cards (4 per row)
+ * - list: responsive topic-card grid
  * - create: launch wizard
  * - room: controller-driven R1/R2/R3/Done workbench + Inspector
  * Reloads and session returns can restore a room; app-entry requests open list.

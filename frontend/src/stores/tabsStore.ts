@@ -834,7 +834,7 @@ export const toggleDrawerTab = (tab: RightDrawerTab) => {
         activeDrawerTab.value = tab;
         persistDrawerTab(tab);
         activeModulePath.value = mod ? mod.entryPath : '';
-        // 更多 → 发现中心: land on「应用」category (Agents 圆桌 entry, design §6.3).
+        // 更多 → 发现中心: land on「应用」category (圆桌讨论 entry, design §6.3).
         if (tab === 'discovery') {
             discoveryCategory.value = DISCOVERY_DEFAULT_CATEGORY;
         }

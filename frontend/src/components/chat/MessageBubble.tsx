@@ -166,18 +166,11 @@ function HistoricalTurnBubble({ items, outcomeId }: { items: TurnContentItem[]; 
 
     return (
         <div class={`chat-turn ${expanded ? 'is-expanded' : 'is-collapsed'}`}>
-            <div
+            <button
+                type="button"
                 class="chat-tool-group-header chat-turn-header"
-                role="button"
-                tabIndex={0}
                 aria-expanded={expanded}
                 onClick={toggle}
-                onKeyDown={event => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        toggle();
-                    }
-                }}
             >
                 <span class="chat-bubble-caret" aria-hidden="true">
                     {expanded ? '▾' : '▸'}
@@ -190,7 +183,7 @@ function HistoricalTurnBubble({ items, outcomeId }: { items: TurnContentItem[]; 
                     })}
                 </span>
                 <span class="chat-tool-group-processed">{t('chat.process.done', lang)}</span>
-            </div>
+            </button>
             {visibleItems.length > 0 && (
                 <div class="chat-turn-items">
                     {visibleItems.map((item, index) => (
@@ -571,10 +564,10 @@ function agenticGroupTitle(
 ): string {
     if (pending) return t('chat.tool.groupPending', lang);
 
-    const readNames = new Set(['Read', 'read', 'Glob', 'glob', 'Grep', 'grep', 'LS', 'ls', 'List', 'list']);
     const commandCount = calls.filter(call => (call.kind ?? deriveToolKind(call.toolName)) === 'execute').length;
     const readFileCount = calls.reduce((count, call) => {
-        if (!readNames.has(call.toolName)) return count;
+        const kind = call.kind ?? deriveToolKind(call.toolName);
+        if (kind !== 'read' && kind !== 'search') return count;
         if (call.locations && call.locations.length > 0) return count + call.locations.length;
         return count + 1;
     }, 0);
@@ -646,17 +639,11 @@ function ToolGroupBubble({
         <div
             class={`chat-bubble chat-bubble-tool-group chat-content-outer ${expanded ? 'is-expanded' : 'is-collapsed'} ${pending ? 'is-pending' : ''}`}
         >
-            <div
+            <button
+                type="button"
                 class={`chat-tool-group-header ${expanded || active ? 'is-current' : ''}`}
-                role="button"
-                tabIndex={0}
+                aria-expanded={expanded}
                 onClick={toggle}
-                onKeyDown={e => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        toggle();
-                    }
-                }}
             >
                 <span class="chat-bubble-caret" aria-hidden="true">
                     {expanded ? '▾' : '▸'}
@@ -670,7 +657,7 @@ function ToolGroupBubble({
                         {summary.text}
                     </span>
                 )}
-            </div>
+            </button>
             {expanded && (
                 <div class="chat-tool-calls-list">
                     {elements.map((el, idx) => {
@@ -815,65 +802,95 @@ function summarizeArgs(args: Record<string, unknown>): string | undefined {
     return undefined;
 }
 
+function sanitizeSearchPattern(query: string): string {
+    const trimmed = query.trim();
+    if (!trimmed) return '';
+    if (trimmed.includes('|')) {
+        const parts = trimmed
+            .split('|')
+            .map(s => s.trim())
+            .filter(Boolean);
+        if (parts.length > 3) {
+            return `\`${parts[0]}\` / \`${parts[1]}\` 等 ${parts.length} 个模式`;
+        }
+    }
+    if (trimmed.length > 45) {
+        return `\`${trimmed.slice(0, 45)}…\``;
+    }
+    return `\`${trimmed}\``;
+}
+
+function formatFilePath(pathStr: string): string {
+    const trimmed = pathStr.trim();
+    if (!trimmed) return '';
+    if (trimmed.length > 55) {
+        const parts = trimmed.split('/');
+        if (parts.length > 3) {
+            return `\`…/${parts.slice(-3).join('/')}\``;
+        }
+        return `\`${trimmed.slice(0, 55)}…\``;
+    }
+    return `\`${trimmed}\``;
+}
+
 /**
- * Tool summary display: for common tools like ReadFile/WriteFile/etc, show
- * a human-readable Chinese sentence with the relevant file/path in backticks
- * instead of raw toolName + parameters. Falls back to toolName otherwise.
- * Used in the collapsed tool-row header badge.
+ * Tool summary display: for common tools like ReadFile/WriteFile/Grep/etc, show
+ * clean human-readable parameter targets without repeating tool action prefixes.
  */
 function getToolSummary(toolName: string, args: Record<string, unknown>): string {
     const lower = toolName.toLowerCase();
     const kind = deriveToolKind(toolName);
 
     if (Object.keys(args).length === 0) {
-        switch (kind) {
-            case 'read':
-                return '读取工具';
-            case 'execute':
-                return '执行工具';
-            case 'edit':
-                return '编写工具';
-            case 'search':
-                return '搜索工具';
-            default:
-                return '工具';
-        }
+        return toolName;
     }
 
-    if (lower === 'readfile' || lower.includes('read')) {
-        const target = args.target_file || args.path || args.file || '';
-        if (target) {
-            return `读取 \`${target}\` 具体文章地址。`;
+    if (kind === 'read' || lower.includes('read') || lower.includes('view') || lower.includes('fetch')) {
+        const target = (args.target_file ||
+            args.TargetFile ||
+            args.path ||
+            args.file ||
+            args.AbsolutePath ||
+            args.targetFile ||
+            '') as string;
+        if (target && typeof target === 'string') {
+            return formatFilePath(target);
         }
     }
-    if (lower === 'writefile' || lower.includes('write')) {
-        const target = args.target_file || args.path || args.file || '';
-        if (target) {
-            return `写入 \`${target}\` 具体文章地址。`;
+    if (kind === 'edit' || lower.includes('write') || lower.includes('edit')) {
+        const target = (args.target_file ||
+            args.TargetFile ||
+            args.path ||
+            args.file ||
+            args.AbsolutePath ||
+            args.targetFile ||
+            '') as string;
+        if (target && typeof target === 'string') {
+            return formatFilePath(target);
         }
     }
-    if (lower === 'listdir' || lower.includes('list') || lower.includes('ls') || lower.includes('directory')) {
-        const dir = args.path || args.directory || args.directory_path || '';
-        if (dir) {
-            return `列出 \`${dir}\` 下的内容。`;
+    if (lower.includes('list') || lower.includes('ls') || lower.includes('directory')) {
+        const dir = (args.path || args.directory || args.directory_path || args.DirectoryPath || '') as string;
+        if (dir && typeof dir === 'string') {
+            return formatFilePath(dir);
         }
     }
-    if (lower === 'grep' || lower.includes('grep') || lower.includes('rg')) {
-        const pattern = args.pattern || args.query || args.search || '';
-        if (pattern) {
-            return `搜索 \`${pattern}\``;
+    if (kind === 'search' || lower.includes('grep') || lower.includes('search') || lower.includes('glob')) {
+        const pattern = (args.pattern || args.query || args.Query || args.search || '') as string;
+        if (pattern && typeof pattern === 'string') {
+            return sanitizeSearchPattern(pattern);
         }
     }
     if (
-        lower === 'execute' ||
+        kind === 'execute' ||
         lower.includes('execute') ||
         lower.includes('run') ||
         lower.includes('command') ||
         lower.includes('terminal')
     ) {
-        const cmd = args.command || args.cmd || args.script || '';
-        if (cmd) {
-            return `执行 \`${cmd}\``;
+        const cmd = (args.command || args.cmd || args.script || args.CommandLine || '') as string;
+        if (cmd && typeof cmd === 'string') {
+            return cmd.length > 50 ? `\`${cmd.slice(0, 50)}…\`` : `\`${cmd}\``;
         }
     }
     return toolName;

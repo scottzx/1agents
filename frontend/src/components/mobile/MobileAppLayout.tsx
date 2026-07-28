@@ -426,7 +426,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
         const moduleNav = tabsStore.buildModuleNav();
         const l1MountId = activeL1PageId.value;
 
-        // L1 app (e.g. Agents 圆桌) takes over the full mobile viewport.
+        // L1 app (e.g. 圆桌讨论) takes over the full mobile viewport.
         if (l1MountId) {
             return (
                 <div class="mobile-app-layout" style={viewportStyle}>

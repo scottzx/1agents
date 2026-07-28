@@ -1,5 +1,5 @@
 /**
- * Agents 圆桌 — app view registration (design §6 / §6.3).
+ * 圆桌讨论 — app view registration (design §6 / §6.3).
  * Manifest id: agents-roundtable · discovery → 应用.
  * Entry restores last view (topic list or open room) via localStorage.
  */

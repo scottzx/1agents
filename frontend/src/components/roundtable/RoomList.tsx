@@ -11,8 +11,8 @@ export interface RoomListProps {
 }
 
 /**
- * Topic card grid — 4 columns (codex-minimal / bento).
- * Click a card to enter that room.
+ * Responsive topic-card grid.
+ * Cards open rooms normally and toggle selection while selection mode is active.
  */
 export function RoomList({ onOpenRoom, onCreate, refreshKey = 0 }: RoomListProps) {
     const [rooms, setRooms] = useState<RoundtableRoom[]>([]);
@@ -20,6 +20,7 @@ export function RoomList({ onOpenRoom, onCreate, refreshKey = 0 }: RoomListProps
     const [error, setError] = useState<string | null>(null);
     const [selectionMode, setSelectionMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [deleting, setDeleting] = useState(false);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -28,6 +29,7 @@ export function RoomList({ onOpenRoom, onCreate, refreshKey = 0 }: RoomListProps
             setRooms(list);
             setError(null);
             setSelectedIds(new Set());
+            setSelectionMode(false);
         } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
         } finally {
@@ -37,14 +39,16 @@ export function RoomList({ onOpenRoom, onCreate, refreshKey = 0 }: RoomListProps
 
     const deleteSelected = useCallback(
         async (ids: string[]) => {
+            setDeleting(true);
             try {
-                for (const id of ids) {
-                    await roundtableService.deleteRoom(id);
-                }
-                setSelectedIds(new Set());
-                void load();
+                await Promise.all(ids.map(id => roundtableService.deleteRoom(id)));
+                await load();
             } catch (e) {
-                setError(e instanceof Error ? e.message : String(e));
+                const message = e instanceof Error ? e.message : String(e);
+                await load();
+                setError(message);
+            } finally {
+                setDeleting(false);
             }
         },
         [load]
@@ -54,49 +58,55 @@ export function RoomList({ onOpenRoom, onCreate, refreshKey = 0 }: RoomListProps
         void load();
     }, [load, refreshKey]);
 
+    const allSelected = rooms.length > 0 && selectedIds.size === rooms.length;
+    const exitSelectionMode = () => {
+        setSelectionMode(false);
+        setSelectedIds(new Set());
+    };
+
     return (
         <div class="rt-room rt-room-list">
             <header class="rt-list-header">
                 <div class="rt-list-title-block">
-                    <span class="rt-list-kicker">多职能共议</span>
-                    <h1 class="rt-list-title">我的圆桌问题</h1>
+                    <span class="rt-list-kicker">我的议题</span>
+                    <h1 class="rt-list-title">圆桌讨论</h1>
                     <p class="rt-list-desc">从你的问题出发，优先继续标有“等待我操作”的讨论。</p>
                 </div>
                 <div class="rt-list-actions">
-                    <button
-                        type="button"
-                        class="rt-btn rt-btn-ghost"
-                        disabled={loading}
-                        onClick={() => void load()}
-                        aria-label="刷新列表"
-                    >
-                        刷新
-                    </button>
-                    <button
-                        type="button"
-                        class={`rt-btn rt-btn-ghost ${selectionMode ? 'rt-btn-primary' : ''}`}
-                        onClick={() => setSelectionMode(!selectionMode)}
-                        aria-label={selectionMode ? '取消选择' : '选择圆桌'}
-                    >
-                        {selectionMode ? '取消' : '选择'}
-                    </button>
-                    {selectionMode && selectedIds.size > 0 && (
+                    {selectionMode ? (
                         <button
                             type="button"
-                            class="rt-btn rt-btn-danger"
-                            onClick={() => {
-                                const ids = Array.from(selectedIds);
-                                if (window.confirm(`确定删除 ${ids.length} 个圆桌及其所有内容吗？此操作不可恢复。`)) {
-                                    void deleteSelected(ids);
-                                }
-                            }}
+                            class="rt-btn rt-btn-primary"
+                            onClick={exitSelectionMode}
+                            disabled={deleting}
                         >
-                            删除 ({selectedIds.size})
+                            完成
                         </button>
+                    ) : (
+                        <div class="rt-list-default-actions">
+                            <button
+                                type="button"
+                                class="rt-btn rt-btn-ghost"
+                                disabled={loading}
+                                onClick={() => void load()}
+                                aria-label="刷新圆桌清单"
+                            >
+                                刷新
+                            </button>
+                            {rooms.length > 0 ? (
+                                <button
+                                    type="button"
+                                    class="rt-btn rt-btn-ghost"
+                                    onClick={() => setSelectionMode(true)}
+                                >
+                                    选择
+                                </button>
+                            ) : null}
+                            <button type="button" class="rt-btn rt-btn-primary" onClick={onCreate}>
+                                新建圆桌
+                            </button>
+                        </div>
                     )}
-                    <button type="button" class="rt-btn rt-btn-primary" onClick={onCreate}>
-                        新建圆桌
-                    </button>
                 </div>
             </header>
 
@@ -105,6 +115,42 @@ export function RoomList({ onOpenRoom, onCreate, refreshKey = 0 }: RoomListProps
                     {error}
                 </div>
             )}
+
+            {selectionMode ? (
+                <section class="rt-selection-toolbar" aria-label="圆桌批量选择">
+                    <div class="rt-selection-summary">
+                        <strong>选择圆桌</strong>
+                        <span role="status" aria-live="polite">
+                            已选择 {selectedIds.size} / {rooms.length} 项
+                        </span>
+                    </div>
+                    <div class="rt-selection-actions">
+                        <button
+                            type="button"
+                            class="rt-btn rt-btn-ghost"
+                            disabled={deleting}
+                            onClick={() =>
+                                setSelectedIds(allSelected ? new Set() : new Set(rooms.map(room => room.id)))
+                            }
+                        >
+                            {allSelected ? '取消全选' : '全选'}
+                        </button>
+                        <button
+                            type="button"
+                            class="rt-btn rt-btn-danger"
+                            disabled={selectedIds.size === 0 || deleting}
+                            onClick={() => {
+                                const ids = Array.from(selectedIds);
+                                if (window.confirm(`确定删除 ${ids.length} 个圆桌及其所有内容吗？此操作不可恢复。`)) {
+                                    void deleteSelected(ids);
+                                }
+                            }}
+                        >
+                            {deleting ? '删除中…' : `删除所选${selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}`}
+                        </button>
+                    </div>
+                </section>
+            ) : null}
 
             {loading && rooms.length === 0 ? (
                 <div class="rt-topic-grid" aria-busy="true" aria-label="加载中">
@@ -144,14 +190,25 @@ export function RoomList({ onOpenRoom, onCreate, refreshKey = 0 }: RoomListProps
                     </div>
                 </div>
             ) : (
-                <div class="rt-topic-grid" role="list" aria-label="圆桌话题">
-                    <button type="button" class="rt-topic-card rt-topic-card-new" role="listitem" onClick={onCreate}>
-                        <span class="rt-topic-new-plus" aria-hidden="true">
-                            +
-                        </span>
-                        <span class="rt-topic-new-label">新建圆桌</span>
-                        <span class="rt-topic-new-hint">从一个需要决策的问题开始</span>
-                    </button>
+                <div
+                    class={`rt-topic-grid${selectionMode ? ' is-selecting' : ''}`}
+                    role="list"
+                    aria-label={selectionMode ? '选择圆桌话题' : '圆桌话题'}
+                >
+                    {!selectionMode ? (
+                        <button
+                            type="button"
+                            class="rt-topic-card rt-topic-card-new"
+                            role="listitem"
+                            onClick={onCreate}
+                        >
+                            <span class="rt-topic-new-plus" aria-hidden="true">
+                                +
+                            </span>
+                            <span class="rt-topic-new-label">新建圆桌</span>
+                            <span class="rt-topic-new-hint">从一个需要决策的问题开始</span>
+                        </button>
+                    ) : null}
 
                     {rooms.map(room => (
                         <TopicCard
@@ -161,13 +218,15 @@ export function RoomList({ onOpenRoom, onCreate, refreshKey = 0 }: RoomListProps
                             selectionMode={selectionMode}
                             selected={selectedIds.has(room.id)}
                             onToggle={() => {
-                                const next = new Set(selectedIds);
-                                if (next.has(room.id)) {
-                                    next.delete(room.id);
-                                } else {
-                                    next.add(room.id);
-                                }
-                                setSelectedIds(next);
+                                setSelectedIds(current => {
+                                    const next = new Set(current);
+                                    if (next.has(room.id)) {
+                                        next.delete(room.id);
+                                    } else {
+                                        next.add(room.id);
+                                    }
+                                    return next;
+                                });
                             }}
                         />
                     ))}
@@ -196,28 +255,48 @@ function TopicCard({
 
     return (
         <div
-            class={`rt-topic-card is-${tone} ${selected ? 'selected' : ''}`}
+            class={`rt-topic-card is-${tone}${selectionMode ? ' is-selecting' : ''}${selected ? ' is-selected' : ''}`}
             role="listitem"
-            onClick={selectionMode ? undefined : onOpen}
         >
-            <div class="rt-topic-card-select">
-                <input type="checkbox" checked={selected} onChange={onToggle} aria-label="选择此圆桌" />
-            </div>
-            <button type="button" class="rt-topic-card-content" onClick={onOpen}>
+            <button
+                type="button"
+                class="rt-topic-card-content"
+                onClick={selectionMode ? onToggle : onOpen}
+                aria-label={
+                    selectionMode ? `${selected ? '取消选择' : '选择'}：${room.title || '未命名议题'}` : undefined
+                }
+                aria-pressed={selectionMode ? selected : undefined}
+            >
                 <div class="rt-topic-card-top">
                     <span class={`rt-topic-badge is-${needsAction ? 'wait' : tone}`}>{roomCardStatus(room)}</span>
-                    <span class="rt-topic-enter" aria-hidden="true">
-                        进入
-                        <svg class="rt-topic-enter-arrow" viewBox="0 0 16 16" width="14" height="14" fill="none">
-                            <path
-                                d="M3 8h9M8.5 4.5 12 8l-3.5 3.5"
-                                stroke="currentColor"
-                                stroke-width="1.5"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            />
-                        </svg>
-                    </span>
+                    {selectionMode ? (
+                        <span class="rt-topic-selection-mark" aria-hidden="true">
+                            {selected ? (
+                                <svg viewBox="0 0 16 16" width="12" height="12" fill="none">
+                                    <path
+                                        d="m3.5 8 3 3 6-6"
+                                        stroke="currentColor"
+                                        stroke-width="1.8"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    />
+                                </svg>
+                            ) : null}
+                        </span>
+                    ) : (
+                        <span class="rt-topic-enter" aria-hidden="true">
+                            进入
+                            <svg class="rt-topic-enter-arrow" viewBox="0 0 16 16" width="14" height="14" fill="none">
+                                <path
+                                    d="M3 8h9M8.5 4.5 12 8l-3.5 3.5"
+                                    stroke="currentColor"
+                                    stroke-width="1.5"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                />
+                            </svg>
+                        </span>
+                    )}
                 </div>
 
                 <h2 class="rt-topic-card-title">{room.title || '未命名议题'}</h2>
@@ -228,7 +307,18 @@ function TopicCard({
                     <p class="rt-topic-question is-muted">进入后先和主持人把问题、约束与成功标准说清楚。</p>
                 )}
 
-                <div class="rt-topic-stages" aria-hidden="true">
+                <div
+                    class="rt-topic-stages"
+                    aria-label={`讨论进度：${stageIdx >= 0 ? STAGES[stageIdx].label : stateLabel(room.state)}`}
+                >
+                    <div class="rt-topic-stage-heading">
+                        <span>讨论进度</span>
+                        <span>
+                            {stageIdx >= 0
+                                ? `${stageIdx + 1}/${STAGES.length} · ${STAGES[stageIdx].label}`
+                                : '需要处理'}
+                        </span>
+                    </div>
                     <div class="rt-topic-stage-track">
                         {STAGES.map((s, i) => (
                             <span
@@ -263,7 +353,7 @@ function TopicCard({
                 </div>
 
                 <div class="rt-topic-card-foot">
-                    <span class="rt-topic-time">{formatTime(room.updated_at)}</span>
+                    <span class="rt-topic-time">更新于 {formatTime(room.updated_at)}</span>
                     {room.summary_r3 || room.summary_r2 ? <span class="rt-topic-meta">已有阶段结论</span> : null}
                 </div>
             </button>
