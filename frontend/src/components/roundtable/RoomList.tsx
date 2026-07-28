@@ -158,6 +158,7 @@ export function RoomList({ onOpenRoom, onCreate, refreshKey = 0 }: RoomListProps
                             key={room.id}
                             room={room}
                             onOpen={() => onOpenRoom(room.id)}
+                            selectionMode={selectionMode}
                             selected={selectedIds.has(room.id)}
                             onToggle={() => {
                                 const next = new Set(selectedIds);
@@ -179,11 +180,13 @@ export function RoomList({ onOpenRoom, onCreate, refreshKey = 0 }: RoomListProps
 function TopicCard({
     room,
     onOpen,
+    selectionMode,
     selected,
     onToggle,
 }: {
     room: RoundtableRoom;
     onOpen: () => void;
+    selectionMode: boolean;
     selected: boolean;
     onToggle: () => void;
 }) {
