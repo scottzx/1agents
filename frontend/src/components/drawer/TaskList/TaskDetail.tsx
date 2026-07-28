@@ -175,6 +175,7 @@ export function TaskDetail({
     // Reply composer (top-level: always starts new session with chosen agent)
     const [replyText, setReplyText] = useState('');
     const [composerAgent, setComposerAgent] = useState<string>('grok');
+    const [includeTimeline, setIncludeTimeline] = useState(true);
     const [submitting, setSubmitting] = useState(false);
 
     // Per-branch inline follow-up: which session's composer is open, its draft,
@@ -626,13 +627,36 @@ export function TaskDetail({
     // Spawn a NEW session via unified SessionSetup (P1-3): same modal/skip as
     // the main path, agent prefilled from assignee or chosen composer agent, taskId bound,
     // optional initialMessage auto-sent after create. PM paths stay on createPMSession.
-    const openNewSession = async (initialMessage?: string, agentType?: AgentType) => {
+    const openNewSession = async (initialMessage?: string, agentType?: AgentType, taskId?: string, includeTimeline = true) => {
         if (!task) return;
+
+        // Build rich background summary for the seeded initial message
+        let seedMessage = `任务背景摘要（${task.title}）\n\n`;
+        seedMessage += `描述：${task.description || '(无描述)'}\n`;
+        if (task.acceptanceCriteria) {
+            seedMessage += `验收标准：${task.acceptanceCriteria.replace(/\n/g, '；')}\n`;
+        }
+        seedMessage += `类型：${task.type || '需求'}\n`;
+        if (task.assignee) seedMessage += `负责人：${task.assignee}\n`;
+
+        if (includeTimeline && task.replies && task.replies.length > 0) {
+            seedMessage += `\n之前回复摘要（前 3 条）：\n`;
+            const recent = task.replies.slice(0, 3);
+            recent.forEach((rp, i) => {
+                const who = rp.sessionRef ? `agent (${rp.agentType || rp.author?.name})` : rp.author?.name || '用户';
+                seedMessage += `[${i + 1}] ${who} @ ${rp.createdAt?.slice(0, 10) || '未知'}：${rp.text?.slice(0, 120) || '(无内容)'}\n`;
+            });
+            seedMessage += '...（完整时间线由后端自动注入）';
+        } else {
+            seedMessage += '\n（仅任务摘要，未加载完整时间线）';
+        }
+
         void sessionStore.openSessionSetup({
             workspaceId,
             locked: true,
             defaultAgent: (agentType || task.assignee || 'claudecode') as AgentType,
-            initialMessage,
+            initialMessage: initialMessage || seedMessage,
+            taskId: taskId || task.id,
         });
     };
 
@@ -708,7 +732,7 @@ export function TaskDetail({
         const text = replyText.trim();
         setSubmitting(true);
         try {
-            await openNewSession(text, composerAgent as AgentType);
+            await openNewSession(text, composerAgent as AgentType, task.id);
             setReplyText('');
             fetchTask();
         } catch (err) {
@@ -1167,6 +1191,17 @@ export function TaskDetail({
                                                 ))}
                                             </select>
                                             <span class="gh-opt-hint">选择智能体</span>
+
+                                            <label class="timeline-toggle">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={includeTimeline}
+                                                    onChange={(e: Event) =>
+                                                        setIncludeTimeline((e.target as HTMLInputElement).checked)
+                                                    }
+                                                />
+                                                <span>Include full timeline / previous replies</span>
+                                            </label>
                                         </div>
                                         <div class="gh-composer-actions">
                                             <button
