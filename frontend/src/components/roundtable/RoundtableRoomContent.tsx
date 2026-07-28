@@ -17,6 +17,7 @@ interface RoundtableRoomContentProps {
     primaryContent?: ComponentChildren;
     mobilePane?: RoundtableMobilePane;
     onMobilePaneChange?: (pane: RoundtableMobilePane) => void;
+    currentStage?: StageId;
     selectedStage: StageId;
     onStageChange: (stageId: StageId) => void;
 }
@@ -47,6 +48,7 @@ export function RoundtableRoomContent({
     primaryContent,
     mobilePane = 'discussion',
     onMobilePaneChange,
+    currentStage,
     selectedStage,
     onStageChange,
 }: RoundtableRoomContentProps) {
@@ -71,7 +73,12 @@ export function RoundtableRoomContent({
         <div class="rt-room" data-room-id={room.id} data-mobile-pane={mobilePane}>
             <div class="rt-room-main">
                 {header}
-                <StageBar state={room.state} selectedStage={selectedStage} onStepClick={handleStepClick} />
+                <StageBar
+                    state={room.state}
+                    currentStage={currentStage}
+                    selectedStage={selectedStage}
+                    onStepClick={handleStepClick}
+                />
                 <div class="rt-mobile-tabs" role="tablist" aria-label="圆桌视图">
                     {MOBILE_PANES.map(pane => (
                         <button

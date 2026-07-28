@@ -1,4 +1,4 @@
-import type { RoomState } from '@1agents/core/services/roundtableService';
+import type { RoomState, RoundtableRoom } from '@1agents/core/services/roundtableService';
 
 /** User-facing roundtable stages. */
 export type StageId = 'r1' | 'r2' | 'r3' | 'final';
@@ -38,6 +38,22 @@ export function stageIndexFromState(state: RoomState | string | undefined): numb
 export function stageIdFromState(state: RoomState | string | undefined): StageId {
     const index = stageIndexFromState(state);
     return index >= 0 ? STAGES[index].id : 'r1';
+}
+
+export function stageIdFromRoom(room: RoundtableRoom | null | undefined): StageId {
+    if (!room) return 'r1';
+    switch (room.phase) {
+        case 'r1':
+        case 'r2':
+        case 'r3':
+            return room.phase;
+        case 'done':
+            return 'final';
+        case 'failed':
+            if (room.active_run?.round === 3 || room.summary_r2) return 'r3';
+            if (room.active_run?.round === 2 || room.confirmed_brief_version || room.confirmed_brief) return 'r2';
+            return 'r1';
+    }
 }
 
 export function isTerminalState(state: RoomState | string | undefined): boolean {

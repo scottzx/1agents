@@ -4,8 +4,11 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { h } from 'preact';
+import renderToString from 'preact-render-to-string';
 
 import {
+    stageIdFromRoom,
     stageIdFromState,
     stageIndexFromState,
     isTerminalState,
@@ -13,9 +16,10 @@ import {
     speakingRoundFromState,
     STAGES,
 } from './stage';
+import { StageBar } from './StageBar';
 import { roleLabel, seatUiStatus, resolveTurnAuthor, ROLE_LABELS } from './roleLabels';
 import { FIXED_ROSTER } from './LaunchWizard';
-import type { RoundtableSeat, RoundtableTurn } from '@1agents/core/services/roundtableService';
+import type { RoundtableRoom, RoundtableSeat, RoundtableTurn } from '@1agents/core/services/roundtableService';
 
 test('stage progress maps the state machine to user-facing workflow steps', () => {
     assert.deepEqual(
@@ -33,6 +37,25 @@ test('stage progress maps the state machine to user-facing workflow steps', () =
     assert.equal(stageIdFromState('summarizing_r2'), 'r2');
     assert.equal(stageIdFromState('waiting_r3'), 'r3');
     assert.equal(stageIdFromState('done'), 'final');
+});
+
+test('stage progress distinguishes real progress from the stage being reviewed', () => {
+    const html = renderToString(h(StageBar, { state: 'done', selectedStage: 'r1' }));
+
+    assert.match(html, /aria-label="第 1 步：提案，正在查看"/);
+    assert.match(html, /aria-label="第 4 步：最终结论，当前阶段"/);
+    assert.match(html, /aria-current="step"/);
+    assert.equal((html.match(/rt-stage-connector is-complete/g) || []).length, 3);
+});
+
+test('failed rooms keep the latest stage that actually started', () => {
+    assert.equal(stageIdFromRoom(null), 'r1');
+    assert.equal(stageIdFromRoom({ phase: 'r2' } as RoundtableRoom), 'r2');
+    assert.equal(stageIdFromRoom({ phase: 'done' } as RoundtableRoom), 'final');
+    assert.equal(stageIdFromRoom({ phase: 'failed' } as RoundtableRoom), 'r1');
+    assert.equal(stageIdFromRoom({ phase: 'failed', confirmed_brief_version: 1 } as RoundtableRoom), 'r2');
+    assert.equal(stageIdFromRoom({ phase: 'failed', summary_r2: 'summary' } as RoundtableRoom), 'r3');
+    assert.equal(stageIdFromRoom({ phase: 'failed', active_run: { round: 3 } } as RoundtableRoom), 'r3');
 });
 
 test('terminal states stop polling', () => {

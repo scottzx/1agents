@@ -4,6 +4,7 @@ import { STAGES, stageIdFromState, stageIndexFromState, type StageId } from './s
 
 interface StageBarProps {
     state: RoomState | string | undefined;
+    currentStage?: StageId;
     selectedStage?: StageId;
     onStepClick?: (stepId: StageId) => void;
 }
@@ -12,8 +13,14 @@ interface StageBarProps {
  * Global workflow progress. Completed/current stages can be viewed without
  * changing the room's real state; future stages stay disabled.
  */
-export function StageBar({ state, selectedStage = stageIdFromState(state), onStepClick }: StageBarProps) {
-    const active = stageIndexFromState(state);
+export function StageBar({
+    state,
+    currentStage = stageIdFromState(state),
+    selectedStage = currentStage,
+    onStepClick,
+}: StageBarProps) {
+    const stateIndex = stageIndexFromState(state);
+    const active = stateIndex >= 0 ? stateIndex : STAGES.findIndex(stage => stage.id === currentStage);
     const failed = state === 'failed';
 
     return (
@@ -21,30 +28,29 @@ export function StageBar({ state, selectedStage = stageIdFromState(state), onSte
             <ol class="rt-stage-steps" role="list">
                 {STAGES.map((s, i) => {
                     let cls = 'rt-stage-step';
-                    if (failed) {
-                        cls += ' is-failed';
-                    } else if (active === i) {
+                    if (active === i) {
                         cls += ' is-active';
                     } else if (active > i) {
                         cls += ' is-done';
                     } else {
                         cls += ' is-todo';
                     }
+                    if (failed && active === i) cls += ' is-failed';
                     if (selectedStage === s.id) cls += ' is-selected';
 
-                    const isAvailable = !failed && i <= active;
-                    const isCurrent = !failed && active === i;
-                    const isDone = !failed && active > i;
+                    const isAvailable = i <= active;
+                    const isCurrent = active === i;
+                    const isDone = active > i;
                     const stateText =
                         selectedStage === s.id && !isCurrent
                             ? '正在查看'
                             : isCurrent
-                              ? '当前阶段'
+                              ? failed
+                                  ? '阶段异常'
+                                  : '当前阶段'
                               : isDone
                                 ? '已完成'
-                                : failed
-                                  ? '流程异常'
-                                  : '未开始';
+                                : '未开始';
 
                     return (
                         <li key={s.id} class={cls}>

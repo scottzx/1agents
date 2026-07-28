@@ -14,7 +14,7 @@ import { RoundtableSidebar } from './RoundtableSidebar';
 import { StageWorkbench } from './StageWorkbench';
 import { LaunchWizard } from './LaunchWizard';
 import { RoomList } from './RoomList';
-import { isTerminalState, pollIntervalMs, stageIdFromState, type StageId } from './stage';
+import { isTerminalState, pollIntervalMs, stageIdFromRoom, type StageId } from './stage';
 import { primaryActionForRoom, type RoundtablePrimaryActionId } from './primaryAction';
 import {
     persistListView,
@@ -193,7 +193,7 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
 
     const anySpeaking = seats.some(s => s.status === 'speaking');
     const drafting = room?.state === 'drafting_brief';
-    const actualStage = stageIdFromState(room?.state);
+    const actualStage = stageIdFromRoom(room);
     const displayStage = selectedStage || actualStage;
 
     useEffect(() => {
@@ -435,6 +435,7 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
             header={header}
             mobilePane={mobilePane}
             onMobilePaneChange={selectMobilePane}
+            currentStage={actualStage}
             selectedStage={displayStage}
             onStageChange={selectStage}
             notice={
