@@ -8918,34 +8918,6 @@ body {
     margin-bottom: 0;
     overflow: hidden;
 
-    .gh-composer-tabs {
-      display: flex;
-      background-color: var(--bg-sidebar-hover);
-      border-bottom: 1px solid var(--border-color);
-      padding: 8px 16px 0 16px;
-      gap: 4px;
-
-      .gh-composer-tab {
-        background: transparent;
-        border: 1px solid transparent;
-        border-bottom: none;
-        padding: 6px 12px;
-        font-size: 13px;
-        color: var(--text-secondary);
-        cursor: pointer;
-        border-top-left-radius: 6px;
-        border-top-right-radius: 6px;
-        margin-bottom: -1px;
-
-        &.active {
-          background-color: var(--bg-card);
-          border-color: var(--border-color);
-          color: var(--text-main);
-          font-weight: 600;
-        }
-      }
-    }
-
     .gh-composer-body {
       padding: 12px;
 
@@ -8963,23 +8935,6 @@ body {
         &:focus {
           border-color: var(--accent-color);
           background-color: var(--bg-card);
-        }
-      }
-
-      .gh-preview-box {
-        min-height: 100px;
-        padding: 10px;
-        border: 1px dashed var(--border-color);
-        border-radius: 6px;
-        background-color: var(--bg-sidebar-hover);
-        font-size: 13px;
-        color: var(--text-main);
-        // Empty-state placeholder keeps raw text wrapping; rendered markdown
-        // must use normal flow so block elements (hr, lists, etc.) layout.
-        white-space: pre-wrap;
-
-        &.markdown-body {
-          white-space: normal;
         }
       }
     }
@@ -9000,23 +8955,21 @@ body {
         gap: 12px;
         flex-wrap: wrap;
 
-        .gh-opt-label {
-          font-size: 12.5px;
-          color: var(--text-secondary);
+        .gh-agent-select {
+          flex: 1;
+          min-width: 0;
+          padding: 4px 10px;
+          font-size: 12px;
+          color: var(--text-main);
+          background: var(--bg-card);
+          border: 1px solid var(--border-color);
+          border-radius: 999px;
           cursor: pointer;
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
-          padding: 4px;
-          border-radius: 4px;
+          transition: border-color var(--bento-transition);
 
-          &:hover {
-            color: var(--text-main);
-          }
-
-          &.active {
-            color: var(--accent-color);
-            font-weight: 600;
+          &:focus {
+            border-color: var(--accent-color);
+            background-color: var(--bg-card);
           }
         }
 
@@ -18208,6 +18161,7 @@ body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   overscroll-behavior: contain;
   padding: var(--chat-msg-pad-top) var(--chat-msg-pad-x) 24px;
   display: flex;
@@ -18232,7 +18186,7 @@ body {
   overflow-y: auto;
   overscroll-behavior-y: auto;
   overscroll-behavior-x: none;
-  margin-right: calc(-1 * var(--chat-msg-pad-x, 24px));
+  margin-right: calc(-1 * var(--chat-msg-pad-x, 24px)); /* safe overlap without overflow */
   padding-right: var(--chat-msg-pad-x, 24px);
 
   &::-webkit-scrollbar {

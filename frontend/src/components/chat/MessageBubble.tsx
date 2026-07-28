@@ -57,7 +57,7 @@ export type ToolGroupElement =
     | { kind: 'thinking'; id: string; content: string }
     | { kind: 'call'; call: GroupedToolCall };
 
-export type GroupedChatItem =
+export type TurnContentItem =
     | { id: string; kind: 'user'; content: string; createdAt: number; queueStatus?: 'queued'; queueRequestId?: string }
     | { id: string; kind: 'assistant_text'; content: string; createdAt: number; streaming: boolean }
     | { id: string; kind: 'thinking'; content: string; createdAt: number }
@@ -76,6 +76,17 @@ export type GroupedChatItem =
           pending?: boolean;
       }
     | { id: string; kind: 'error'; content: string; createdAt: number };
+
+export type GroupedChatItem =
+    | TurnContentItem
+    | {
+          id: string;
+          kind: 'turn';
+          items: TurnContentItem[];
+          /** Last assistant answer, or terminal error when no answer exists. */
+          outcomeId?: string;
+          createdAt: number;
+      };
 
 interface MessageBubbleProps {
     item: GroupedChatItem;
@@ -124,9 +135,77 @@ export function MessageBubble({ item, isLast, active, isLatestAssistant, onCance
                     active={active}
                 />
             );
+        case 'turn':
+            return <HistoricalTurnBubble items={item.items} outcomeId={item.outcomeId} />;
         case 'error':
             return <ErrorBubble content={item.content} />;
     }
+}
+
+function HistoricalTurnBubble({ items, outcomeId }: { items: TurnContentItem[]; outcomeId?: string }) {
+    const isExpanded = useSignal(false);
+    const lang = getLang();
+    const outcome = outcomeId ? items.find(item => item.id === outcomeId) : undefined;
+
+    let thinkingCount = 0;
+    let toolCount = 0;
+    for (const item of items) {
+        if (item.kind === 'thinking') {
+            thinkingCount++;
+        } else if (item.kind === 'tool_group') {
+            thinkingCount += item.thinkingBlocks?.length ?? 0;
+            toolCount += item.calls.length;
+        }
+    }
+
+    const toggle = () => {
+        isExpanded.value = !isExpanded.value;
+    };
+    const expanded = isExpanded.value;
+    const visibleItems = expanded ? items : outcome ? [outcome] : [];
+
+    return (
+        <div class={`chat-turn ${expanded ? 'is-expanded' : 'is-collapsed'}`}>
+            <div
+                class="chat-tool-group-header chat-turn-header"
+                role="button"
+                tabIndex={0}
+                aria-expanded={expanded}
+                onClick={toggle}
+                onKeyDown={event => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        toggle();
+                    }
+                }}
+            >
+                <span class="chat-bubble-caret" aria-hidden="true">
+                    {expanded ? '▾' : '▸'}
+                </span>
+                <span class="chat-tool-group-title">{t('chat.turn.process', lang)}</span>
+                <span class="chat-turn-summary">
+                    {t('chat.turn.summary', lang, {
+                        thoughts: String(thinkingCount),
+                        tools: String(toolCount),
+                    })}
+                </span>
+                <span class="chat-tool-group-processed">{t('chat.process.done', lang)}</span>
+            </div>
+            {visibleItems.length > 0 && (
+                <div class="chat-turn-items">
+                    {visibleItems.map((item, index) => (
+                        <MessageBubble
+                            key={item.id}
+                            item={item}
+                            isLast={index === visibleItems.length - 1}
+                            active={false}
+                            isLatestAssistant={false}
+                        />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
 }
 
 function UserBubble({
@@ -281,15 +360,8 @@ function AssistantContent({
         if (!showActions || !bodyRef.current) return;
 
         const body = bodyRef.current;
-        const updateCollapsible = () => {
-            const collapsedMaxHeight = parseFloat(getComputedStyle(body).fontSize) * 30;
-            isCollapsible.value = body.scrollHeight > collapsedMaxHeight + 1;
-        };
-
-        updateCollapsible();
-        const observer = new ResizeObserver(updateCollapsible);
-        observer.observe(body);
-        return () => observer.disconnect();
+        const collapsedMaxHeight = parseFloat(getComputedStyle(body).fontSize) * 30;
+        isCollapsible.value = body.scrollHeight > collapsedMaxHeight + 1;
     }, [html, showActions, limitHeight]);
 
     const copy = async () => {
@@ -743,6 +815,47 @@ function summarizeArgs(args: Record<string, unknown>): string | undefined {
     return undefined;
 }
 
+/**
+ * Tool summary display: for common tools like ReadFile/WriteFile/etc, show
+ * a human-readable Chinese sentence with the relevant file/path in backticks
+ * instead of raw toolName + parameters. Falls back to toolName otherwise.
+ * Used in the collapsed tool-row header badge.
+ */
+function getToolSummary(toolName: string, args: Record<string, unknown>): string {
+    const lower = toolName.toLowerCase();
+    if (lower === 'readfile' || lower.includes('read')) {
+        const target = args.target_file || args.path || args.file || '';
+        if (target) {
+            return `读取 \`${target}\` 具体文章地址。`;
+        }
+    }
+    if (lower === 'writefile' || lower.includes('write')) {
+        const target = args.target_file || args.path || args.file || '';
+        if (target) {
+            return `写入 \`${target}\` 具体文章地址。`;
+        }
+    }
+    if (lower === 'listdir' || lower.includes('list') || lower.includes('ls') || lower.includes('directory')) {
+        const dir = args.path || args.directory || args.directory_path || '';
+        if (dir) {
+            return `列出 \`${dir}\` 下的内容。`;
+        }
+    }
+    if (lower === 'grep' || lower.includes('grep') || lower.includes('rg')) {
+        const pattern = args.pattern || args.query || args.search || '';
+        if (pattern) {
+            return `搜索 \`${pattern}\``;
+        }
+    }
+    if (lower === 'execute' || lower.includes('execute') || lower.includes('run') || lower.includes('command') || lower.includes('terminal')) {
+        const cmd = args.command || args.cmd || args.script || '';
+        if (cmd) {
+            return `执行 \`${cmd}\``;
+        }
+    }
+    return toolName;
+}
+
 function GroupedToolCallItem({ call, status }: { call: GroupedToolCall; status: CallStatus }) {
     const lang = getLang();
 
@@ -845,7 +958,9 @@ function GroupedToolCallItem({ call, status }: { call: GroupedToolCall; status: 
                     {expanded ? '▾' : '▸'}
                 </span>
                 <span class={`chat-tool-kind-label ${labelCls}`}>{kindCategoryLabel(category, lang)}</span>
-                <span class={`chat-tool-name-badge ${labelCls}`}>{call.toolName}</span>
+                <span class={`chat-tool-name-badge ${labelCls}`} title={call.toolName}>
+                    {getToolSummary(call.toolName, args)}
+                </span>
             </div>
             {expanded && (
                 <div class="chat-tool-row-body">
