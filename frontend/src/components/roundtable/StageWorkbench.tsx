@@ -36,7 +36,12 @@ function RoundWorkbench({ room, seats, turns, round, onOpenSeat }: StageWorkbenc
     const summary = summaryForRound(turns, room, round);
     const priorSummary = round === 3 ? summaryForRound(turns, room, 2) : '';
     const panelists = panelistSeats(seats);
-    const progress = progressForRound(room, round);
+    const liveProgress = progressForRound(room, round);
+    const isHistorical = room.phase === 'done' || (round === 2 && room.phase === 'r3');
+    const progress =
+        isHistorical && summary
+            ? { ...liveProgress, completed: liveProgress.total, activeRoles: [], failedRoles: [] }
+            : liveProgress;
 
     return (
         <section class={`rt-stage-workbench is-r${round}`} aria-labelledby={`rt-r${round}-title`}>

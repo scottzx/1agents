@@ -26929,7 +26929,13 @@ body {
     color: var(--danger-fg);
 
     .rt-stage-dot {
+      color: var(--on-accent, #fff);
+      background: var(--danger-fg);
       border-color: var(--danger-fg);
+    }
+
+    .rt-stage-state {
+      color: var(--danger-fg);
     }
   }
 
