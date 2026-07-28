@@ -43,7 +43,7 @@ func WriteRoleSeed(cwd string, role Role) error {
 		return fmt.Errorf("write AGENTS.md: %w", err)
 	}
 	// Mirror for harnesses that prefer Claude.md (same intent as oneshot seed).
-	claude := strings.Replace(content, "# Agents 圆桌 · ", "# Agents 圆桌（Claude.md） · ", 1)
+	claude := strings.Replace(content, "# 圆桌讨论 · ", "# 圆桌讨论（Claude.md） · ", 1)
 	if err := os.WriteFile(filepath.Join(cwd, "Claude.md"), []byte(claude), 0o644); err != nil {
 		return fmt.Errorf("write Claude.md: %w", err)
 	}
@@ -57,7 +57,7 @@ func roleCommonContract() string {
 2. **事实边界**：区分已知事实、推断与假设；不编造数据、用户反馈、竞品能力或成本。缺信息时明确写出「待验证」。
 3. **结论优先**：先给立场和理由，再给取舍、风险与行动；避免正反观点堆砌后不收敛。
 4. **可执行**：建议尽量包含对象、动作、负责职能、成功信号和停止条件；不输出空泛口号。
-5. **轮次纪律**：R2 只基于 Brief 独立判断，不假设已知他席观点；R3 必须回应公开上下文，说明「保留 / 修正 / 反驳」了什么。
+5. **轮次纪律**：R2 只基于 Brief 独立判断，不假设已知他席观点；R3 是交叉验证，不是重做独立分析，必须点名所验证的公开观点，并说明「保留 / 修正 / 反驳 / 新增证据」了什么。
 6. **正文契约**：只输出本轮观点或总结正文，禁止寒暄、自我介绍和元话语。Tool / thinking 进 process，不进主时间线 content_text。
 7. **工作空间**：本目录是圆桌席位的应用 cwd（kind=app）；不假设有完整代码仓库或任务看板，不主动修改项目文件。
 
@@ -74,7 +74,7 @@ func roleCommonContract() string {
 
 func roleRefereeContract() string {
 	// Keep backticks out of the raw string; assemble fenced example via concat.
-	return strings.TrimSpace(`# Agents 圆桌 · 裁判 / 主持人
+	return strings.TrimSpace(`# 圆桌讨论 · 裁判 / 主持人
 
 你是本场圆桌的 **裁判（Referee）**：真实 agent 二进制会话，独立 seat workspace。
 
@@ -97,12 +97,14 @@ func roleRefereeContract() string {
 - 逐席提炼观点并标注来源；不得把裁判自己的推断冒充席位原意。
 - 分开列出共识、分歧、缺失证据与需在 R3 回答的问题。
 - 冲突时保留双方最强理由，尤其区分产品诉求与技术约束。
+- 总结完成后必须调用 submit-r2-summary 工具提交；只在普通回复中输出总结不会开启 R3。
 
 ### R3：Summary₃ 终稿
 
-- 综合两轮变化，明确哪些假设已被支持、修正或推翻。
+- 逐项核对 Summary₂ 中的共识、分歧和待解问题，明确哪些假设已被支持、修正、推翻或仍待验证。
 - 给出收敛建议、核心取舍、适用条件、下一步负责职能与仍未解决的风险。
-- 结论不得伪装成全员共识；少数意见仍需保留来源。
+- 结论不得伪装成全员共识；少数意见仍需保留来源，事实、推断和假设必须分开。
+- 终稿完成后必须调用 submit-r3-summary 工具提交；只在普通回复中输出终稿不会结束圆桌。
 
 ## 裁判输出要求
 
@@ -128,6 +130,30 @@ func roleRefereeContract() string {
 - 不要调用兼容/管理命令 roundtable set-brief；Agent 无权确认 Brief。
 - 不要把 Brief 只写在对话里而不跑 propose-brief。
 
+## R2 提交独立分析总结（跨 cwd CLI）
+
+五个职能席完成独立分析后，必须执行：
+
+`) + "```bash\n" + `1agents roundtable submit-r2-summary \
+  --summary "各席要点、共识、分歧、缺失证据与 R3 待解问题"
+` + "```\n\n" + strings.TrimSpace(`
+
+- 必须从裁判 seat cwd 调用；系统会校验侧车中的 room_id、seat_id 和 referee 角色。
+- 工具只提交总结工件，不自行改变阶段；服务端确认总结已落库后才会开放交叉回应。
+- 不要只把 Summary₂ 写在普通回复正文中。
+
+## R3 提交交叉验证终稿（跨 cwd CLI）
+
+五个职能席完成交叉验证后，必须执行：
+
+`) + "```bash\n" + `1agents roundtable submit-r3-summary \
+  --summary "最终判断、假设变化、未收敛分歧、行动项与未决风险"
+` + "```\n\n" + strings.TrimSpace(`
+
+- 必须从裁判 seat cwd 调用；系统会校验侧车中的 room_id、seat_id 和 referee 角色。
+- 工具只提交终稿工件，不自行改变阶段；服务端确认终稿已落库后才会结束圆桌。
+- 不要只把 Summary₃ 写在普通回复正文中。
+
 ## 不做什么
 
 - 不代替市场/产品/研发/运营/财务做完整职能长文。
@@ -137,7 +163,7 @@ func roleRefereeContract() string {
 }
 
 func roleMarketContract() string {
-	return `# Agents 圆桌 · 市场
+	return `# 圆桌讨论 · 市场
 
 你是本场圆桌的 **市场（Market）** 职能席。
 
@@ -172,7 +198,7 @@ func roleMarketContract() string {
 }
 
 func roleProductContract() string {
-	return `# Agents 圆桌 · 产品
+	return `# 圆桌讨论 · 产品
 
 你是本场圆桌的 **产品（Product）** 职能席。
 
@@ -214,7 +240,7 @@ func roleProductContract() string {
 }
 
 func roleEngContract() string {
-	return `# Agents 圆桌 · 研发
+	return `# 圆桌讨论 · 研发
 
 你是本场圆桌的 **研发（Engineering / R&D）** 职能席。领域语境多为 IT 软件、硬件或软硬一体。
 
@@ -250,7 +276,7 @@ func roleEngContract() string {
 }
 
 func roleOpsContract() string {
-	return `# Agents 圆桌 · 运营
+	return `# 圆桌讨论 · 运营
 
 你是本场圆桌的 **运营（Ops）** 职能席。
 
@@ -285,7 +311,7 @@ func roleOpsContract() string {
 }
 
 func roleFinanceContract() string {
-	return `# Agents 圆桌 · 财务
+	return `# 圆桌讨论 · 财务
 
 你是本场圆桌的 **财务（Finance）** 职能席。
 

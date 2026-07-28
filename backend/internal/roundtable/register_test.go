@@ -13,8 +13,8 @@ func TestAgentsRoundtableManifestRegistered(t *testing.T) {
 	if !ok {
 		t.Fatal("agents-roundtable not registered in appregistry")
 	}
-	if m.Name != "Agents 圆桌" {
-		t.Errorf("Name = %q, want Agents 圆桌", m.Name)
+	if m.Name != "圆桌讨论" {
+		t.Errorf("Name = %q, want 圆桌讨论", m.Name)
 	}
 	if !m.Enabled {
 		t.Error("expected Enabled=true by default (no manual config)")
@@ -28,6 +28,9 @@ func TestAgentsRoundtableManifestRegistered(t *testing.T) {
 	}
 	if mp.ID != "agents-roundtable" {
 		t.Errorf("mount id = %q, want agents-roundtable", mp.ID)
+	}
+	if mp.Label != "圆桌讨论" {
+		t.Errorf("mount label = %q, want 圆桌讨论", mp.Label)
 	}
 	if mp.View != "AgentsRoundtable" {
 		t.Errorf("mount view = %q, want AgentsRoundtable", mp.View)

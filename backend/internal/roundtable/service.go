@@ -82,7 +82,7 @@ func (svc *Service) CreateRoom(req CreateRoomRequest) (*Room, error) {
 	roomID := meta.NewID()
 	title := strings.TrimSpace(req.Title)
 	if title == "" {
-		title = "Agents 圆桌"
+		title = "圆桌讨论"
 	}
 	room := &Room{
 		ID:        roomID,
@@ -104,7 +104,7 @@ func (svc *Service) CreateRoom(req CreateRoomRequest) (*Room, error) {
 	for _, role := range DefaultRoster {
 		idSuffix := fmt.Sprintf("rt-%s-%s", roomID, RoleSlug(role))
 		displayName := fmt.Sprintf("圆桌·%s", RoleLabel(role))
-		if title != "Agents 圆桌" {
+		if title != "圆桌讨论" {
 			displayName = fmt.Sprintf("%s·%s", title, RoleLabel(role))
 		}
 		wsID, cwd, err := svc.createSeatWS(idSuffix, displayName)
@@ -707,12 +707,41 @@ func BuildR2SummaryPrompt(brief *Brief, items []r2SpeechItem) string {
 		sb.WriteString(fmt.Sprintf("\n### %s\n%s\n", label, it.Text))
 	}
 	sb.WriteString(`
-请输出 Summary₂ 正文：
+请形成 Summary₂，并按本轮附带的提交要求调用工具：
 - 综合各席要点，并标注观点来源席位
 - 冲突时显式写出分歧（尤其产品诉求 vs 技术约束）
 - 注明缺席/失败席位
-- 禁止寒暄；不代替 panelist 重写长文`)
+- 禁止寒暄；不代替 panelist 重写长文
+- 不要只在普通回复中输出总结`)
 	return sb.String()
+}
+
+const SubmitR2SummaryTool = "submit-r2-summary"
+
+func BuildR2SummaryToolInstruction() string {
+	return fmt.Sprintf(`提交要求：
+- 你必须调用 %[1]s 工具提交独立分析阶段总结。
+- 普通回复文本不会被视为已提交，也不能开启交叉回应。
+- summary 必须包含各席要点、共识、分歧、缺失证据和 R3 待解问题。
+
+调用格式：
+%[2]s %[1]s --summary '完整总结正文'`,
+		SubmitR2SummaryTool,
+		RoundtableCLI(),
+	)
+}
+
+// SubmitR2Summary is the referee-only tool boundary for the R2 artifact.
+// It records the artifact but deliberately leaves the room in summarizing_r2;
+// the round runner is the only component allowed to open R3.
+func (svc *Service) SubmitR2Summary(roomID, refereeSeatID, summary string) (*Room, error) {
+	if svc == nil || svc.store == nil {
+		return nil, fmt.Errorf("roundtable: service not configured")
+	}
+	if _, err := svc.store.SubmitR2Summary(roomID, refereeSeatID, summary); err != nil {
+		return nil, err
+	}
+	return svc.GetRoom(roomID)
 }
 
 // appendMissingRoleRecord makes absence part of the persisted artifact instead
@@ -1074,6 +1103,9 @@ func (svc *Service) runR2RefereeSummary(room *Room, brief *Brief, referee *Seat,
 	if err != nil {
 		return Turn{}, "", fmt.Errorf("resolve referee cwd: %w", err)
 	}
+	if turn, text, submittedErr := svc.loadR2SummarySubmission(room.ID, referee.ID); submittedErr == nil {
+		return turn, text, nil
+	}
 
 	referee.Status = SeatSpeaking
 	_ = svc.store.UpdateSeatSession(referee)
@@ -1085,18 +1117,23 @@ func (svc *Service) runR2RefereeSummary(room *Room, brief *Brief, referee *Seat,
 		sysCtx = "当前阶段：R2 末裁判总结。只输出 Summary₂ 正文。"
 	}
 	result, err := svc.prompter.Prompt(SeatPromptRequest{
-		SessionID:      referee.SessionID,
-		WorkspacePath:  cwd,
-		AgentType:      referee.AgentType,
-		AcpSessionID:   referee.AcpSessionID,
-		Text:           promptText,
-		SystemContext:  sysCtx,
-		PermissionMode: "approve-all",
-		Role:           RoleReferee,
+		SessionID:       referee.SessionID,
+		WorkspacePath:   cwd,
+		AgentType:       referee.AgentType,
+		AcpSessionID:    referee.AcpSessionID,
+		Text:            promptText,
+		SystemContext:   sysCtx,
+		PermissionMode:  "approve-all",
+		Role:            RoleReferee,
+		RequiredTool:    SubmitR2SummaryTool,
+		ToolInstruction: BuildR2SummaryToolInstruction(),
 	})
 	if err != nil {
 		referee.Status = SeatReady
 		_ = svc.store.UpdateSeatSession(referee)
+		if turn, text, submittedErr := svc.loadR2SummarySubmission(room.ID, referee.ID); submittedErr == nil {
+			return turn, text, nil
+		}
 		return Turn{}, "", err
 	}
 	if result.AcpSessionID != "" {
@@ -1110,28 +1147,49 @@ func (svc *Service) runR2RefereeSummary(room *Room, brief *Brief, referee *Seat,
 		return Turn{}, "", err
 	}
 
-	summaryText := strings.TrimSpace(result.Text)
-	if summaryText == "" {
-		summaryText = "（裁判 Summary₂ 无正文输出）"
+	// StaticSeatPrompter models the tool call for unit tests. Production tools
+	// write through the CLI while the bridge prompt is still running.
+	if strings.TrimSpace(result.SubmittedSummary) != "" {
+		submittedSummary := appendMissingRoleRecord(result.SubmittedSummary, items)
+		if _, err := svc.store.SubmitR2Summary(room.ID, referee.ID, submittedSummary); err != nil {
+			return Turn{}, "", fmt.Errorf("submit independent analysis summary: %w", err)
+		}
 	}
-	summaryText = appendMissingRoleRecord(summaryText, items)
-
-	turn := Turn{
-		ID:          meta.NewID(),
-		RoomID:      room.ID,
-		Round:       2,
-		SeatID:      referee.ID,
-		Kind:        TurnKindSummary,
-		ContentText: summaryText,
-		ProcessRef:  referee.SessionID,
-		CreatedAt:   time.Now().UTC(),
+	turn, summaryText, err := svc.loadR2SummarySubmission(room.ID, referee.ID)
+	if err != nil {
+		return Turn{}, "", fmt.Errorf(
+			"referee must call %s before cross response can start: %w",
+			SubmitR2SummaryTool,
+			err,
+		)
 	}
-	if err := svc.store.InsertTurn(&turn); err != nil {
-		return Turn{}, "", err
-	}
-
 	room.SummaryR2 = summaryText
 	return turn, summaryText, nil
+}
+
+func (svc *Service) loadR2SummarySubmission(roomID, refereeSeatID string) (Turn, string, error) {
+	room, err := svc.store.GetRoom(roomID)
+	if err != nil {
+		return Turn{}, "", err
+	}
+	summary := strings.TrimSpace(room.SummaryR2)
+	if summary == "" {
+		return Turn{}, "", fmt.Errorf("independent analysis summary was not submitted")
+	}
+	turns, err := svc.store.ListTurns(roomID)
+	if err != nil {
+		return Turn{}, "", err
+	}
+	for i := len(turns) - 1; i >= 0; i-- {
+		turn := turns[i]
+		if turn.Round == 2 &&
+			turn.Kind == TurnKindSummary &&
+			turn.SeatID == refereeSeatID &&
+			strings.TrimSpace(turn.ContentText) == summary {
+			return turn, summary, nil
+		}
+	}
+	return Turn{}, "", fmt.Errorf("independent analysis summary turn missing")
 }
 
 // ---------------------------------------------------------------------------
@@ -1178,12 +1236,15 @@ func FormatSpeechPackage(title string, items []r2SpeechItem) string {
 // Role instructions live in the user prompt because resume does not re-inject SystemContext.
 func BuildR3PanelistPrompt(role Role, brief *Brief, r2Items []r2SpeechItem, summaryR2 string) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf(`当前阶段：R3 次轮各自发言。
+	sb.WriteString(fmt.Sprintf(`当前阶段：R3 交叉验证。
 
 你的职能席位：%s（%s）。
 规则：
-- 只输出本职能次轮观点正文，禁止寒暄。
-- 你可看到 Brief、五席 R2 发言正文与裁判 Summary₂；请在此基础上回应、补充或反驳。
+- 这不是重新做一遍独立分析。只输出本职能的交叉验证正文，禁止寒暄。
+- 你可看到 Brief、五席 R2 发言正文与裁判 Summary₂；必须点名所验证的席位或具体观点，不能只重复自己的 R2 结论。
+- 对相关判断逐项标记【保留】【修正】【反驳】【新增证据/待验证】；某类不适用时明确写“无”，不要为了填格式制造分歧。
+- 每项说明依据属于已知事实、推断还是假设，并指出它如何影响最终决策或行动。
+- 末尾给出【本席最终建议】，说明相较 R2 是否改变立场，以及仍可推翻结论的条件。
 - 恰好 1 次本轮发言；禁止把 tool/thinking 写入正文。
 
 `, RoleLabel(role), role))
@@ -1197,7 +1258,7 @@ func BuildR3PanelistPrompt(role Role, brief *Brief, r2Items []r2SpeechItem, summ
 		sb.WriteString(strings.TrimSpace(summaryR2))
 		sb.WriteString("\n")
 	}
-	sb.WriteString("\n请基于以上公开上下文，从你的职能视角输出本轮（R3）次轮发言正文。")
+	sb.WriteString("\n请基于以上公开上下文，从你的职能视角完成本轮（R3）交叉验证。")
 	return sb.String()
 }
 
@@ -1216,15 +1277,46 @@ func BuildR3SummaryPrompt(brief *Brief, r2Items []r2SpeechItem, summaryR2 string
 		sb.WriteString("\n")
 	}
 	sb.WriteString("\n")
-	sb.WriteString(FormatSpeechPackage("【各席 R3 次轮发言】", r3Items))
+	sb.WriteString(FormatSpeechPackage("【各席 R3 交叉验证发言】", r3Items))
 	sb.WriteString(`
-请输出 Summary₃ 终稿正文：
-- 综合两轮要点，标注观点来源席位
-- 冲突时显式写出分歧（尤其产品诉求 vs 技术约束）
+请形成 Summary₃，并按本轮附带的提交要求调用工具：
+- 逐项核对 Summary₂ 的共识、分歧和待解问题在 R3 后是【被支持】【被修正】【被推翻】还是【仍待验证】
+- 标注观点与证据来源席位；区分事实、推断和假设
+- 保留未收敛分歧及少数意见，不得伪装成全员共识
 - 注明缺席/失败席位
-- 给出可执行的收敛结论（终稿）
-- 禁止寒暄；不代替 panelist 重写长文`)
+- 给出最终判断、适用条件、核心取舍、行动项、负责职能、成功信号和停止条件
+- 列出仍可能推翻终稿的未决风险
+- 禁止寒暄；不代替 panelist 重写长文
+- 不要只在普通回复中输出终稿`)
 	return sb.String()
+}
+
+const SubmitR3SummaryTool = "submit-r3-summary"
+
+func BuildR3SummaryToolInstruction() string {
+	return fmt.Sprintf(`提交要求：
+- 你必须调用 %[1]s 工具提交交叉验证阶段终稿。
+- 普通回复文本不会被视为已提交，也不能结束圆桌。
+- summary 必须包含最终判断、经验证的假设变化、未收敛分歧、行动项和未决风险。
+
+调用格式：
+%[2]s %[1]s --summary '完整终稿正文'`,
+		SubmitR3SummaryTool,
+		RoundtableCLI(),
+	)
+}
+
+// SubmitR3Summary is the referee-only tool boundary for the final artifact.
+// It records the artifact but deliberately leaves the room in summarizing_r3;
+// the round runner is the only component allowed to mark the room done.
+func (svc *Service) SubmitR3Summary(roomID, refereeSeatID, summary string) (*Room, error) {
+	if svc == nil || svc.store == nil {
+		return nil, fmt.Errorf("roundtable: service not configured")
+	}
+	if _, err := svc.store.SubmitR3Summary(roomID, refereeSeatID, summary); err != nil {
+		return nil, err
+	}
+	return svc.GetRoom(roomID)
 }
 
 // RunR3Response is the result of POST .../r3.
@@ -1621,6 +1713,9 @@ func (svc *Service) runR3RefereeSummary(room *Room, brief *Brief, referee *Seat,
 	if err != nil {
 		return Turn{}, "", fmt.Errorf("resolve referee cwd: %w", err)
 	}
+	if turn, text, submittedErr := svc.loadR3SummarySubmission(room.ID, referee.ID); submittedErr == nil {
+		return turn, text, nil
+	}
 
 	referee.Status = SeatSpeaking
 	_ = svc.store.UpdateSeatSession(referee)
@@ -1631,18 +1726,23 @@ func (svc *Service) runR3RefereeSummary(room *Room, brief *Brief, referee *Seat,
 		sysCtx = "当前阶段：R3 末裁判终稿。只输出 Summary₃ 正文。"
 	}
 	result, err := svc.prompter.Prompt(SeatPromptRequest{
-		SessionID:      referee.SessionID,
-		WorkspacePath:  cwd,
-		AgentType:      referee.AgentType,
-		AcpSessionID:   referee.AcpSessionID,
-		Text:           promptText,
-		SystemContext:  sysCtx,
-		PermissionMode: "approve-all",
-		Role:           RoleReferee,
+		SessionID:       referee.SessionID,
+		WorkspacePath:   cwd,
+		AgentType:       referee.AgentType,
+		AcpSessionID:    referee.AcpSessionID,
+		Text:            promptText,
+		SystemContext:   sysCtx,
+		PermissionMode:  "approve-all",
+		Role:            RoleReferee,
+		RequiredTool:    SubmitR3SummaryTool,
+		ToolInstruction: BuildR3SummaryToolInstruction(),
 	})
 	if err != nil {
 		referee.Status = SeatReady
 		_ = svc.store.UpdateSeatSession(referee)
+		if turn, text, submittedErr := svc.loadR3SummarySubmission(room.ID, referee.ID); submittedErr == nil {
+			return turn, text, nil
+		}
 		return Turn{}, "", err
 	}
 	if result.AcpSessionID != "" {
@@ -1656,26 +1756,47 @@ func (svc *Service) runR3RefereeSummary(room *Room, brief *Brief, referee *Seat,
 		return Turn{}, "", err
 	}
 
-	summaryText := strings.TrimSpace(result.Text)
-	if summaryText == "" {
-		summaryText = "（裁判 Summary₃ 无正文输出）"
+	// StaticSeatPrompter models the tool call for unit tests. Production tools
+	// write through the CLI while the bridge prompt is still running.
+	if strings.TrimSpace(result.SubmittedSummary) != "" {
+		submittedSummary := appendMissingRoleRecord(result.SubmittedSummary, r3Items)
+		if _, err := svc.store.SubmitR3Summary(room.ID, referee.ID, submittedSummary); err != nil {
+			return Turn{}, "", fmt.Errorf("submit cross-validation final summary: %w", err)
+		}
 	}
-	summaryText = appendMissingRoleRecord(summaryText, r3Items)
-
-	turn := Turn{
-		ID:          meta.NewID(),
-		RoomID:      room.ID,
-		Round:       3,
-		SeatID:      referee.ID,
-		Kind:        TurnKindSummary,
-		ContentText: summaryText,
-		ProcessRef:  referee.SessionID,
-		CreatedAt:   time.Now().UTC(),
+	turn, summaryText, err := svc.loadR3SummarySubmission(room.ID, referee.ID)
+	if err != nil {
+		return Turn{}, "", fmt.Errorf(
+			"referee must call %s before the roundtable can finish: %w",
+			SubmitR3SummaryTool,
+			err,
+		)
 	}
-	if err := svc.store.InsertTurn(&turn); err != nil {
-		return Turn{}, "", err
-	}
-
 	room.SummaryR3 = summaryText
 	return turn, summaryText, nil
+}
+
+func (svc *Service) loadR3SummarySubmission(roomID, refereeSeatID string) (Turn, string, error) {
+	room, err := svc.store.GetRoom(roomID)
+	if err != nil {
+		return Turn{}, "", err
+	}
+	summary := strings.TrimSpace(room.SummaryR3)
+	if summary == "" {
+		return Turn{}, "", fmt.Errorf("cross-validation final summary was not submitted")
+	}
+	turns, err := svc.store.ListTurns(roomID)
+	if err != nil {
+		return Turn{}, "", err
+	}
+	for i := len(turns) - 1; i >= 0; i-- {
+		turn := turns[i]
+		if turn.Round == 3 &&
+			turn.Kind == TurnKindSummary &&
+			turn.SeatID == refereeSeatID &&
+			strings.TrimSpace(turn.ContentText) == summary {
+			return turn, summary, nil
+		}
+	}
+	return Turn{}, "", fmt.Errorf("cross-validation final summary turn missing")
 }

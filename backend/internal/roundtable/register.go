@@ -16,14 +16,14 @@ func init() {
 	// Enabled by default so users need no manual config to launch.
 	appregistry.Register(appregistry.AppManifest{
 		ID:      AppID,
-		Name:    "Agents 圆桌",
+		Name:    "圆桌讨论",
 		Version: "0.1.0",
 		Enabled: true,
 		MountPoints: []appregistry.MountPoint{
 			{
 				Type:  "l1-page",
 				ID:    MountL1ID,
-				Label: "Agents 圆桌",
+				Label: "圆桌讨论",
 				View:  ViewAgentsRoundtable,
 				Icon:  "users",
 			},

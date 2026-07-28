@@ -123,7 +123,7 @@ func TestCreateRoom_SixSeatsDraftingBrief(t *testing.T) {
 			if seedFile == "AGENTS.md" {
 				content = seedContent
 			}
-			if !strings.Contains(seedContent, "Agents 圆桌") {
+			if !strings.Contains(seedContent, "圆桌讨论") {
 				t.Fatalf("%s for %s missing roundtable header", seedFile, seat.Role)
 			}
 			for _, marker := range []string{
@@ -604,7 +604,7 @@ func TestRoleSeedContent(t *testing.T) {
 		t.Fatal("Claude.md missing")
 	}
 	for _, marker := range []string{
-		"Agents 圆桌（Claude.md） · 研发", "## 行为设置", "## 圆桌行为协议",
+		"圆桌讨论（Claude.md） · 研发", "## 行为设置", "## 圆桌行为协议",
 	} {
 		if !strings.Contains(string(claude), marker) {
 			t.Fatalf("Claude.md missing complete role marker %q", marker)
@@ -1019,6 +1019,14 @@ func TestBuildR3PanelistPromptPublicContext(t *testing.T) {
 	if !strings.Contains(p, "R3") && !strings.Contains(p, "次轮") {
 		t.Fatalf("R3 stage missing: %q", p)
 	}
+	for _, marker := range []string{"交叉验证", "【保留】", "【修正】", "【反驳】", "【新增证据/待验证】", "本席最终建议"} {
+		if !strings.Contains(p, marker) {
+			t.Fatalf("R3 cross-validation contract missing %q: %q", marker, p)
+		}
+	}
+	if !strings.Contains(p, "必须点名所验证的席位或具体观点") {
+		t.Fatalf("R3 should require concrete peer validation: %q", p)
+	}
 	if strings.Contains(p, "tool_call") || strings.Contains(p, "tool trace") {
 		t.Fatalf("must not inject tool traces: %q", p)
 	}
@@ -1211,6 +1219,17 @@ func TestR3_ResumeSameAcpAndPublicContext(t *testing.T) {
 	}
 	if summaryCall == nil {
 		t.Fatal("missing referee Summary₃ prompt")
+	}
+	if summaryCall.RequiredTool != roundtable.SubmitR3SummaryTool {
+		t.Fatalf("Summary₃ must require %s, call=%+v", roundtable.SubmitR3SummaryTool, summaryCall)
+	}
+	if !strings.Contains(summaryCall.ToolInstruction, "普通回复文本不会被视为已提交") {
+		t.Fatalf("Summary₃ tool instruction missing normal-text gate: %q", summaryCall.ToolInstruction)
+	}
+	for _, marker := range []string{"被支持", "被修正", "被推翻", "仍待验证"} {
+		if !strings.Contains(summaryCall.Text, marker) {
+			t.Fatalf("Summary₃ cross-validation audit missing %q: %q", marker, summaryCall.Text)
+		}
 	}
 	for _, body := range []string{marketR3, productR3, engR3, opsR3, finR3} {
 		if !strings.Contains(summaryCall.Text, body) {

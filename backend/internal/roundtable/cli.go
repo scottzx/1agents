@@ -66,6 +66,10 @@ usage:
       --title T --question Q --constraints C --success-criteria S
       [--product-kind software|hardware|hybrid] [--source-turn ID] [--json]
   %s propose-brief [--room ID] --from-json '{...}' [--json]
+  %s submit-r2-summary [--room ID] --summary TEXT [--json]
+  %s submit-r2-summary [--room ID] --from-json '{"summary":"..."}' [--json]
+  %s submit-r3-summary [--room ID] --summary TEXT [--json]
+  %s submit-r3-summary [--room ID] --from-json '{"summary":"..."}' [--json]
 
 compatibility / administration only (deprecated for agents):
   %s set-brief [--room ID]
@@ -87,7 +91,7 @@ room_id resolution (first match wins):
   4. reverse-lookup seat by workspace path matching cwd
 
 Writes go directly to ~/.1agents/meta.db (daemon not required).
-`, rt, rt, rt, rt, rt, rt, bin, EnvCLI, EnvRoundtableRoomID, SeatSidecarFile))
+`, rt, rt, rt, rt, rt, rt, rt, rt, rt, rt, bin, EnvCLI, EnvRoundtableRoomID, SeatSidecarFile))
 }
 
 // RunCLI dispatches `1agents roundtable …` verbs. Returns process exit code.
@@ -104,12 +108,93 @@ func RunCLI(args []string) int {
 		return cliGet(args[1:])
 	case "propose-brief":
 		return cliWriteBrief(args[1:], true)
+	case SubmitR2SummaryTool:
+		return cliSubmitSummary(args[1:], 2)
+	case SubmitR3SummaryTool:
+		return cliSubmitSummary(args[1:], 3)
 	case "set-brief":
 		return cliWriteBrief(args[1:], false)
 	default:
 		fmt.Fprintf(os.Stderr, "error: unknown roundtable verb %q\n\n%s\n", args[0], formatUsage())
 		return 1
 	}
+}
+
+func cliSubmitSummary(args []string, round int) int {
+	tool := SubmitR2SummaryTool
+	summaryDescription := "independent analysis summary"
+	if round == 3 {
+		tool = SubmitR3SummaryTool
+		summaryDescription = "cross-validation final summary"
+	}
+	fs := flag.NewFlagSet("roundtable "+tool, flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	roomFlag := fs.String("room", "", "room id (optional if sidecar resolves)")
+	summary := fs.String("summary", "", summaryDescription)
+	fromJSON := fs.String("from-json", "", `JSON object with a "summary" field`)
+	asJSON := fs.Bool("json", false, "print updated room as JSON")
+	if err := fs.Parse(args); err != nil {
+		return 1
+	}
+	if strings.TrimSpace(*fromJSON) != "" {
+		var body struct {
+			Summary string `json:"summary"`
+		}
+		if err := json.Unmarshal([]byte(*fromJSON), &body); err != nil {
+			return cliFail("parse --from-json: %v", err)
+		}
+		if strings.TrimSpace(*summary) == "" {
+			*summary = body.Summary
+		}
+	}
+	if strings.TrimSpace(*summary) == "" {
+		return cliFail("%s requires --summary or --from-json", tool)
+	}
+
+	cwd, err := filepath.Abs(".")
+	if err != nil {
+		return cliFail("resolve cwd: %v", err)
+	}
+	sidecar, ok := readSeatSidecar(cwd)
+	if !ok || sidecar.SeatID == "" {
+		return cliFail("%s requires a referee seat sidecar in cwd", tool)
+	}
+	if Role(sidecar.Role) != RoleReferee {
+		return cliFail("only the referee seat may call %s", tool)
+	}
+
+	store, err := NewStore()
+	if err != nil {
+		return cliFail("open store: %v", err)
+	}
+	roomID, err := ResolveRoomID(store, *roomFlag, cwd)
+	if err != nil {
+		return cliFail("%v", err)
+	}
+	if sidecar.RoomID != roomID {
+		return cliFail("seat sidecar belongs to room %s, not %s", sidecar.RoomID, roomID)
+	}
+	svc := NewService(store, nil, &StaticSeatPrompter{})
+	var room *Room
+	if round == 3 {
+		room, err = svc.SubmitR3Summary(roomID, sidecar.SeatID, *summary)
+	} else {
+		room, err = svc.SubmitR2Summary(roomID, sidecar.SeatID, *summary)
+	}
+	if err != nil {
+		return cliFail("%v", err)
+	}
+	if *asJSON {
+		return cliPrintJSON(room)
+	}
+	fmt.Printf(
+		"%s submitted: room=%s state=%s chars=%d\n",
+		summaryDescription,
+		room.ID,
+		room.State,
+		len([]rune(strings.TrimSpace(*summary))),
+	)
+	return 0
 }
 
 func cliGet(args []string) int {
@@ -315,6 +400,15 @@ func ResolveRoomID(store *Store, explicitRoom, cwdHint string) (string, error) {
 
 // readSidecarRoomID walks cwd and parents looking for SeatSidecarFile.
 func readSidecarRoomID(start string) (string, bool) {
+	sidecar, ok := readSeatSidecar(start)
+	if !ok {
+		return "", false
+	}
+	id := strings.TrimSpace(sidecar.RoomID)
+	return id, id != ""
+}
+
+func readSeatSidecar(start string) (SeatSidecar, bool) {
 	dir := start
 	for i := 0; i < 8; i++ {
 		path := filepath.Join(dir, SeatSidecarFile)
@@ -323,7 +417,8 @@ func readSidecarRoomID(start string) (string, bool) {
 			var sc SeatSidecar
 			if json.Unmarshal(b, &sc) == nil {
 				if id := strings.TrimSpace(sc.RoomID); id != "" {
-					return id, true
+					sc.RoomID = id
+					return sc, true
 				}
 			}
 		}
@@ -333,7 +428,7 @@ func readSidecarRoomID(start string) (string, bool) {
 		}
 		dir = parent
 	}
-	return "", false
+	return SeatSidecar{}, false
 }
 
 // WriteSeatSidecar writes room/role context into a seat cwd for CLI resolution.

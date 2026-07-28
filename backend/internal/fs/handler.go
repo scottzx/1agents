@@ -966,6 +966,15 @@ func (h *Handler) safeAbs(rel string) (string, bool) {
 		}
 	}
 
+	// Allow relative temp paths from chatUI / tool outputs (e.g. "1agents-xxx.txt")
+	// These are temp files created by fsService.upload and referenced in markdown file refs.
+	if !filepath.IsAbs(cleaned) && strings.HasPrefix(cleaned, "1agents-") {
+		tempPath := filepath.Join("/tmp", cleaned)
+		if isUploadArtifact(tempPath) {
+			return tempPath, true
+		}
+	}
+
 	// filepath.Join cleans ".." components.
 	joined := filepath.Join(h.root, filepath.FromSlash(rel))
 	cleaned = filepath.Clean(joined)

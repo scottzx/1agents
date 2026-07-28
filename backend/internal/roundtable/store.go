@@ -1050,6 +1050,182 @@ func (s *Store) UpdateRoomSummaryR3AndState(room *Room) error {
 	return nil
 }
 
+// SubmitR2Summary records the referee's tool submission without advancing the
+// room. The round runner verifies this artifact before it opens R3.
+func (s *Store) SubmitR2Summary(roomID, refereeSeatID, summary string) (*Turn, error) {
+	return s.submitRoundSummary(
+		roomID, refereeSeatID, summary, 2, StateSummarizingR2,
+		"summary_r2", "independent analysis summary",
+	)
+}
+
+// SubmitR3Summary records the referee's final cross-validation artifact without
+// advancing the room. The round runner verifies it before moving to done.
+func (s *Store) SubmitR3Summary(roomID, refereeSeatID, summary string) (*Turn, error) {
+	return s.submitRoundSummary(
+		roomID, refereeSeatID, summary, 3, StateSummarizingR3,
+		"summary_r3", "cross-validation final summary",
+	)
+}
+
+func (s *Store) submitRoundSummary(
+	roomID string,
+	refereeSeatID string,
+	summary string,
+	round int,
+	requiredState RoomState,
+	summaryColumn string,
+	artifactLabel string,
+) (*Turn, error) {
+	roomID = strings.TrimSpace(roomID)
+	refereeSeatID = strings.TrimSpace(refereeSeatID)
+	summary = strings.TrimSpace(summary)
+	if roomID == "" || refereeSeatID == "" {
+		return nil, fmt.Errorf("roundtable: room id and referee seat id required")
+	}
+	if summary == "" {
+		return nil, fmt.Errorf("roundtable: %s required", artifactLabel)
+	}
+
+	tx, err := s.db.SQL().Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var state, existingSummary string
+	if err := tx.QueryRow(
+		fmt.Sprintf(
+			`SELECT state, %s FROM agents_roundtable_rooms WHERE id = ?`,
+			summaryColumn,
+		),
+		roomID,
+	).Scan(&state, &existingSummary); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, meta.ErrNotFound
+		}
+		return nil, err
+	}
+	if RoomState(state) != requiredState {
+		return nil, fmt.Errorf(
+			"roundtable: %s only allowed in %s (state=%s)",
+			artifactLabel,
+			requiredState,
+			state,
+		)
+	}
+	if strings.TrimSpace(existingSummary) != "" {
+		if strings.TrimSpace(existingSummary) == summary {
+			var existing Turn
+			var createdAt string
+			err := tx.QueryRow(
+				`SELECT id, room_id, round, seat_id, kind, content_text, process_ref, created_at
+				 FROM agents_roundtable_turns
+				 WHERE room_id = ? AND round = ? AND seat_id = ? AND kind = ?
+				 ORDER BY created_at DESC, id DESC LIMIT 1`,
+				roomID,
+				round,
+				refereeSeatID,
+				TurnKindSummary,
+			).Scan(
+				&existing.ID,
+				&existing.RoomID,
+				&existing.Round,
+				&existing.SeatID,
+				&existing.Kind,
+				&existing.ContentText,
+				&existing.ProcessRef,
+				&createdAt,
+			)
+			if err == nil {
+				existing.CreatedAt = strToTime(createdAt)
+				return &existing, nil
+			}
+			if err != sql.ErrNoRows {
+				return nil, err
+			}
+		}
+		return nil, fmt.Errorf("roundtable: %s already submitted", artifactLabel)
+	}
+
+	var seatRoom, role, processRef string
+	if err := tx.QueryRow(
+		`SELECT room_id, role, session_id FROM agents_roundtable_seats WHERE id = ?`,
+		refereeSeatID,
+	).Scan(&seatRoom, &role, &processRef); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, meta.ErrNotFound
+		}
+		return nil, err
+	}
+	if seatRoom != roomID || Role(role) != RoleReferee {
+		return nil, fmt.Errorf("roundtable: only this room's referee may submit the %s", artifactLabel)
+	}
+
+	if run, runErr := getRoundRunTx(tx, roomID, round); runErr == nil {
+		if run.Status != RunSummarizing {
+			return nil, fmt.Errorf(
+				"roundtable: %s requires summarizing run (status=%s)",
+				artifactLabel,
+				run.Status,
+			)
+		}
+	} else if runErr != meta.ErrNotFound {
+		return nil, runErr
+	}
+
+	now := time.Now().UTC()
+	turn := &Turn{
+		ID:          meta.NewID(),
+		RoomID:      roomID,
+		Round:       round,
+		SeatID:      refereeSeatID,
+		Kind:        TurnKindSummary,
+		ContentText: summary,
+		ProcessRef:  processRef,
+		CreatedAt:   now,
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO agents_roundtable_turns
+			(id, room_id, round, seat_id, kind, content_text, process_ref, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		turn.ID,
+		turn.RoomID,
+		turn.Round,
+		turn.SeatID,
+		turn.Kind,
+		turn.ContentText,
+		turn.ProcessRef,
+		timeToStr(turn.CreatedAt),
+	); err != nil {
+		return nil, fmt.Errorf("insert %s turn: %w", artifactLabel, err)
+	}
+	result, err := tx.Exec(
+		fmt.Sprintf(
+			`UPDATE agents_roundtable_rooms
+			 SET %s = ?, updated_at = ?
+			 WHERE id = ? AND state = ? AND %s = ''`,
+			summaryColumn,
+			summaryColumn,
+		),
+		summary,
+		timeToStr(now),
+		roomID,
+		string(requiredState),
+	)
+	if err != nil {
+		return nil, err
+	}
+	affected, _ := result.RowsAffected()
+	if affected != 1 {
+		return nil, fmt.Errorf("roundtable: %s submission lost", artifactLabel)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return turn, nil
+}
+
 // InsertTurn appends a timeline turn.
 func (s *Store) InsertTurn(t *Turn) error {
 	if t == nil || t.ID == "" {

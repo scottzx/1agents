@@ -14,6 +14,36 @@ import (
 	"github.com/scottzx/1Agents/backend/internal/roundtable"
 )
 
+type normalTextOnlyPrompter struct{}
+
+func (normalTextOnlyPrompter) Prompt(req roundtable.SeatPromptRequest) (roundtable.SeatPromptResult, error) {
+	text := "普通回复正文"
+	if req.Role != roundtable.RoleReferee {
+		text = fmt.Sprintf("%s 席观点", req.Role)
+	}
+	return roundtable.SeatPromptResult{
+		Text:         text,
+		AcpSessionID: "acp-" + string(req.Role),
+	}, nil
+}
+
+type r2ToolOnlyPrompter struct{}
+
+func (r2ToolOnlyPrompter) Prompt(req roundtable.SeatPromptRequest) (roundtable.SeatPromptResult, error) {
+	text := "普通回复正文"
+	if req.Role != roundtable.RoleReferee {
+		text = fmt.Sprintf("%s 席观点", req.Role)
+	}
+	result := roundtable.SeatPromptResult{
+		Text:         text,
+		AcpSessionID: "acp-" + string(req.Role),
+	}
+	if req.RequiredTool == roundtable.SubmitR2SummaryTool {
+		result.SubmittedSummary = text
+	}
+	return result, nil
+}
+
 func confirmedRunRoom(t *testing.T) (*roundtable.Service, *roundtable.StaticSeatPrompter, *roundtable.Room) {
 	t.Helper()
 	svc, prompter := testRig(t)
@@ -39,6 +69,84 @@ func confirmedRunRoom(t *testing.T) (*roundtable.Service, *roundtable.StaticSeat
 		t.Fatal(err)
 	}
 	return svc, prompter, room
+}
+
+func TestR2NormalRefereeTextCannotOpenR3WithoutToolSubmission(t *testing.T) {
+	_, _ = testRig(t) // isolate ONEAGENTS_HOME
+	store, err := roundtable.NewStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := roundtable.NewService(store, nil, normalTextOnlyPrompter{})
+	room, err := svc.CreateRoom(roundtable.CreateRoomRequest{Title: "总结工具门禁"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	room, err = svc.ConfirmBrief(room.ID, roundtable.ConfirmBriefRequest{
+		Title:           "工具门禁",
+		Question:        "普通回复能否开启下一轮？",
+		Constraints:     "必须提交结构化总结",
+		SuccessCriteria: "没有工具提交时 R3 保持关闭",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := svc.RunR2(room.ID); err == nil || !strings.Contains(err.Error(), roundtable.SubmitR2SummaryTool) {
+		t.Fatalf("RunR2 should require %s, err=%v", roundtable.SubmitR2SummaryTool, err)
+	}
+	reloaded, err := svc.GetRoom(room.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(reloaded.SummaryR2) != "" {
+		t.Fatalf("normal referee text must not persist summary_r2: %q", reloaded.SummaryR2)
+	}
+	if reloaded.State == roundtable.StateWaitingR3 {
+		t.Fatal("R3 gate opened without referee tool submission")
+	}
+	if _, err := svc.StartR3(room.ID, "must-stay-closed"); err == nil {
+		t.Fatal("StartR3 should stay closed without submitted Summary₂")
+	}
+}
+
+func TestR3NormalRefereeTextCannotFinishWithoutToolSubmission(t *testing.T) {
+	_, _ = testRig(t) // isolate ONEAGENTS_HOME
+	store, err := roundtable.NewStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := roundtable.NewService(store, nil, r2ToolOnlyPrompter{})
+	room, err := svc.CreateRoom(roundtable.CreateRoomRequest{Title: "终稿工具门禁"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	room, err = svc.ConfirmBrief(room.ID, roundtable.ConfirmBriefRequest{
+		Title:           "R3 工具门禁",
+		Question:        "普通回复能否结束圆桌？",
+		Constraints:     "必须提交交叉验证终稿",
+		SuccessCriteria: "没有工具提交时保持未完成",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.RunR2(room.ID); err != nil {
+		t.Fatalf("RunR2: %v", err)
+	}
+
+	if _, err := svc.RunR3(room.ID); err == nil || !strings.Contains(err.Error(), roundtable.SubmitR3SummaryTool) {
+		t.Fatalf("RunR3 should require %s, err=%v", roundtable.SubmitR3SummaryTool, err)
+	}
+	reloaded, err := svc.GetRoom(room.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(reloaded.SummaryR3) != "" {
+		t.Fatalf("normal referee text must not persist summary_r3: %q", reloaded.SummaryR3)
+	}
+	if reloaded.State == roundtable.StateDone {
+		t.Fatal("roundtable finished without referee tool submission")
+	}
 }
 
 func concurrentStart(
@@ -138,6 +246,18 @@ func TestRoundRunConcurrentR2R3AtMostOnce(t *testing.T) {
 		t.Fatalf("r2 status=%s error=%s", r2Run.Status, r2Run.Error)
 	}
 	assertOneCallPerRole(t, prompter.Calls)
+	for _, call := range prompter.Calls {
+		if call.Role == roundtable.RoleReferee {
+			if call.RequiredTool != roundtable.SubmitR2SummaryTool ||
+				!strings.Contains(call.ToolInstruction, "普通回复文本不会被视为已提交") {
+				t.Fatalf("referee summary tool contract missing: %+v", call)
+			}
+			continue
+		}
+		if call.RequiredTool != "" || call.ToolInstruction != "" {
+			t.Fatalf("panelist %s must not receive referee summary tool: %+v", call.Role, call)
+		}
+	}
 
 	prompter.Calls = nil
 	prompter.ReplyFunc = func(req roundtable.SeatPromptRequest) (string, error) {
@@ -154,6 +274,18 @@ func TestRoundRunConcurrentR2R3AtMostOnce(t *testing.T) {
 		t.Fatalf("r3 status=%s error=%s", r3Run.Status, r3Run.Error)
 	}
 	assertOneCallPerRole(t, prompter.Calls)
+	for _, call := range prompter.Calls {
+		if call.Role == roundtable.RoleReferee {
+			if call.RequiredTool != roundtable.SubmitR3SummaryTool ||
+				!strings.Contains(call.ToolInstruction, "普通回复文本不会被视为已提交") {
+				t.Fatalf("referee r3 summary tool contract missing: %+v", call)
+			}
+			continue
+		}
+		if call.RequiredTool != "" || call.ToolInstruction != "" {
+			t.Fatalf("r3 panelist %s must not receive referee summary tool: %+v", call.Role, call)
+		}
+	}
 
 	finalRoom, err := svc.GetRoom(room.ID)
 	if err != nil {

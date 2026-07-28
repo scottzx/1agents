@@ -27,6 +27,8 @@ func TestFormatUsage_UsesResolvedBinary(t *testing.T) {
 		t.Fatalf("help should not lead with bare 1agents when ONEAGENTS_CLI is set:\n%s", out)
 	}
 	if !strings.Contains(out, "propose-brief") ||
+		!strings.Contains(out, roundtable.SubmitR2SummaryTool) ||
+		!strings.Contains(out, roundtable.SubmitR3SummaryTool) ||
 		!strings.Contains(out, "compatibility / administration only") ||
 		!strings.Contains(out, "Agents\n  must migrate to propose-brief") {
 		t.Fatalf("help should document propose-brief migration and legacy set-brief:\n%s", out)
@@ -159,6 +161,12 @@ func TestCreateRoom_WritesSidecarAndRefereeCLISeed(t *testing.T) {
 	if !strings.Contains(body, "roundtable propose-brief") {
 		t.Fatal("referee AGENTS.md missing propose-brief usage")
 	}
+	if !strings.Contains(body, "roundtable "+roundtable.SubmitR2SummaryTool) {
+		t.Fatal("referee AGENTS.md missing submit-r2-summary usage")
+	}
+	if !strings.Contains(body, "roundtable "+roundtable.SubmitR3SummaryTool) {
+		t.Fatal("referee AGENTS.md missing submit-r3-summary usage")
+	}
 	if !strings.Contains(body, "不要调用兼容/管理命令 roundtable set-brief") {
 		t.Fatal("referee AGENTS.md missing set-brief migration warning")
 	}
@@ -173,6 +181,141 @@ func TestCreateRoom_WritesSidecarAndRefereeCLISeed(t *testing.T) {
 	}
 	if sc.CLIBin == "" {
 		t.Fatal("sidecar should store cli_bin")
+	}
+}
+
+func TestCLI_SubmitStageSummariesRequireRefereeAndKeepGateClosed(t *testing.T) {
+	svc, _ := testRig(t)
+	room, err := svc.CreateRoom(roundtable.CreateRoomRequest{Title: "裁判总结工具"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	room, err = svc.ConfirmBrief(room.ID, roundtable.ConfirmBriefRequest{
+		Title:           "总结门禁",
+		Question:        "如何验证裁判提交？",
+		Constraints:     "仅裁判工具可写",
+		SuccessCriteria: "R3 开启前存在 Summary₂",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	room.State = roundtable.StateSummarizingR2
+	store, err := roundtable.NewStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateRoomState(room); err != nil {
+		t.Fatal(err)
+	}
+
+	var refereeCwd, marketCwd string
+	db, err := meta.OpenDefault()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, seat := range room.Seats {
+		project, ok, projectErr := db.GetProject(seat.WorkspaceID)
+		if projectErr != nil || !ok {
+			t.Fatalf("workspace %s: ok=%v err=%v", seat.WorkspaceID, ok, projectErr)
+		}
+		switch seat.Role {
+		case roundtable.RoleReferee:
+			refereeCwd = project.WorkspacePath
+		case roundtable.RoleMarket:
+			marketCwd = project.WorkspacePath
+		}
+	}
+
+	code, _, stderr := runRoundtableCLI(
+		t,
+		marketCwd,
+		nil,
+		roundtable.SubmitR2SummaryTool,
+		"--summary",
+		"市场席不应能够提交",
+	)
+	if code == 0 || !strings.Contains(stderr, "only the referee") {
+		t.Fatalf("panelist submit: code=%d stderr=%s", code, stderr)
+	}
+
+	summary := "市场与产品支持试点；研发要求先验证集成风险；R3 需解决成本边界。"
+	code, stdout, stderr := runRoundtableCLI(
+		t,
+		refereeCwd,
+		nil,
+		roundtable.SubmitR2SummaryTool,
+		"--summary",
+		summary,
+	)
+	if code != 0 {
+		t.Fatalf("referee submit: code=%d stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	reloaded, err := svc.GetRoom(room.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.State != roundtable.StateSummarizingR2 {
+		t.Fatalf("tool must not open R3 directly, state=%s", reloaded.State)
+	}
+	if reloaded.SummaryR2 != summary {
+		t.Fatalf("summary=%q want %q", reloaded.SummaryR2, summary)
+	}
+	var summaries int
+	for _, turn := range reloaded.Turns {
+		if turn.Round == 2 && turn.Kind == roundtable.TurnKindSummary {
+			summaries++
+		}
+	}
+	if summaries != 1 {
+		t.Fatalf("summary turns=%d want 1", summaries)
+	}
+
+	reloaded.State = roundtable.StateSummarizingR3
+	if err := store.UpdateRoomState(reloaded); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr = runRoundtableCLI(
+		t,
+		marketCwd,
+		nil,
+		roundtable.SubmitR3SummaryTool,
+		"--summary",
+		"市场席不应能够提交终稿",
+	)
+	if code == 0 || !strings.Contains(stderr, "only the referee") {
+		t.Fatalf("panelist r3 submit: code=%d stderr=%s", code, stderr)
+	}
+
+	finalSummary := "最终建议先小范围试点；保留研发的集成风险异议；财务负责验证成本停止线。"
+	code, stdout, stderr = runRoundtableCLI(
+		t,
+		refereeCwd,
+		nil,
+		roundtable.SubmitR3SummaryTool,
+		"--summary",
+		finalSummary,
+	)
+	if code != 0 {
+		t.Fatalf("referee r3 submit: code=%d stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	reloaded, err = svc.GetRoom(room.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.State != roundtable.StateSummarizingR3 {
+		t.Fatalf("r3 tool must not mark the room done directly, state=%s", reloaded.State)
+	}
+	if reloaded.SummaryR3 != finalSummary {
+		t.Fatalf("summary_r3=%q want %q", reloaded.SummaryR3, finalSummary)
+	}
+	summaries = 0
+	for _, turn := range reloaded.Turns {
+		if turn.Round == 3 && turn.Kind == roundtable.TurnKindSummary {
+			summaries++
+		}
+	}
+	if summaries != 1 {
+		t.Fatalf("r3 summary turns=%d want 1", summaries)
 	}
 }
 

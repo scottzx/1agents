@@ -1,4 +1,4 @@
-// Package roundtable implements Agents 圆桌脑暴 (design.md): multi-session
+// Package roundtable implements 圆桌讨论 (design.md): multi-session
 // orchestration with fixed roster seats, state machine, and persistence.
 //
 // Slice 1: room + seats factory, drafting_brief state, create/get/list APIs.

@@ -23,12 +23,19 @@ type SeatPromptRequest struct {
 	PermissionMode string
 	// Role is optional metadata for tests / isolation logs (not sent to bridge).
 	Role Role
+	// RequiredTool is an audit marker for stage outputs that must be persisted
+	// through a roundtable tool instead of accepted from normal response text.
+	RequiredTool string
+	// ToolInstruction is appended to this turn only. It is never injected into
+	// unrelated seats or stages.
+	ToolInstruction string
 }
 
 // SeatPromptResult is the agent reply for one turn.
 type SeatPromptResult struct {
-	Text         string
-	AcpSessionID string
+	Text             string
+	AcpSessionID     string
+	SubmittedSummary string // test-double signal; production tools write directly to the store
 }
 
 // SeatPrompter runs one continuous-prompt turn on a seat session (design §5.2 R1).
@@ -118,17 +125,18 @@ func (p *BridgeSeatPrompter) Prompt(req SeatPromptRequest) (SeatPromptResult, er
 	// strategy as agent.AcpxClient pendingSystemContext).
 	promptText := req.Text
 	systemCtx := ""
-	toolInstruction := "\n\nYou MUST use the `writeSeatProposal` tool to explicitly write your proposal for this round. Use it exactly like this CLI command (or the equivalent tool call if your agent runtime supports it):\n\n1agents roundtable write-seat-proposal --room-id rt-abc123xyz --seat-id market --round 2 --proposal '{\"title\":\"AI时代个体创业的机会在哪里？\",\"question\":\"个体创业者能吃到哪些红利？\",\"constraints\":\"讨论聚焦个体创业者，不包括大公司\",\"success_criteria\":\"列出至少3个具体机会并说明验证路径\"}'\n\nDo not write the proposal in the normal response text — only call the tool. The agent will automatically receive room_id and seat_id from the prompt context."
+	toolInstruction := strings.TrimSpace(req.ToolInstruction)
 
 	if req.AcpSessionID == "" && strings.TrimSpace(req.SystemContext) != "" {
 		// For non-native agents the bridge path merges via pendingSystemContext
 		// only when the client is agent.AcpxClient. Headless dial uses ensure_session
 		// SystemContext for native agents; for grok-build we prefix the first prompt.
-		promptText = strings.TrimSpace(req.SystemContext) + toolInstruction + "\n\n---\n\n" + req.Text
+		promptText = strings.TrimSpace(req.SystemContext) + "\n\n---\n\n" + req.Text
 	} else if req.AcpSessionID == "" {
 		systemCtx = req.SystemContext
-	} else {
-		promptText += toolInstruction
+	}
+	if toolInstruction != "" {
+		promptText += "\n\n---\n\n" + toolInstruction
 	}
 
 	ensure := bridgeMsg{
@@ -247,7 +255,11 @@ func (s *StaticSeatPrompter) Prompt(req SeatPromptRequest) (SeatPromptResult, er
 		if err != nil {
 			return SeatPromptResult{}, err
 		}
-		return SeatPromptResult{Text: text, AcpSessionID: acp}, nil
+		result := SeatPromptResult{Text: text, AcpSessionID: acp}
+		if req.RequiredTool == SubmitR2SummaryTool || req.RequiredTool == SubmitR3SummaryTool {
+			result.SubmittedSummary = text
+		}
+		return result, nil
 	}
 	text := s.Reply
 	if s.ReplyByRole != nil {
@@ -270,7 +282,11 @@ func (s *StaticSeatPrompter) Prompt(req SeatPromptRequest) (SeatPromptResult, er
 			text = "裁判：已收到，请继续补充约束与成功标准。"
 		}
 	}
-	return SeatPromptResult{Text: text, AcpSessionID: acp}, nil
+	result := SeatPromptResult{Text: text, AcpSessionID: acp}
+	if req.RequiredTool == SubmitR2SummaryTool || req.RequiredTool == SubmitR3SummaryTool {
+		result.SubmittedSummary = text
+	}
+	return result, nil
 }
 
 // SnapshotCalls returns a copy of recorded calls (safe under concurrent Prompt).
