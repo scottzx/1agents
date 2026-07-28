@@ -124,8 +124,7 @@ const SIDE_PANEL_TYPES: SidePanelTabType[] = ['tasks', 'files', 'browser', 'git'
 // Runtime callers (setSidePanelOwnerForWorkspace) sync the owner after both
 // stores are fully initialized; the localStorage key matches activeWorkspaceId's
 // own bootstrap source.
-const sidePanelDefaultOwner = (): string =>
-    `workspace:${localStorage.getItem('1agents-active-workspace') || 'none'}`;
+const sidePanelDefaultOwner = (): string => `workspace:${localStorage.getItem('1agents-active-workspace') || 'none'}`;
 
 export const sidePanelOwnerKey = signal<string>(sidePanelDefaultOwner());
 

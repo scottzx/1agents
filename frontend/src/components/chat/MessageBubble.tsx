@@ -384,7 +384,7 @@ function AssistantContent({
     // latest answer stays unlimited and only rides the outer timeline.
     const contentClass = !limitHeight
         ? 'chat-assistant-content is-unlimited'
-        : `chat-assistant-content chat-nested-scroll ${expanded ? 'is-expanded' : 'is-collapsed'}`;
+        : `chat-assistant-content ${expanded ? 'is-expanded' : 'is-collapsed'}`;
 
     return (
         <div
@@ -515,7 +515,7 @@ function ThinkingBubble({ content, streaming }: { content: string; streaming: bo
             </div>
             {expanded && (
                 <div
-                    class="chat-bubble-body chat-thinking-body chat-nested-scroll markdown-body"
+                    class="chat-bubble-body chat-thinking-body markdown-body"
                     dangerouslySetInnerHTML={{ __html: html }}
                 />
             )}
@@ -672,7 +672,7 @@ function ToolGroupBubble({
                 )}
             </div>
             {expanded && (
-                <div class="chat-tool-calls-list chat-nested-scroll">
+                <div class="chat-tool-calls-list">
                     {elements.map((el, idx) => {
                         if (el.kind === 'thinking') {
                             const isLastThinking = el.content === thinkingBlocks[thinkingBlocks.length - 1];
@@ -847,7 +847,13 @@ function getToolSummary(toolName: string, args: Record<string, unknown>): string
             return `搜索 \`${pattern}\``;
         }
     }
-    if (lower === 'execute' || lower.includes('execute') || lower.includes('run') || lower.includes('command') || lower.includes('terminal')) {
+    if (
+        lower === 'execute' ||
+        lower.includes('execute') ||
+        lower.includes('run') ||
+        lower.includes('command') ||
+        lower.includes('terminal')
+    ) {
         const cmd = args.command || args.cmd || args.script || '';
         if (cmd) {
             return `执行 \`${cmd}\``;

@@ -281,7 +281,11 @@ test('mobile room exposes discussion, Brief, and participant tabs without duplic
     assert.match(html, /role="tab"[^>]*aria-selected="true"[^>]*>Brief</);
     assert.equal(count(html, '>讨论<'), 1);
     assert.equal(count(html, '>Brief<'), 1);
-    assert.equal(count(html, '>参与者<'), 2, 'mobile tab and desktop Inspector tab share one canonical participant panel');
+    assert.equal(
+        count(html, '>参与者<'),
+        2,
+        'mobile tab and desktop Inspector tab share one canonical participant panel'
+    );
     assert.equal(count(html, 'class="rt-brief"'), 1);
 
     const tree = RoundtableRoomContent(props);

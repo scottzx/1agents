@@ -34,10 +34,17 @@ import type {
     SessionUsage,
     PlanEntry,
     SessionConfigOption,
+    BackgroundTask,
 } from '@1agents/core/protocol/types';
 import { ChatBridgeManager, DEFAULT_PERMISSION_MODE } from '@1agents/core/services/chat/chatBridge';
 
-export type { ToolCallInfo, HistoryItem, ChatItem, ConnectionState } from '@1agents/core/protocol/types';
+export type {
+    ToolCallInfo,
+    HistoryItem,
+    ChatItem,
+    ConnectionState,
+    BackgroundTask,
+} from '@1agents/core/protocol/types';
 
 interface UseBridgeState {
     items: ChatItem[];
@@ -64,6 +71,8 @@ interface UseBridgeState {
     usage: SessionUsage | null;
     /** Agent's execution plan checklist (null when there's no active plan). */
     plan: PlanEntry[] | null;
+    /** Current background tasks (null when empty). */
+    backgroundTasks: BackgroundTask[] | null;
     send: (content: string) => void;
     /**
      * Stop generating: cancels the running turn and drops every queued
@@ -179,6 +188,7 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
     const configOptions = state ? state.configOptions : [];
     const usage = state ? state.usage : null;
     const plan = state ? state.plan : null;
+    const backgroundTasks = state ? state.backgroundTasks : null;
     const takenOver = state ? state.takenOver : false;
     const lastError = state ? state.lastError : null;
     const authState = state ? state.auth : null;
@@ -286,6 +296,7 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
         configOptions,
         usage,
         plan,
+        backgroundTasks,
         send,
         cancel,
         cancelQueued,

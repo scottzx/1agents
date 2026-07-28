@@ -8,6 +8,7 @@ import { useBridge } from './hooks';
 import { MessageList } from './MessageList';
 import { Composer } from './Composer';
 import { PlanChecklist } from './PlanChecklist';
+import { BackgroundTasks } from './BackgroundTasks';
 import { SessionTakenOverBanner } from './SessionTakenOverBanner';
 import { ChatErrorBanner } from './ChatErrorBanner';
 import { SessionAuthBadge } from './SessionAuthBadge';
@@ -58,6 +59,7 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
         configOptions,
         usage,
         plan,
+        backgroundTasks,
         send,
         logout,
         cancel,
@@ -141,6 +143,7 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
                 <div class="chat-plan-banner">{t('chat.sessionMode.planBanner', ui.language.value)}</div>
             )}
             {plan && plan.length > 0 && <PlanChecklist entries={plan} />}
+            {backgroundTasks && backgroundTasks.length > 0 && <BackgroundTasks tasks={backgroundTasks} />}
             <MessageList
                 items={items}
                 typing={typing}

@@ -909,6 +909,8 @@ func (svc *Service) runR2(roomID string, run *RoundRun) (*RunR2Response, error) 
 		if err := svc.store.InsertTurn(&turn); err != nil {
 			return nil, err
 		}
+
+		// === 立即写回结论：对话结束就拉最新回复持久化 ===
 		if run != nil {
 			if err := svc.store.FinishRunSeat(run.ID, seat.Role, false, ""); err != nil {
 				return nil, err
@@ -1087,6 +1089,7 @@ func (svc *Service) runR2RefereeSummary(room *Room, brief *Brief, referee *Seat,
 		summaryText = "（裁判 Summary₂ 无正文输出）"
 	}
 	summaryText = appendMissingRoleRecord(summaryText, items)
+
 	turn := Turn{
 		ID:          meta.NewID(),
 		RoomID:      room.ID,
@@ -1100,6 +1103,8 @@ func (svc *Service) runR2RefereeSummary(room *Room, brief *Brief, referee *Seat,
 	if err := svc.store.InsertTurn(&turn); err != nil {
 		return Turn{}, "", err
 	}
+
+	room.SummaryR2 = summaryText
 	return turn, summaryText, nil
 }
 
@@ -1441,6 +1446,8 @@ func (svc *Service) runR3(roomID string, run *RoundRun) (*RunR3Response, error) 
 		if err := svc.store.InsertTurn(&turn); err != nil {
 			return nil, err
 		}
+
+		// === 立即写回结论：对话结束就拉最新回复持久化 ===
 		if run != nil {
 			if err := svc.store.FinishRunSeat(run.ID, seat.Role, false, ""); err != nil {
 				return nil, err
@@ -1628,6 +1635,7 @@ func (svc *Service) runR3RefereeSummary(room *Room, brief *Brief, referee *Seat,
 		summaryText = "（裁判 Summary₃ 无正文输出）"
 	}
 	summaryText = appendMissingRoleRecord(summaryText, r3Items)
+
 	turn := Turn{
 		ID:          meta.NewID(),
 		RoomID:      room.ID,
@@ -1641,5 +1649,7 @@ func (svc *Service) runR3RefereeSummary(room *Room, brief *Brief, referee *Seat,
 	if err := svc.store.InsertTurn(&turn); err != nil {
 		return Turn{}, "", err
 	}
+
+	room.SummaryR3 = summaryText
 	return turn, summaryText, nil
 }

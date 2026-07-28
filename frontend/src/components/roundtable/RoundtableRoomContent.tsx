@@ -21,10 +21,7 @@ export type RoundtableMobilePane = 'discussion' | 'brief' | 'participants';
 
 const MOBILE_PANES: RoundtableMobilePane[] = ['discussion', 'brief', 'participants'];
 
-export function mobilePaneForKey(
-    current: RoundtableMobilePane,
-    key: string
-): RoundtableMobilePane | null {
+export function mobilePaneForKey(current: RoundtableMobilePane, key: string): RoundtableMobilePane | null {
     const index = MOBILE_PANES.indexOf(current);
     if (key === 'Home') return MOBILE_PANES[0];
     if (key === 'End') return MOBILE_PANES[MOBILE_PANES.length - 1];

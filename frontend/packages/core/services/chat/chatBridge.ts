@@ -16,6 +16,7 @@ import type {
     AuthMethod,
     AuthState,
     AvailableCommand,
+    BackgroundTask,
     ChatItem,
     ConnectionState,
     PlanEntry,
@@ -194,6 +195,11 @@ export interface SessionBridgeState {
      * null when the agent has no active plan. Live-only, never in history.
      */
     plan: PlanEntry[] | null;
+    /**
+     * Current background tasks (from runtime `background_task` / system-reminder
+     * events). Live-only, never in history. Drives the top-of-chat window.
+     */
+    backgroundTasks: BackgroundTask[] | null;
     /** Exponential backoff level — incremented on each reconnect attempt, reset on session_ready. */
     reconnectAttempt: number;
     /** Pending setTimeout handle for the next reconnect; null when idle. */
@@ -273,6 +279,7 @@ export class ChatBridgeManager {
                 configOptions: [],
                 usage: null,
                 plan: null,
+                backgroundTasks: null,
                 reconnectAttempt: 0,
                 reconnectTimer: null,
                 closedByUser: false,
@@ -542,6 +549,16 @@ export class ChatBridgeManager {
                     const p = payload.payload as { entries?: PlanEntry[] } | undefined;
                     if (Array.isArray(p?.entries)) {
                         state.plan = p!.entries.length > 0 ? p!.entries : null;
+                        this.notify(state);
+                    }
+                    break;
+                }
+                case 'background_task': {
+                    // Live background task status (running, completed, etc.).
+                    // Full snapshot on every update — replace wholesale.
+                    const b = payload.payload as { tasks?: BackgroundTask[] } | undefined;
+                    if (Array.isArray(b?.tasks)) {
+                        state.backgroundTasks = b!.tasks.length > 0 ? b!.tasks : null;
                         this.notify(state);
                     }
                     break;
@@ -1048,9 +1065,9 @@ export class ChatBridgeManager {
 
     /**
      * Reply to a Grok exit_plan_mode approval. Sends the wire action and
-     * optimistically marks the nested/pending request as resolved.
-     * approved/abandoned also leave plan mode in the picker immediately —
-     * the bridge mode_changed ack reconciles if the target mode differs.
+     * marks the nested/pending request as resolved. The mode change (if
+     * approved or abandoned) is handled by the bridge's post-response
+     * mode_changed event sent to the frontend.
      */
     respondExitPlanMode(session: ChatSession, requestId: string, outcome: ExitPlanOutcome, comments?: string) {
         const state = this.sessions.get(session.id);
@@ -1070,17 +1087,6 @@ export class ChatBridgeManager {
         state.items = next.items;
         state.pendingResults = next.pendingResults;
         state.pendingPermissions = next.pendingPermissions;
-        // Wire: approved → implement; abandoned → quit plan. rejected stays.
-        // Grok default after leaving plan is acceptEdits (matches bridge/1acp).
-        if ((outcome === 'approved' || outcome === 'abandoned') && state.modes?.currentModeId === 'plan') {
-            const preferred =
-                state.modes.availableModes.find(m => m.id === 'acceptEdits') ??
-                state.modes.availableModes.find(m => m.id === 'default') ??
-                state.modes.availableModes.find(m => m.id !== 'plan');
-            if (preferred) {
-                state.modes = { ...state.modes, currentModeId: preferred.id };
-            }
-        }
         this.notify(state);
     }
 

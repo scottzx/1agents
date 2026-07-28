@@ -219,6 +219,22 @@ export const markSessionCompleted = (sessionId: string) => {
 };
 
 /**
+ * Helper to check if a chat session has actual conversation history / completed events.
+ */
+function hasChatHistory(session: ChatSession): boolean {
+    if (!session.acpSessionId) return false;
+    if (sessionCompletedTimes.value[session.id]) return true;
+    if (!session.lastEventAt) return false;
+
+    const createdTime = session.createdAt ? Date.parse(session.createdAt) : 0;
+    const eventTime = Date.parse(session.lastEventAt);
+
+    // If lastEventAt is valid and strictly after createdAt (with 1 second tolerance for creation DB latency),
+    // then an actual message or event has occurred in this session.
+    return !isNaN(eventTime) && eventTime > createdTime + 1000;
+}
+
+/**
  * Computes effective visual avatar status key for a session, implementing Read/Unread
  * mode and 5-minute timeout logic for completed (idle) status.
  */
@@ -230,17 +246,19 @@ export function computeSessionAvatarStatus(
 
     const chat = isChat(session);
     const effectiveStatus = chat ? liveStatus ?? session.status : session.status;
-
-    // Brand-new chat sessions with no acpSessionId show hollow indicator
-    if (chat && effectiveStatus === 'idle' && !(session as ChatSession).acpSessionId) {
-        return 'none';
-    }
-
     const baseStatus = normalizeAgentStatus(String(effectiveStatus ?? 'none')) ?? 'none';
 
     // Non-idle statuses (busy, waiting, error, shell, none) keep their standard behavior
     if (baseStatus !== 'idle') {
         return baseStatus;
+    }
+
+    // Chat sessions with empty chat history (no acpSessionId or no completed events/lastEventAt > createdAt) show hollow 'none' indicator
+    if (chat) {
+        const chatSess = session as ChatSession;
+        if (!hasChatHistory(chatSess)) {
+            return 'none';
+        }
     }
 
     // --- Idle (Completed) Session Handling ---
@@ -249,11 +267,13 @@ export function computeSessionAvatarStatus(
         const chatSess = session as ChatSession;
         if (chat && chatSess.lastEventAt) {
             completedAt = Date.parse(chatSess.lastEventAt);
-        } else if (chat && chatSess.createdAt) {
-            completedAt = Date.parse(chatSess.createdAt);
         } else {
             completedAt = 0;
         }
+    }
+
+    if (!completedAt) {
+        return 'none';
     }
 
     const readAt = sessionReadTimes.value[session.id];

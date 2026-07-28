@@ -15,7 +15,7 @@ export const PRIORITY_RANK: Record<TaskPriority, number> = {
     low: 3,
 };
 
-export const AGENT_OPTIONS = ['claudecode', 'codex', 'gemini', 'cursor', 'opencode', 'kimi', 'iflow', 'qoder'];
+export const AGENT_OPTIONS = ['claudecode', 'codex', 'gemini', 'cursor', 'opencode', 'kimi', 'iflow', 'qoder', 'grok'];
 
 export const TYPE_LABELS: Record<string, string> = {
     task: '任务',

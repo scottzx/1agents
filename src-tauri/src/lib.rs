@@ -126,7 +126,7 @@ pub fn run() {
             let url;
             let mut spawned = false;
 
-            let forced_addr = Some("127.0.0.1:39090".to_string());
+            let forced_addr = get_active_daemon_addr(app);
             if let Some(active_addr) = forced_addr {
                 println!("[tauri] FORCED daemon running at {}. Reusing it.", active_addr);
                 url = if active_addr.starts_with("http://") || active_addr.starts_with("https://") {

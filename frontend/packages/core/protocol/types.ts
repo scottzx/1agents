@@ -252,6 +252,24 @@ export interface PlanEntry {
 }
 
 /**
+ * Background task snapshot from the runtime (Grok Build / xai-tool-runtime).
+ * Delivered via a new `background_task` event (or system-reminder for completed
+ * ones). Live-only, never in history. The UI uses this to show a dedicated
+ * top-of-chat window (similar to PlanChecklist) and removes the status text from
+ * any user message blocks.
+ */
+export interface BackgroundTask {
+    id: string;
+    status: 'running' | 'completed' | 'failed' | 'cancelled' | 'killed';
+    command: string;
+    duration?: string;
+    exitCode?: number;
+    output?: string;
+    startedAt?: number;
+    completedAt?: number;
+}
+
+/**
  * Live token/context usage + cost surfaced by the bridge `usage` event
  * (from ACP `usage_update`). All fields optional — not every adapter reports
  * every field, so consumers treat missing values as "unknown", never zero.
@@ -273,6 +291,15 @@ export interface SessionUsage {
         thoughtTokens?: number;
         totalTokens?: number;
     };
+}
+
+/** One active background task (system-reminder / runtime background_task). */
+export interface BackgroundTask {
+    id: string;
+    description: string;
+    status: 'running' | 'completed' | 'failed' | 'cancelled' | 'killed';
+    output?: string;
+    createdAt?: string;
 }
 
 /**

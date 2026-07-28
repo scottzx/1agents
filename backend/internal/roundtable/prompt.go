@@ -186,6 +186,7 @@ func (p *BridgeSeatPrompter) Prompt(req SeatPromptRequest) (SeatPromptResult, er
 			return SeatPromptResult{}, fmt.Errorf("agent error: %s", msg.Message)
 		}
 	}
+	return SeatPromptResult{}, fmt.Errorf("agent stream ended unexpectedly")
 }
 
 // StaticSeatPrompter is a test double that returns canned replies.

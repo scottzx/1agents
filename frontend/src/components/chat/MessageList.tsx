@@ -4,6 +4,7 @@ import { MessageBubble, GroupedChatItem, GroupedToolCall, ToolGroupElement } fro
 import type { ChatItem } from './hooks';
 import { t } from '../../i18n';
 import * as ui from '../../stores/uiStore';
+import { groupHistoricalTurns } from './turns';
 
 interface MessageListProps {
     items: ChatItem[];
@@ -424,10 +425,10 @@ export function MessageList({
         );
     }
 
-    const groupedItems: GroupedChatItem[] = [];
+    const processGroupedItems: GroupedChatItem[] = [];
     for (const item of groupChatItems(items)) {
         if (item.kind !== 'tool_group') {
-            groupedItems.push(item);
+            processGroupedItems.push(item);
             continue;
         }
         // Drop empty calls so we don't briefly render "工具调用 1" with no
@@ -438,20 +439,25 @@ export function MessageList({
         const renderable = item.calls.filter(isCallRenderable);
         if (renderable.length === 0 && !hasThinking) continue;
         if (renderable.length === item.calls.length) {
-            groupedItems.push(item);
+            processGroupedItems.push(item);
         } else {
             const renderableCallIds = new Set(renderable.map(c => c.id));
             const filteredElements = item.elements?.filter(el => {
                 if (el.kind === 'thinking') return true;
                 return renderableCallIds.has(el.call.id);
             });
-            groupedItems.push({
+            processGroupedItems.push({
                 ...item,
                 calls: renderable,
                 elements: filteredElements,
             });
         }
     }
+
+    // Turn is a presentation layer around the existing process groups. Older
+    // completed turns fold their thoughts/tools and retain only their final
+    // answer; the newest turn stays flat so live activity remains visible.
+    const groupedItems = groupHistoricalTurns(processGroupedItems);
 
     // Always show the typing wave while a turn is running so users have
     // a persistent "still working" affordance even after thinking/text/
@@ -477,14 +483,12 @@ export function MessageList({
         }
     }
 
-    // Nested dual-scroll, same right-edge track:
-    //   .chat-messages       — shell, overflow hidden
-    //   .chat-messages-body  — ① outer timeline
-    //   .chat-nested-scroll  — ② capped blocks; wheel chains ② → ①
+    // Single consolidated track: all tool groups, per-turn content, long text blocks
+    // and nested elements now share one main scroll track (merged from multiple wheels).
     return (
         <div class="chat-messages">
             <div
-                class="chat-messages-body"
+                class="chat-message-track"
                 ref={scrollRef}
                 onScroll={handleScroll}
                 onPointerDown={() => {

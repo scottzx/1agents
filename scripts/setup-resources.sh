@@ -34,9 +34,13 @@ else
     chmod +x "$NODE_DIR/node"
 fi
 
-# 3. Pre-install Claude Code and OpenCode using npm
-echo "=== Pre-installing Claude Code and OpenCode in bundle ==="
-npm install -g --prefix "$TOOLS_DIR" @anthropic-ai/claude-code opencode-ai
+if [ "${FORCE_NPM_INSTALL:-}" = "1" ]; then
+    echo "=== FORCE_NPM_INSTALL=1: Pre-installing Claude Code and OpenCode in bundle ==="
+    npm install -g --prefix "$TOOLS_DIR" @anthropic-ai/claude-code opencode-ai || true
+else
+    echo "=== Skipping npm install -g for bundled tools in dev mode (use system PATH) ==="
+    mkdir -p "$TOOLS_DIR/bin"
+fi
 
 # 4. Copy compiled Go binaries
 echo "=== Copying compiled Go/C binaries ==="

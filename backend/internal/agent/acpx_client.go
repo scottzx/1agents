@@ -302,11 +302,14 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 			McpServers:      mcpServers,
 			PermissionMode:  reconnectMode,
 		}
+		ensureStart := time.Now()
 		bridge.mu.Lock()
 		if bridge.ServerConn != nil {
 			_ = bridge.ServerConn.WriteJSON(ensureMsg)
 		}
 		bridge.mu.Unlock()
+		ensureDur := time.Since(ensureStart)
+		log.Printf("[acpx_client] Reconnect ensure_session sent for %s (took %v)", sessionId, ensureDur)
 
 		// Start reading from the new client connection and forwarding to the existing server connection
 		c.readFromClientLoop(bridge, clientConn)
@@ -315,11 +318,13 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 
 	// Create new bridge
 	serverURL := fmt.Sprintf("ws://127.0.0.1:%d", c.serverPort)
+	dialStart := time.Now()
 	log.Printf("[acpx_client] Dialing bridge-server at %s", serverURL)
 
 	serverConn, _, err := websocket.DefaultDialer.Dial(serverURL, nil)
 	if err != nil {
-		log.Printf("[acpx_client] Dial bridge-server failed: %v", err)
+		dialDur := time.Since(dialStart)
+		log.Printf("[acpx_client] Dial bridge-server failed for %s: %v (took %v)", sessionId, err, dialDur)
 		_ = clientConn.WriteJSON(WsMessage{
 			Event:     "error",
 			SessionID: sessionId,
@@ -330,6 +335,8 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 		_ = clientConn.Close()
 		return
 	}
+	dialDur := time.Since(dialStart)
+	log.Printf("[acpx_client] Dial bridge-server succeeded for %s (took %v)", sessionId, dialDur)
 
 	bridge = &ActiveBridge{
 		SessionID:      sessionId,
@@ -376,13 +383,17 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 		McpServers:      mcpServers,
 		PermissionMode:  initialMode,
 	}
+	ensureStart := time.Now()
 	if err := serverConn.WriteJSON(ensureMsg); err != nil {
-		log.Printf("[acpx_client] Failed to send ensure_session: %v", err)
+		ensureDur := time.Since(ensureStart)
+		log.Printf("[acpx_client] Failed to send ensure_session for %s: %v (took %v)", sessionId, err, ensureDur)
 		c.cleanupBridge(sessionId)
 		_ = serverConn.Close()
 		_ = clientConn.Close()
 		return
 	}
+	ensureDur := time.Since(ensureStart)
+	log.Printf("[acpx_client] ensure_session sent for %s (took %v)", sessionId, ensureDur)
 
 	// Start server connection reader loop
 	go c.readFromServerLoop(bridge, scheduler, tasksStore, chatStore, taskId)

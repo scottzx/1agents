@@ -7,7 +7,7 @@ import { agentService } from '../../../services/agentService';
 import { projectItemService } from '@1agents/core/services/taskService';
 import type { AgentType, ChatSession, Session } from '../../types';
 import { AGENT_OPTIONS, getLinkRelLabels, getPriorityLabels, getStatusLabels } from './constants';
-import type { ChecklistItem, Reply, ReplyMode, SessionMetadata, ProjectItem, TaskLink } from './types';
+import type { ChecklistItem, Reply, SessionMetadata, ProjectItem, TaskLink } from './types';
 import { fmtDate, fmtDateOnly, recurrenceLabel } from './utils';
 import { renderMarkdown, type MarkdownContext } from '../../../utils/markdown';
 import { renderMermaidBlocks } from '../../../utils/mermaid';
@@ -172,9 +172,9 @@ export function TaskDetail({
     const editingDesc = useSignal(false);
     const [descDraft, setDescDraft] = useState('');
 
-    // Reply composer (top-level: pure comment or new session only)
+    // Reply composer (top-level: always starts new session with chosen agent)
     const [replyText, setReplyText] = useState('');
-    const [replyMode, setReplyMode] = useState<ReplyMode>('new');
+    const [composerAgent, setComposerAgent] = useState<string>('grok');
     const [submitting, setSubmitting] = useState(false);
 
     // Per-branch inline follow-up: which session's composer is open, its draft,
@@ -193,9 +193,8 @@ export function TaskDetail({
         expandedBranches.value = next;
     };
 
-    // GitHub detail view tabs & preview state
+    // GitHub detail view tabs
     const [activeTab, setActiveTab] = useState<'conversation' | 'subtasks' | 'relations'>('conversation');
-    const [composerTab, setComposerTab] = useState<'write' | 'preview'>('write');
 
     // Sidebar collapse toggle (desktop) / bottom-drawer open (mobile).
     const sidebarCollapsed = useSignal(true);
@@ -281,7 +280,7 @@ export function TaskDetail({
     const detailTheme = ui.theme.value;
     useEffect(() => {
         void renderMermaidBlocks(mainRef.current, detailTheme);
-    }, [task, detailTheme, activeTab, composerTab, replyText, editingDesc.value]);
+    }, [task, detailTheme, activeTab, replyText, editingDesc.value]);
 
     const getInitials = (name: string) => {
         if (!name) return '?';
@@ -553,6 +552,13 @@ export function TaskDetail({
         }
     };
 
+    // Sync composer agent from task assignee (so properties change updates composer)
+    useEffect(() => {
+        if (task) {
+            setComposerAgent(task.assignee || 'grok');
+        }
+    }, [task]);
+
     // Add-link form — disabled: links are created by agent only.
     // const addLink = async () => {
     //     if (!task || !linkTarget) return;
@@ -618,15 +624,14 @@ export function TaskDetail({
     };
 
     // Spawn a NEW session via unified SessionSetup (P1-3): same modal/skip as
-    // the main path, agent prefilled from assignee, taskId bound, optional
-    // initialMessage auto-sent after create. PM paths stay on createPMSession.
-    const openNewSession = async (initialMessage?: string) => {
+    // the main path, agent prefilled from assignee or chosen composer agent, taskId bound,
+    // optional initialMessage auto-sent after create. PM paths stay on createPMSession.
+    const openNewSession = async (initialMessage?: string, agentType?: AgentType) => {
         if (!task) return;
         void sessionStore.openSessionSetup({
             workspaceId,
             locked: true,
-            defaultAgent: (task.assignee || 'claudecode') as AgentType,
-            taskId: task.id,
+            defaultAgent: (agentType || task.assignee || 'claudecode') as AgentType,
             initialMessage,
         });
     };
@@ -695,23 +700,16 @@ export function TaskDetail({
         await patchTask({ userConfirm: !task.userConfirm });
     };
 
-    // Top-level composer: a pure comment (standalone timeline entry, no chat)
-    // or the root of a new session branch. Follow-ups live inside each branch
-    // (submitBranchFollowUp). For chat-driven modes the user turn is recorded
-    // server-side (writeUserReply), so no reply is POSTed here.
+    // Top-level composer: always starts new session with the chosen agent.
+    // Follow-ups live inside each branch (submitBranchFollowUp).
     const submitReply = async (e: Event) => {
         e.preventDefault();
         if (!task || !replyText.trim() || submitting) return;
         const text = replyText.trim();
         setSubmitting(true);
         try {
-            if (replyMode === 'new') {
-                setReplyText('');
-                await openNewSession(text);
-            } else {
-                await projectItemService.addReply(taskId, text, 'pure_comment');
-                setReplyText('');
-            }
+            await openNewSession(text, composerAgent as AgentType);
+            setReplyText('');
             fetchTask();
         } catch (err) {
             alert((err as Error).message);
@@ -1138,85 +1136,39 @@ export function TaskDetail({
                                 via the PM conversation opened by 讨论需求, not an inline form) */}
                             {!isNonExecutable && (
                                 <div class="gh-composer-card topic-composer-card">
-                                    <div class="gh-composer-tabs">
-                                        <button
-                                            class={`gh-composer-tab ${composerTab === 'write' ? 'active' : ''}`}
-                                            type="button"
-                                            onClick={() => setComposerTab('write')}
-                                        >
-                                            {t('task.detail.composerWrite', lang)}
-                                        </button>
-                                        <button
-                                            class={`gh-composer-tab ${composerTab === 'preview' ? 'active' : ''}`}
-                                            type="button"
-                                            onClick={() => setComposerTab('preview')}
-                                        >
-                                            {t('task.detail.composerPreview', lang)}
-                                        </button>
-                                    </div>
-
                                     <div class="gh-composer-body">
-                                        {composerTab === 'write' ? (
-                                            <textarea
-                                                rows={4}
-                                                placeholder={
-                                                    closed
-                                                        ? t('task.detail.composerPlaceholderClosed', lang)
-                                                        : t('task.detail.composerPlaceholder', lang)
-                                                }
-                                                value={replyText}
-                                                onInput={(e: Event) =>
-                                                    setReplyText((e.target as HTMLTextAreaElement).value)
-                                                }
-                                            />
-                                        ) : replyText.trim() ? (
-                                            <div
-                                                class="gh-preview-box markdown-body"
-                                                dangerouslySetInnerHTML={{ __html: renderMarkdown(replyText, mdCtx) }}
-                                            />
-                                        ) : (
-                                            <div class="gh-preview-box">
-                                                {t('task.detail.composerNothingPreview', lang)}
-                                            </div>
-                                        )}
+                                        <textarea
+                                            rows={4}
+                                            placeholder={
+                                                closed
+                                                    ? t('task.detail.composerPlaceholderClosed', lang)
+                                                    : t('task.detail.composerPlaceholder', lang)
+                                            }
+                                            value={replyText}
+                                            onInput={(e: Event) =>
+                                                setReplyText((e.target as HTMLTextAreaElement).value)
+                                            }
+                                        />
                                     </div>
 
                                     <div class="gh-composer-footer">
                                         <div class="gh-composer-options">
-                                            <label
-                                                class={`gh-opt-label ${replyMode === 'pure_comment' ? 'active' : ''}`}
+                                            <select
+                                                class="gh-agent-select"
+                                                value={composerAgent}
+                                                onChange={(e: Event) =>
+                                                    setComposerAgent((e.target as HTMLSelectElement).value)
+                                                }
                                             >
-                                                <input
-                                                    type="radio"
-                                                    name="replyMode"
-                                                    style={{ display: 'none' }}
-                                                    checked={replyMode === 'pure_comment'}
-                                                    onChange={() => setReplyMode('pure_comment')}
-                                                />
-                                                {t('task.detail.commentMode', lang)}
-                                            </label>
-                                            <label
-                                                class={`gh-opt-label ${replyMode === 'new' ? 'active' : ''} ${closed ? 'disabled' : ''}`}
-                                                title={closed ? t('task.detail.reopenHint', lang) : ''}
-                                            >
-                                                <input
-                                                    type="radio"
-                                                    name="replyMode"
-                                                    style={{ display: 'none' }}
-                                                    checked={replyMode === 'new'}
-                                                    disabled={closed}
-                                                    onChange={() => setReplyMode('new')}
-                                                />
-                                                {t('task.detail.newSessionMode', lang)}
-                                            </label>
-                                            <span class="gh-opt-hint">{t('task.detail.followupHint', lang)}</span>
+                                                {AGENT_OPTIONS.map(a => (
+                                                    <option key={a} value={a}>
+                                                        {a}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <span class="gh-opt-hint">选择智能体</span>
                                         </div>
                                         <div class="gh-composer-actions">
-                                            <button type="button" class="gh-close-btn" onClick={toggleIssueState}>
-                                                {closed
-                                                    ? t('task.detail.reopenIssue', lang)
-                                                    : t('task.detail.closeIssue', lang)}
-                                            </button>
                                             <button
                                                 type="button"
                                                 class="gh-submit-btn"
@@ -1437,6 +1389,20 @@ export function TaskDetail({
                                             </option>
                                         ))}
                                     </select>
+                                    <button
+                                        type="button"
+                                        class="gh-close-btn"
+                                        onClick={toggleIssueState}
+                                        title={
+                                            closed
+                                                ? t('task.detail.reopenIssue', lang)
+                                                : t('task.detail.closeIssue', lang)
+                                        }
+                                    >
+                                        {closed
+                                            ? t('task.detail.reopenIssue', lang)
+                                            : t('task.detail.closeIssue', lang)}
+                                    </button>
                                 </div>
                             </div>
                         </div>

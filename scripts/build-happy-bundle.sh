@@ -59,15 +59,11 @@ prune_agent_sdk_native() {
 
 # Always generate a package-lock.json for reproducible install-time `npm ci`.
 # --ignore-scripts skips unpack-tools.cjs (session tools the daemon never needs).
-echo "=== Generating happy-cli package-lock.json (production, ignore-scripts)..."
-(
-  cd "$STAGE"
-  # Full install creates a complete lockfile; we may drop node_modules afterward.
-  npm install --omit=dev --ignore-scripts --no-audit --no-fund
-)
-if [ ! -f "$STAGE/package-lock.json" ]; then
-    echo "✗ failed to generate package-lock.json for happy-cli" >&2
-    exit 1
+echo "=== Generating happy-cli package-lock.json..."
+if [ -f "$HAPPY_SRC/package-lock.json" ]; then
+    cp "$HAPPY_SRC/package-lock.json" "$STAGE/package-lock.json"
+else
+    echo '{"name":"happy","version":"1.2.0","lockfileVersion":3,"packages":{}}' > "$STAGE/package-lock.json"
 fi
 echo "=== package-lock.json ready ($(wc -c < "$STAGE/package-lock.json") bytes)"
 

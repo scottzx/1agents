@@ -18137,14 +18137,12 @@ body {
   }
 }
 
-/* Two-layer nested scroll (shared right-edge track):
- *   .chat-messages       — panel shell (overflow:hidden, flex fill)
- *   .chat-messages-body  — ① outer: conversation timeline
- *   .chat-nested-scroll   — ② inner: capped blocks (older assistant / tools / thinking)
- *
- * Both thumbs ride the same right edge: body keeps horizontal padding, inners
- * break out with negative margin so their track coincides with the outer one.
- * Wheel chains ② → ① at edges (overscroll-behavior-y: auto on inners).
+/* Single consolidated message track (merged from all scroll wheels):
+ * - Tool group
+ * - Per-turn content
+ * - Long text blocks
+ * - Thinking blocks
+ * All now share one main scroll track, eliminating multiple interfering wheels.
  */
 .chat-messages {
   flex: 1;
@@ -18155,7 +18153,7 @@ body {
   background: var(--chat-bg-page);
 }
 
-.chat-messages-body {
+.chat-message-track {
   --chat-msg-pad-x: 24px;
   --chat-msg-pad-top: 20px;
   flex: 1;
@@ -18179,33 +18177,14 @@ body {
   &::-webkit-scrollbar-track {
     background-color: transparent;
   }
-}
 
-/* Shared nested scroller: same 6px track + right-edge alignment as outer body. */
-.chat-nested-scroll {
-  overflow-y: auto;
-  overscroll-behavior-y: auto;
-  overscroll-behavior-x: none;
-  margin-right: calc(-1 * var(--chat-msg-pad-x, 24px)); /* safe overlap without overflow */
-  padding-right: var(--chat-msg-pad-x, 24px);
-
-  &::-webkit-scrollbar {
-    width: 6px;
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background-color: var(--border-color);
-    border-radius: 3px;
-  }
-
-  &::-webkit-scrollbar-track {
-    background-color: transparent;
-  }
-
-  /* Deeper nest (e.g. thinking inside tool list): keep local track, still chain. */
-  .chat-nested-scroll {
-    margin-right: 0;
-    padding-right: 4px;
+  /* All inner blocks (tool group, thinking blocks, long text, per-turn content) now share this single main track. */
+  .chat-bubble-tool-group,
+  .chat-assistant-block,
+  .markdown-body,
+  .chat-nested-content {
+    max-height: none; /* disable individual caps that created extra wheels */
+    overflow-y: visible; /* merge into the main track */
   }
 }
 
@@ -20531,8 +20510,113 @@ body {
   }
 }
 
-.chat-panel[data-session-mode="plan"] .chat-composer-frame {
-  border-color: rgba(var(--purple-rgb), 0.5);
+.chat-background-tasks {
+  flex-shrink: 0;
+  margin: 8px 12px 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius-sm, 10px);
+  background: var(--bg-card);
+  overflow: hidden;
+}
+
+.chat-background-tasks-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-main);
+  text-align: left;
+
+  &:hover {
+    background: var(--btn-hover);
+  }
+
+  .chat-background-tasks-caret {
+    flex-shrink: 0;
+    color: var(--text-muted);
+    transition: transform 0.15s;
+    &[data-expanded="true"] {
+      transform: rotate(90deg);
+    }
+  }
+
+  .chat-background-tasks-title {
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .chat-background-tasks-progress-text {
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+  }
+
+  .chat-task-running-badge,
+  .chat-task-failed-badge {
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    margin-left: 8px;
+  }
+
+  .chat-task-running-badge {
+    background: rgba(var(--accent-rgb), 0.1);
+    color: var(--accent-fg);
+  }
+
+  .chat-task-failed-badge {
+    background: rgba(var(--danger-rgb), 0.1);
+    color: var(--danger-fg);
+  }
+}
+
+.chat-background-tasks-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.chat-background-task-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-main);
+
+  .chat-background-task-item-icon {
+    flex-shrink: 0;
+    display: inline-flex;
+    margin-top: 1px;
+  }
+
+  &[data-status="running"] .chat-background-task-item-icon {
+    color: var(--accent-color);
+    animation: pulse 2s infinite;
+  }
+
+  &[data-status="completed"] .chat-background-task-item-icon {
+    color: var(--success-emphasis);
+  }
+
+  &[data-status="failed"], &[data-status="cancelled"], &[data-status="killed"] .chat-background-task-item-icon {
+    color: var(--danger-emphasis);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 .chat-panel[data-session-mode="bypassPermissions"] .chat-composer-frame,
 .chat-panel[data-session-mode="dontAsk"] .chat-composer-frame,

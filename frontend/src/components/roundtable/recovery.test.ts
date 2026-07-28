@@ -76,10 +76,18 @@ test('seat recovery restored from server state exposes only per-seat retry and s
     const html = renderToString(
         h(RoundRecoveryNotice, {
             room: restored,
-            onRetrySeat: role => calls.push(`retry:${role}`),
-            onSkip: () => calls.push('skip'),
-            onRetrySummary: () => calls.push('summary'),
-            onReload: () => calls.push('reload'),
+            onRetrySeat: role => {
+                calls.push(`retry:${role}`);
+            },
+            onSkip: () => {
+                calls.push('skip');
+            },
+            onRetrySummary: () => {
+                calls.push('summary');
+            },
+            onReload: () => {
+                calls.push('reload');
+            },
         })
     );
 
@@ -92,10 +100,18 @@ test('seat recovery restored from server state exposes only per-seat retry and s
 
     const tree = RoundRecoveryNotice({
         room: restored,
-        onRetrySeat: role => calls.push(`retry:${role}`),
-        onSkip: () => calls.push('skip'),
-        onRetrySummary: () => calls.push('summary'),
-        onReload: () => calls.push('reload'),
+        onRetrySeat: role => {
+            calls.push(`retry:${role}`);
+        },
+        onSkip: () => {
+            calls.push('skip');
+        },
+        onRetrySummary: () => {
+            calls.push('summary');
+        },
+        onReload: () => {
+            calls.push('reload');
+        },
     });
     const buttons = buttonNodes(tree);
     assert.deepEqual(

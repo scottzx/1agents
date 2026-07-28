@@ -20,6 +20,13 @@ AGENT_LDFLAGS := -s -w \
   -X main.commit=$(COMMIT)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME) \
   -X main.buildTime=$(BUILD_TIME)
 
+# Source file declarations for smart incremental builds
+BACKEND_SRCS  := $(shell find backend -type f 2>/dev/null)
+FRONTEND_SRCS := $(shell find frontend/src frontend/packages modules/1acp -type f 2>/dev/null)
+TTYD_SRCS     := $(shell find modules/ttyd/src -type f 2>/dev/null)
+CONNECT_SRCS  := $(shell find modules/cc-connect -type f 2>/dev/null)
+SWITCH_SRCS   := $(shell find modules/cc-switch-cli/src-tauri/src -type f 2>/dev/null)
+
 .PHONY: all frontend ttyd cc-connect cc-connect-noweb cc-switch happy backend agent package release-notes clean help install-hooks submodules submodule-cc-connect submodule-cc-switch submodule-happy-cli
 
 help:
@@ -44,9 +51,6 @@ help:
 all: frontend ttyd cc-connect cc-switch happy backend
 
 # --- Git submodules ---------------------------------------------------------
-# All four submodules are pinned gitlinks. Check them out before building any
-# component that compiles from submodule sources. These commands are idempotent:
-# re-running is a fast no-op when the submodule is already at the recorded commit.
 submodules:
 	@echo "=== Initializing/updating all git submodules..."
 	git submodule update --init --recursive
@@ -63,13 +67,17 @@ submodule-happy-cli:
 	@echo "=== Ensuring happy-cli submodule is checked out..."
 	git submodule update --init modules/happy-cli
 
-frontend:
+frontend: frontend/dist/index.html
+
+frontend/dist/index.html: $(FRONTEND_SRCS)
 	@echo "=== Building Frontend (frontend/)..."
 	cd frontend && corepack enable && yarn install && yarn build
 	@echo "=== Staging module embeds (skills + cc-connect) into frontend/dist/embed..."
 	./scripts/build-module-embeds.sh
 
-ttyd:
+ttyd: build/ttyd
+
+build/ttyd: $(TTYD_SRCS)
 	@echo "=== Building ttyd terminal server..."
 	@if [ "$(OS_LOWER)" = "darwin" ]; then \
 		cmake -DCMAKE_PREFIX_PATH="/opt/homebrew;/usr/local" -DCMAKE_BUILD_TYPE=Release -B build-ttyd -S modules/ttyd ; \
@@ -82,7 +90,9 @@ ttyd:
 		codesign --force --deep --sign - build/ttyd ; \
 	fi
 
-cc-connect: submodule-cc-connect
+cc-connect: build/cc-connect
+
+build/cc-connect: $(CONNECT_SRCS)
 	@echo "=== Building cc-connect daemon..."
 	$(MAKE) -C modules/cc-connect build
 	@mkdir -p build
@@ -92,7 +102,7 @@ cc-connect: submodule-cc-connect
 		codesign --force --deep --sign - build/cc-connect ; \
 	fi
 
-cc-connect-noweb: submodule-cc-connect
+cc-connect-noweb:
 	@echo "=== Building cc-connect daemon (no web build)..."
 	$(MAKE) -C modules/cc-connect build-noweb
 	@mkdir -p build
@@ -102,7 +112,9 @@ cc-connect-noweb: submodule-cc-connect
 		codesign --force --deep --sign - build/cc-connect ; \
 	fi
 
-cc-switch: submodule-cc-switch
+cc-switch: build/cc-switch
+
+build/cc-switch: $(SWITCH_SRCS)
 	@echo "=== Building cc-switch CLI..."
 	cargo build --manifest-path modules/cc-switch-cli/src-tauri/Cargo.toml --release
 	@mkdir -p build
@@ -112,11 +124,15 @@ cc-switch: submodule-cc-switch
 		codesign --force --deep --sign - build/cc-switch ; \
 	fi
 
-happy: submodule-happy-cli
+happy: build/happy
+
+build/happy:
 	@echo "=== Building happy bundle (modules/happy-cli -> build/happy-cli + build/adapter)..."
 	./scripts/build-happy-bundle.sh
 
-backend:
+backend: build/1agents
+
+build/1agents: $(BACKEND_SRCS)
 	@echo "=== Building 1agents Go server (backend)..."
 	mkdir -p build
 	cd backend && go build -ldflags "$(AGENT_LDFLAGS)" -o ../build/1agents ./cmd/backend

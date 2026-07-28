@@ -252,9 +252,10 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
         setBusy(true);
         setError(null);
         try {
-            const result = await roundtableService.runR2(roomId);
+            // Use legacy sync path to wait until the turn has ended, ensuring conclusions are written back to the room response before UI refresh.
+            const result = await roundtableService.runR2Legacy(roomId);
             setMobilePane('discussion');
-            applyRoom(result.room);
+            applyRoom(result as unknown as Room); // legacy returns unknown, but contains full room with turns
             await refresh(roomId, { quiet: true });
         } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
@@ -268,9 +269,10 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
         setBusy(true);
         setError(null);
         try {
-            const result = await roundtableService.runR3(roomId);
+            // Use legacy sync path to wait until the turn has ended, ensuring conclusions are written back to the room response before UI refresh.
+            const result = await roundtableService.runR3Legacy(roomId);
             setMobilePane('discussion');
-            applyRoom(result.room);
+            applyRoom(result as unknown as Room); // legacy returns unknown, but contains full room with turns
             await refresh(roomId, { quiet: true });
         } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
@@ -404,13 +406,7 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
     );
 
     const header = (
-        <RoundtableHeader
-            room={room}
-            busy={busy}
-            loading={loading}
-            action={headerAction}
-            statusRef={roomStatusRef}
-        />
+        <RoundtableHeader room={room} busy={busy} loading={loading} action={headerAction} statusRef={roomStatusRef} />
     );
 
     return (
@@ -463,7 +459,7 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
                     onTabChange={setInspectorTab}
                     inspectorRef={briefInspectorRef}
                     onRoomUpdate={applyRoom}
-                    onReload={() => refresh(roomId, { quiet: true })}
+                    onReload={() => void refresh(roomId, { quiet: true })}
                 />
             }
         />
