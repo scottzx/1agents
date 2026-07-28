@@ -22,6 +22,8 @@ import { showToast, theme } from '../../stores/uiStore';
 import { ToolDiffView, deriveDiffsFromInput, deriveLocationsFromInput } from './ToolDiffView';
 import { deriveToolKind } from './ToolKindIcon';
 import { terminalCommandLine } from './terminalCommand';
+import { formatToolOutput } from './formatToolOutput';
+export { formatToolOutput };
 
 // Configure marked once: GFM + soft line breaks so the assistant's
 // streamed text wraps naturally inside the chat bubble.
@@ -58,9 +60,33 @@ export type ToolGroupElement =
     | { kind: 'call'; call: GroupedToolCall };
 
 export type TurnContentItem =
-    | { id: string; kind: 'user'; content: string; createdAt: number; queueStatus?: 'queued'; queueRequestId?: string }
-    | { id: string; kind: 'assistant_text'; content: string; createdAt: number; streaming: boolean }
-    | { id: string; kind: 'thinking'; content: string; createdAt: number }
+    | {
+          id: string;
+          kind: 'user';
+          content: string;
+          createdAt: number;
+          queueStatus?: 'queued';
+          queueRequestId?: string;
+          turnId?: string;
+          turnStatus?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+      }
+    | {
+          id: string;
+          kind: 'assistant_text';
+          content: string;
+          createdAt: number;
+          streaming: boolean;
+          turnId?: string;
+          turnStatus?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+      }
+    | {
+          id: string;
+          kind: 'thinking';
+          content: string;
+          createdAt: number;
+          turnId?: string;
+          turnStatus?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+      }
     | {
           id: string;
           kind: 'tool_group';
@@ -74,8 +100,27 @@ export type TurnContentItem =
           // user can tell they're waiting for the runtime to pair
           // them with the actual call.
           pending?: boolean;
+          turnId?: string;
+          turnStatus?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
       }
-    | { id: string; kind: 'error'; content: string; createdAt: number };
+    | {
+          id: string;
+          kind: 'error';
+          content: string;
+          createdAt: number;
+          turnId?: string;
+          turnStatus?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+      }
+    | {
+          id: string;
+          kind: 'turn_receipt';
+          content: string;
+          count: number;
+          status: 'succeeded' | 'rejected' | 'failed' | 'cancelled';
+          createdAt: number;
+          turnId?: string;
+          turnStatus?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+      };
 
 export type GroupedChatItem =
     | TurnContentItem
@@ -86,6 +131,8 @@ export type GroupedChatItem =
           /** Last assistant answer, or terminal error when no answer exists. */
           outcomeId?: string;
           createdAt: number;
+          turnId?: string;
+          turnStatus?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
       };
 
 interface MessageBubbleProps {
@@ -136,13 +183,29 @@ export function MessageBubble({ item, isLast, active, isLatestAssistant, onCance
                 />
             );
         case 'turn':
-            return <HistoricalTurnBubble items={item.items} outcomeId={item.outcomeId} />;
+            return (
+                <HistoricalTurnBubble
+                    items={item.items}
+                    outcomeId={item.outcomeId}
+                    turnStatus={item.turnStatus}
+                />
+            );
+        case 'turn_receipt':
+            return <TurnReceiptBubble content={item.content} status={item.status} />;
         case 'error':
             return <ErrorBubble content={item.content} />;
     }
 }
 
-function HistoricalTurnBubble({ items, outcomeId }: { items: TurnContentItem[]; outcomeId?: string }) {
+function HistoricalTurnBubble({
+    items,
+    outcomeId,
+    turnStatus,
+}: {
+    items: TurnContentItem[];
+    outcomeId?: string;
+    turnStatus?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+}) {
     const isExpanded = useSignal(false);
     const lang = getLang();
     const outcome = outcomeId ? items.find(item => item.id === outcomeId) : undefined;
@@ -182,7 +245,13 @@ function HistoricalTurnBubble({ items, outcomeId }: { items: TurnContentItem[]; 
                         tools: String(toolCount),
                     })}
                 </span>
-                <span class="chat-tool-group-processed">{t('chat.process.done', lang)}</span>
+                <span class="chat-tool-group-processed">
+                    {turnStatus === 'failed'
+                        ? '失败'
+                        : turnStatus === 'cancelled'
+                          ? '已取消'
+                          : t('chat.process.done', lang)}
+                </span>
             </button>
             {visibleItems.length > 0 && (
                 <div class="chat-turn-items">
@@ -197,6 +266,31 @@ function HistoricalTurnBubble({ items, outcomeId }: { items: TurnContentItem[]; 
                     ))}
                 </div>
             )}
+        </div>
+    );
+}
+
+function TurnReceiptBubble({
+    content,
+    status,
+}: {
+    content: string;
+    status: 'succeeded' | 'rejected' | 'failed' | 'cancelled';
+}) {
+    const failed = status !== 'succeeded';
+    return (
+        <div
+            role={failed ? 'alert' : 'status'}
+            style={{
+                margin: '6px 0',
+                padding: '8px 10px',
+                borderLeft: `3px solid ${failed ? 'var(--danger-color, #c0392b)' : 'var(--accent-color)'}`,
+                background: 'var(--bg-secondary)',
+                color: failed ? 'var(--danger-color, #c0392b)' : 'var(--text-secondary)',
+                fontSize: '12px',
+            }}
+        >
+            系统回执 · {content}
         </div>
     );
 }
@@ -1147,48 +1241,6 @@ function GroupedToolCallItem({ call, status }: { call: GroupedToolCall; status: 
             )}
         </div>
     );
-}
-
-/**
- * Pretty-print tool output when it is JSON (object/array); otherwise return
- * the original text. Handles leading/trailing whitespace and double-encoded
- * JSON strings that some agents emit as output.
- */
-function formatToolOutput(raw: string): string {
-    const text = raw.trim();
-    if (!text) return raw;
-
-    const tryPretty = (s: string): string | null => {
-        try {
-            const parsed = JSON.parse(s);
-            // Only reformat structured JSON — leave bare strings/numbers as-is
-            // so a plain path or status message is not wrapped in quotes.
-            if (parsed !== null && typeof parsed === 'object') {
-                return JSON.stringify(parsed, null, 2);
-            }
-            return null;
-        } catch {
-            return null;
-        }
-    };
-
-    const direct = tryPretty(text);
-    if (direct !== null) return direct;
-
-    // Some runtimes wrap the whole payload in an extra JSON string layer.
-    if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
-        try {
-            const unwrapped = JSON.parse(text);
-            if (typeof unwrapped === 'string') {
-                const nested = tryPretty(unwrapped.trim());
-                if (nested !== null) return nested;
-            }
-        } catch {
-            // keep original
-        }
-    }
-
-    return raw;
 }
 
 function ArgValue({ value }: { value: unknown }) {

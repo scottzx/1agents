@@ -582,11 +582,25 @@ function GroupedToolCallItem({
   if (call.output) {
     try {
       const parsed = JSON.parse(call.output);
-      if (parsed && typeof parsed === 'object') {
-        if (typeof parsed.formatted_output === 'string') {
-          parsedOutput = parsed.formatted_output;
-        } else if (typeof parsed.output === 'string') {
-          parsedOutput = parsed.output;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const targetVal = parsed.output_for_prompt ?? parsed.formatted_output ?? parsed.output;
+        if (targetVal !== undefined && targetVal !== null) {
+          if (typeof targetVal === 'object') {
+            parsedOutput = JSON.stringify(targetVal, null, 2);
+          } else if (typeof targetVal === 'string') {
+            try {
+              const innerParsed = JSON.parse(targetVal.trim());
+              if (innerParsed && typeof innerParsed === 'object') {
+                parsedOutput = JSON.stringify(innerParsed, null, 2);
+              } else {
+                parsedOutput = targetVal;
+              }
+            } catch {
+              parsedOutput = targetVal;
+            }
+          } else {
+            parsedOutput = String(targetVal);
+          }
         }
         if (typeof parsed.exit_code === 'number' && parsed.exit_code !== 0) {
           isExitError = true;
