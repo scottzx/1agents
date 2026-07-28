@@ -62,9 +62,9 @@ func Open(path string) (*DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("meta: open %s: %w", path, err)
 	}
-	// One connection serializes all in-process access; cross-process writes
-	// are handled by WAL + busy_timeout.
-	sqlDB.SetMaxOpenConns(1)
+	// WAL mode supports concurrent readers; allow up to 25 open connections.
+	sqlDB.SetMaxOpenConns(25)
+	sqlDB.SetMaxIdleConns(5)
 	db := &DB{sql: sqlDB}
 	if err := db.migrateSchema(); err != nil {
 		sqlDB.Close()

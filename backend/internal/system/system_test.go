@@ -280,25 +280,29 @@ func TestUpdateDoubleStartRejected(t *testing.T) {
 	}
 }
 
-// ── Upstream source priority (mirror first, GitHub fallback) ─────────────────
+// ── Upstream source priority (mirror wins ties) ──────────────────────────────
 
-func TestFetchUpstreamPrefersMirror(t *testing.T) {
-	// A healthy mirror must win over GitHub. We point MirrorBaseURL at a
-	// local test server and keep Repo set; the mirror's body must be the
-	// one returned, and GitHub must not be consulted.
+func TestFetchUpstreamKeepsMirrorOnTie(t *testing.T) {
+	// fetchUpstream compares every healthy source so a newer fallback can
+	// replace a stale mirror. When versions and usability tie, source order
+	// remains the tiebreaker and the mirror body must be retained.
 	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/manifest.json" {
 			http.NotFound(w, r)
 			return
 		}
-		w.Write([]byte(`{"channel":"stable","components":{"frontend":{"version":"FROM-MIRROR"}}}`))
+		w.Write([]byte(`{"channel":"stable","components":{"backend":{"version":"v1","platforms":{"linux-amd64":{"url":"FROM-MIRROR"}}}}}`))
 	}))
 	defer mirror.Close()
+	fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"channel":"stable","components":{"backend":{"version":"v1","platforms":{"linux-amd64":{"url":"FROM-FALLBACK"}}}}}`))
+	}))
+	defer fallback.Close()
 
 	oldMirror, oldRepo := MirrorBaseURL, Repo
 	t.Cleanup(func() { MirrorBaseURL, Repo = oldMirror, oldRepo })
 	MirrorBaseURL = mirror.URL
-	Repo = "scottzx/1Agents" // present but should never be reached
+	Repo = fallback.URL + "/manifest.json"
 
 	body, err := fetchUpstream()
 	if err != nil {

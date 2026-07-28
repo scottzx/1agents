@@ -374,13 +374,18 @@ func (s *Store) ListRooms(limit int) ([]Room, error) {
 			}
 			room.Brief = &b
 		}
-		if err := s.hydrateRoomBriefVersions(&room); err != nil {
-			return nil, err
-		}
 		out = append(out, room)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+	for i := range out {
+		if err := s.hydrateRoomBriefVersions(&out[i]); err != nil {
+			return nil, err
+		}
 	}
 	if out == nil {
 		out = []Room{}
