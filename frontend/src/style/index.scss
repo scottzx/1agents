@@ -18168,8 +18168,6 @@ body {
 
   /* Inner blocks that need their own scroll (tool results, long text, thinking) now use the single main track. */
   .chat-bubble-tool-group,
-  .chat-assistant-block,
-  .markdown-body,
   .chat-nested-content {
     max-height: 280px;
     overflow-y: auto;
@@ -18248,10 +18246,6 @@ body {
   // collapsed at the edges so a single-line message sits flush to it.
   padding: 8px;
 
-  ::selection {
-    background-color: #ffffff;
-    color: var(--accent-color);
-  }
 
   .markdown-body {
     > :first-child { margin-top: 0; }
@@ -18360,23 +18354,33 @@ body {
   min-width: 0;
 }
 
+
 /* Older assistant answers: nested height cap + .chat-nested-scroll (class in TSX).
  * Latest answer (.is-unlimited) grows with the outer timeline. */
 .chat-assistant-content {
   max-height: 30em;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 
   &.is-collapsed {
     max-height: 30em;
+    overflow-y: auto;
   }
 
   &.is-expanded {
     max-height: min(70vh, 720px);
+    overflow-y: auto;
   }
 
   /* Newest assistant_text: full body, outer timeline only */
   &.is-unlimited {
-    max-height: none;
-    overflow-y: visible;
+    max-height: none !important;
+    overflow-y: visible !important;
+
+    .markdown-body {
+      max-height: none !important;
+      overflow-y: visible !important;
+    }
   }
 }
 
