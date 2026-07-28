@@ -22,6 +22,8 @@ import {
 } from './MessageBubble';
 import { closeAuthRequiredModal, openAuthRequiredModal } from '../../stores/modalStore';
 import type { ChatItem } from './hooks';
+import { useProjectedTurnItems } from './projectTurnProjection';
+import { turnFocusRequest } from '../../stores/turnFocusStore';
 
 interface ChatPanelProps {
     session: ChatSession;
@@ -124,6 +126,11 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
     // prompts (or reconnect redelivery) never stack a wall of cards.
     // Resolved ones stay as receipts inside the (default-collapsed) tool group.
     const nextPrompt = collectNextPendingPrompt(items);
+    const projectedItems = useProjectedTurnItems(session, items, typing);
+    const focusRequest =
+        turnFocusRequest.value?.sessionId === session.id
+            ? { turnId: turnFocusRequest.value.turnId, nonce: turnFocusRequest.value.nonce }
+            : null;
 
     return (
         <div class="chat-panel" data-session-mode={currentModeId}>
@@ -145,7 +152,7 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
             {plan && plan.length > 0 && <PlanChecklist entries={plan} />}
             {backgroundTasks && backgroundTasks.length > 0 && <BackgroundTasks tasks={backgroundTasks} />}
             <MessageList
-                items={items}
+                items={projectedItems}
                 typing={typing}
                 emptyHint={
                     connection === 'connecting'
@@ -154,6 +161,7 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
                 }
                 loading={showInitLoading}
                 onCancelQueued={cancelQueued}
+                focusTurn={focusRequest}
             />
             {/* Page-persistent error banner — sits above the Composer. Cleared
                 by the × button or by an F5 reload; new errors overwrite old. */}

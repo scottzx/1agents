@@ -109,8 +109,42 @@ export function Composer({
         if (slash.matches.length) setSlash({ matches: [], index: 0 });
     };
 
-    /** Resize the uncontrolled textarea to fit content (capped). */
-    const fitHeight = (el: HTMLTextAreaElement) => {
+    const isComposingRef = useRef(false);
+    const lastLineCountRef = useRef<number>(1);
+
+    /** Resize the uncontrolled textarea ONLY when line count changes. */
+    const fitHeight = (el: HTMLTextAreaElement, force = false) => {
+        const computed = window.getComputedStyle(el);
+        const lineHeight = parseFloat(computed.lineHeight) || 21;
+        const paddingTop = parseFloat(computed.paddingTop) || 10;
+        const paddingBottom = parseFloat(computed.paddingBottom) || 4;
+        const padding = paddingTop + paddingBottom;
+
+        const currentLength = el.value.length;
+        const prevLength = parseFloat(el.dataset.prevLength || '0');
+        el.dataset.prevLength = String(currentLength);
+
+        let currentScrollHeight = el.scrollHeight;
+
+        // Reset to 'auto' to measure exact scrollHeight ONLY when text was deleted/shortened or forced
+        if (force || currentLength < prevLength || !el.style.height) {
+            const curStyleHeight = el.style.height;
+            el.style.height = 'auto';
+            currentScrollHeight = el.scrollHeight;
+            if (!force && curStyleHeight && currentLength < prevLength) {
+                el.style.height = curStyleHeight;
+            }
+        }
+
+        const contentHeight = Math.max(0, currentScrollHeight - padding);
+        const lineCount = Math.max(1, Math.round(contentHeight / lineHeight));
+
+        // If line count hasn't changed, DO NOT touch style.height!
+        if (!force && lineCount === lastLineCountRef.current && el.style.height) {
+            return;
+        }
+
+        lastLineCountRef.current = lineCount;
         el.style.height = 'auto';
         el.style.height = Math.min(el.scrollHeight, 320) + 'px';
     };
@@ -121,7 +155,8 @@ export function Composer({
         const el = ref.current;
         if (!el) return;
         el.value = readDraft(sessionId);
-        fitHeight(el);
+        lastLineCountRef.current = 1;
+        fitHeight(el, true);
         setSlash({ matches: [], index: 0 });
         // Re-derive slash palette if the restored draft starts with `/`.
         if (el.value) refreshSlash(el.value);
@@ -202,13 +237,30 @@ export function Composer({
         closeSlash();
         attach.clear();
         // Reset height
+        lastLineCountRef.current = 1;
         el.style.height = 'auto';
+    };
+
+    const handleCompositionStart = () => {
+        isComposingRef.current = true;
+    };
+
+    const handleCompositionEnd = () => {
+        isComposingRef.current = false;
+        const el = ref.current;
+        if (!el) return;
+        fitHeight(el);
+        writeDraft(sessionId, el.value);
+        refreshSlash(el.value);
     };
 
     const handleInput = () => {
         const el = ref.current;
         if (!el) return;
-        fitHeight(el);
+        // Skip fitHeight during active IME pinyin composition to avoid height jitter per keypress
+        if (!isComposingRef.current) {
+            fitHeight(el);
+        }
         writeDraft(sessionId, el.value);
         refreshSlash(el.value);
     };
@@ -257,6 +309,8 @@ export function Composer({
                     disabled={disabled}
                     onKeyDown={handleKeyDown}
                     onInput={handleInput}
+                    onCompositionStart={handleCompositionStart}
+                    onCompositionEnd={handleCompositionEnd}
                     rows={1}
                     wrap="soft"
                 />

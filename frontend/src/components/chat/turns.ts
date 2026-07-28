@@ -49,7 +49,10 @@ export function groupHistoricalTurns(items: GroupedChatItem[]): GroupedChatItem[
         // process header.
         if (!outcomeId) {
             for (let index = turnItems.length - 1; index >= 0; index--) {
-                if (turnItems[index].kind === 'error') {
+                if (
+                    turnItems[index].kind === 'error' ||
+                    (turnItems[index].kind === 'turn_receipt' && turnItems[index].status !== 'succeeded')
+                ) {
                     outcomeId = turnItems[index].id;
                     break;
                 }
@@ -63,11 +66,13 @@ export function groupHistoricalTurns(items: GroupedChatItem[]): GroupedChatItem[
         }
 
         result.push({
-            id: `turn-${user.id}`,
+            id: `turn-${user.turnId || user.id}`,
             kind: 'turn',
             items: turnItems,
             outcomeId,
             createdAt: user.createdAt,
+            turnId: user.turnId,
+            turnStatus: user.turnStatus,
         });
     }
 

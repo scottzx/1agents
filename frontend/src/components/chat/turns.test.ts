@@ -100,3 +100,24 @@ test('does not add a redundant wrapper when a historical turn only has its answe
         ['user', 'assistant_text', 'user']
     );
 });
+
+test('uses the persisted turn id and status when explicit attribution is available', () => {
+    const firstUser = { ...user('u1'), turnId: 'turn-123', turnStatus: 'failed' as const };
+    const receipt: TurnContentItem = {
+        id: 'receipt',
+        kind: 'turn_receipt',
+        content: 'Turn 执行失败',
+        count: 0,
+        status: 'failed',
+        createdAt: 3,
+        turnId: 'turn-123',
+        turnStatus: 'failed',
+    };
+    const grouped = groupHistoricalTurns([firstUser, thinking('think'), receipt, user('u2')]);
+    const turn = grouped[1];
+
+    assert.equal(turn.kind, 'turn');
+    assert.equal(turn.id, 'turn-turn-123');
+    assert.equal(turn.kind === 'turn' ? turn.turnStatus : undefined, 'failed');
+    assert.equal(turn.kind === 'turn' ? turn.outcomeId : undefined, 'receipt');
+});

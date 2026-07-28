@@ -1,4 +1,4 @@
-import { h, type ComponentChildren } from 'preact';
+import { h, Fragment, type ComponentChildren } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import { MessageBubble, GroupedChatItem, GroupedToolCall, ToolGroupElement } from './MessageBubble';
 import type { ChatItem } from './hooks';
@@ -32,6 +32,8 @@ interface MessageListProps {
     onCancelQueued?: (queueRequestId: string) => void;
     /** Optional references rendered inside the same scroll timeline. */
     timelineFooter?: ComponentChildren;
+    /** One-shot request to reveal a persisted Turn after cross-navigation. */
+    focusTurn?: { turnId: string; nonce: number } | null;
 }
 
 function isCallRenderable(call: GroupedToolCall): boolean {
@@ -65,7 +67,15 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
     const pendingCalls: GroupedToolCall[] = [];
     let currentProcessGroup: Extract<GroupedChatItem, { kind: 'tool_group' }> | null = null;
 
-    const ensureProcessGroup = (id: string, createdAt: number): Extract<GroupedChatItem, { kind: 'tool_group' }> => {
+    const ensureProcessGroup = (
+        id: string,
+        createdAt: number,
+        turnId?: string,
+        turnStatus?: ChatItem['turnStatus']
+    ): Extract<GroupedChatItem, { kind: 'tool_group' }> => {
+        if (currentProcessGroup && turnId && currentProcessGroup.turnId && currentProcessGroup.turnId !== turnId) {
+            currentProcessGroup = null;
+        }
         if (currentProcessGroup) return currentProcessGroup;
         currentProcessGroup = {
             id: `group-${id}`,
@@ -74,6 +84,8 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
             thinkingBlocks: [],
             elements: [],
             createdAt,
+            turnId,
+            turnStatus,
         };
         grouped.push(currentProcessGroup);
         return currentProcessGroup;
@@ -81,7 +93,7 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
 
     for (const item of items) {
         if (item.kind === 'tool_use') {
-            const lastGroup = ensureProcessGroup(item.id, item.createdAt);
+            const lastGroup = ensureProcessGroup(item.id, item.createdAt, item.turnId, item.turnStatus);
 
             if (!lastGroup.thinkingBlocks) lastGroup.thinkingBlocks = [];
             if (!lastGroup.elements) lastGroup.elements = [];
@@ -127,7 +139,7 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
                 }
             }
         } else if (item.kind === 'thinking') {
-            const lastGroup = ensureProcessGroup(item.id, item.createdAt);
+            const lastGroup = ensureProcessGroup(item.id, item.createdAt, item.turnId, item.turnStatus);
 
             if (!lastGroup.thinkingBlocks) lastGroup.thinkingBlocks = [];
             if (!lastGroup.elements) lastGroup.elements = [];
@@ -328,7 +340,12 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
             // Assistant replies, user messages, and errors live outside the
             // tool group. Closing the group keeps chronological order when
             // more tools arrive after an intermediate assistant reply.
-            if (item.kind === 'user' || item.kind === 'error' || item.kind === 'assistant_text') {
+            if (
+                item.kind === 'user' ||
+                item.kind === 'error' ||
+                item.kind === 'assistant_text' ||
+                item.kind === 'turn_receipt'
+            ) {
                 currentProcessGroup = null;
             }
             grouped.push(item as GroupedChatItem);
@@ -358,6 +375,7 @@ export function MessageList({
     loadingHint,
     onCancelQueued,
     timelineFooter,
+    focusTurn,
 }: MessageListProps) {
     const scrollRef = useRef<HTMLDivElement | null>(null);
     // Whether the user is currently stuck to the bottom. Tracked from
@@ -369,6 +387,7 @@ export function MessageList({
     // auto-follow so a streamed token can't snap scrollTop between a
     // header's mousedown and mouseup and silently swallow the click.
     const interactingRef = useRef(false);
+    const focusedNonceRef = useRef<number | null>(null);
 
     const handleScroll = () => {
         const el = scrollRef.current;
@@ -385,6 +404,20 @@ export function MessageList({
         if (!pinnedRef.current || interactingRef.current) return;
         el.scrollTop = el.scrollHeight;
     }, [items, typing, timelineFooter]);
+
+    useEffect(() => {
+        if (!focusTurn || focusedNonceRef.current === focusTurn.nonce) return;
+        const frame = requestAnimationFrame(() => {
+            const el = scrollRef.current;
+            if (!el) return;
+            const anchors = Array.from(el.querySelectorAll<HTMLElement>('[data-turn-anchor]'));
+            const anchor = anchors.find(node => node.dataset.turnAnchor === focusTurn.turnId);
+            if (!anchor) return;
+            focusedNonceRef.current = focusTurn.nonce;
+            anchor.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        });
+        return () => cancelAnimationFrame(frame);
+    }, [focusTurn, items]);
 
     if (loading) {
         // Spinner takes priority over the empty hint: while the bridge is
@@ -502,14 +535,22 @@ export function MessageList({
                 }}
             >
                 {groupedItems.map((item, index) => (
-                    <MessageBubble
-                        key={item.id}
-                        item={item}
-                        isLast={index === groupedItems.length - 1}
-                        active={typing && index === activeProcessIndex}
-                        isLatestAssistant={index === latestAssistantIndex}
-                        onCancelQueued={onCancelQueued}
-                    />
+                    <Fragment key={item.id}>
+                        {item.turnId && (
+                            <span
+                                data-turn-anchor={item.turnId}
+                                aria-hidden="true"
+                                style={{ display: 'block', height: 0 }}
+                            />
+                        )}
+                        <MessageBubble
+                            item={item}
+                            isLast={index === groupedItems.length - 1}
+                            active={typing && index === activeProcessIndex}
+                            isLatestAssistant={index === latestAssistantIndex}
+                            onCancelQueued={onCancelQueued}
+                        />
+                    </Fragment>
                 ))}
                 {showTyping && (
                     <div class="chat-typing-row" aria-label="thinking">
