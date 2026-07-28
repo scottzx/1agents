@@ -237,6 +237,32 @@ func (svc *Service) ListTurns(roomID string) ([]Turn, error) {
 	return svc.store.ListTurns(roomID)
 }
 
+// DeleteRoom permanently removes the room record and all associated seat workspaces.
+// This is irreversible; should only be called after explicit user confirmation.
+func (svc *Service) DeleteRoom(id string) error {
+	if svc == nil || svc.store == nil {
+		return fmt.Errorf("roundtable: service not configured")
+	}
+	// Fetch first to collect seat cwds for cleanup.
+	room, err := svc.GetRoom(id)
+	if err != nil {
+		return err
+	}
+	var cwds []string
+	for _, seat := range room.Seats {
+		if cwd, err := svc.resolveCwd(seat.WorkspaceID); err == nil {
+			cwds = append(cwds, cwd)
+		}
+	}
+	if err := svc.store.DeleteRoom(id); err != nil {
+		return err
+	}
+	for _, cwd := range cwds {
+		_ = os.RemoveAll(cwd)
+	}
+	return nil
+}
+
 // TransitionRoom applies a legal state transition and persists it.
 func (svc *Service) TransitionRoom(roomID string, to RoomState) (*Room, error) {
 	room, err := svc.store.GetRoom(roomID)

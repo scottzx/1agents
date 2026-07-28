@@ -2,6 +2,7 @@ import { h, Fragment, type ComponentChildren, type RefObject } from 'preact';
 import type { RoundtableRoom, RoundtableSeat, RoundtableTurn } from '@1agents/core/services/roundtableService';
 import { TurnCard } from './TurnCard';
 import { timelineTurnsWithoutR1Chat } from './r1Timeline';
+import { StageBar } from './StageBar';
 
 interface RoundtableRoomContentProps {
     room: RoundtableRoom;
@@ -15,6 +16,7 @@ interface RoundtableRoomContentProps {
     primaryContent?: ComponentChildren;
     mobilePane?: RoundtableMobilePane;
     onMobilePaneChange?: (pane: RoundtableMobilePane) => void;
+    onStepClick?: (stepId: string) => void;
 }
 
 export type RoundtableMobilePane = 'discussion' | 'brief' | 'participants';
@@ -48,6 +50,20 @@ export function RoundtableRoomContent({
     const selectMobilePane = (pane: RoundtableMobilePane) => {
         onMobilePaneChange?.(pane);
     };
+
+    const handleStepClick = (stepId: string) => {
+        if (stepId === 'r1') {
+            onMobilePaneChange?.('brief');
+            // Focus proposal area if needed
+            queueMicrotask(() => {
+                const proposalStep = document.querySelector('.rt-r1-workbench');
+                if (proposalStep) proposalStep.scrollIntoView({ behavior: 'smooth' });
+            });
+        } else {
+            // For other stages, switch to discussion view
+            onMobilePaneChange?.('discussion');
+        }
+    };
     const onMobileTabKeyDown = (event: KeyboardEvent, pane: RoundtableMobilePane) => {
         const next = mobilePaneForKey(pane, event.key);
         if (!next) return;
@@ -60,6 +76,7 @@ export function RoundtableRoomContent({
         <div class="rt-room" data-room-id={room.id} data-mobile-pane={mobilePane}>
             <div class="rt-room-main">
                 {header}
+                <StageBar state={room.state} onStepClick={handleStepClick} />
                 <div class="rt-mobile-tabs" role="tablist" aria-label="圆桌视图">
                     {MOBILE_PANES.map(pane => (
                         <button

@@ -815,6 +815,41 @@ func (s *Store) ListSeats(roomID string) ([]Seat, error) {
 	return out, nil
 }
 
+// DeleteRoom permanently removes the room and all dependent data (brief_versions, runs, events, seats).
+// Seat workspaces are cleaned up in the service layer after DB delete.
+func (s *Store) DeleteRoom(roomID string) error {
+	if roomID == "" {
+		return fmt.Errorf("roundtable: room id required")
+	}
+	sqlDB := s.db.SQL()
+	tx, err := sqlDB.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Delete children first (reverse FK order)
+	if _, err := tx.Exec(`DELETE FROM agents_roundtable_run_seats WHERE run_id IN (SELECT id FROM agents_roundtable_runs WHERE room_id = ?)`, roomID); err != nil {
+		return fmt.Errorf("roundtable: delete run_seats: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM agents_roundtable_runs WHERE room_id = ?`, roomID); err != nil {
+		return fmt.Errorf("roundtable: delete runs: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM agents_roundtable_events WHERE room_id = ?`, roomID); err != nil {
+		return fmt.Errorf("roundtable: delete events: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM agents_roundtable_brief_versions WHERE room_id = ?`, roomID); err != nil {
+		return fmt.Errorf("roundtable: delete brief_versions: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM agents_roundtable_seats WHERE room_id = ?`, roomID); err != nil {
+		return fmt.Errorf("roundtable: delete seats: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM agents_roundtable_rooms WHERE id = ?`, roomID); err != nil {
+		return fmt.Errorf("roundtable: delete room: %w", err)
+	}
+	return tx.Commit()
+}
+
 // FindSeatByWorkspaceID returns the seat bound to a disposable workspace id.
 func (s *Store) FindSeatByWorkspaceID(workspaceID string) (*Seat, error) {
 	if strings.TrimSpace(workspaceID) == "" {

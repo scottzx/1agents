@@ -16,11 +16,18 @@ import { LaunchWizard } from './LaunchWizard';
 import { RoomList } from './RoomList';
 import { isTerminalState, pollIntervalMs } from './stage';
 import { primaryActionForRoom, type RoundtablePrimaryActionId } from './primaryAction';
-import { persistListView, persistRoomView, readStoredRoomId, resolveInitialNav } from './navState';
+import {
+    persistListView,
+    persistRoomView,
+    readStoredRoomId,
+    resolveInitialNav,
+    subscribeRoundtableListView,
+} from './navState';
 import { roundtableBreadcrumbs } from './breadcrumbs';
 import * as taskNav from '../../stores/taskNavStore';
 import * as tabsStore from '../../stores/tabsStore';
 import * as stage from '../../stores/stageStore';
+import * as appStore from '../../stores/appManifestStore';
 
 export interface RoundtableRoomProps {
     /** When set, open this room directly. */
@@ -41,7 +48,7 @@ type ShellView = 'list' | 'room' | 'create';
  * - list: topic cards (4 per row)
  * - create: launch wizard
  * - room: controller-driven R1/R2/R3/Done workbench + Inspector
- * Last list/room position is restored when re-entering from the sidebar.
+ * Reloads and session returns can restore a room; app-entry requests open list.
  */
 export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: RoundtableRoomProps) {
     const initial = resolveInitialNav(roomIdProp);
@@ -53,7 +60,6 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
-    const [inspectorTab, setInspectorTab] = useState<'topic' | 'participants'>('topic');
     const [mobilePane, setMobilePane] = useState<RoundtableMobilePane>('discussion');
     const [listRefreshKey, setListRefreshKey] = useState(0);
     const pollRef = useRef<number | null>(null);
@@ -71,7 +77,10 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
         setMobilePane('discussion');
         persistListView();
         setListRefreshKey(k => k + 1);
+        appStore.clearActiveRoundtable();
     }, []);
+
+    useEffect(() => subscribeRoundtableListView(goList), [goList]);
 
     const goRoom = useCallback((id: string) => {
         setError(null);
@@ -90,6 +99,7 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
         setMobilePane('discussion');
         // Creating is transient; remember list so cancel/back returns to cards.
         persistListView();
+        appStore.clearActiveRoundtable();
     }, []);
 
     const leaveRoundtable = useCallback(() => {
@@ -97,6 +107,7 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
         taskNav.clearHeaderBackAction('roundtable-room');
         stage.exitL1App();
         tabsStore.selectDiscoveryCategory('apps');
+        appStore.clearActiveRoundtable();
     }, []);
 
     useEffect(() => {
@@ -124,6 +135,8 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
         setRoom(next);
         setSeats(next.seats || []);
         setTurns(next.turns || []);
+        appStore.setActiveRoundtableRoom(next);
+        appStore.setActiveRoundtableSeats(next.seats || []);
     }, []);
 
     const refresh = useCallback(async (id: string, opts?: { quiet?: boolean }): Promise<boolean> => {
@@ -167,6 +180,7 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
                 setRoom(null);
                 setTurns([]);
                 setSeats([]);
+                appStore.clearActiveRoundtable();
             }
             return;
         }
@@ -216,22 +230,7 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
         }
     };
 
-    const sendR1 = async (text: string) => {
-        if (!roomId || busy) return;
-        setBusy(true);
-        setError(null);
-        try {
-            await roundtableService.chat(roomId, { text });
-            await refresh(roomId, { quiet: true });
-        } catch (e) {
-            setError(e instanceof Error ? e.message : String(e));
-        } finally {
-            setBusy(false);
-        }
-    };
-
     const focusBriefInspector = useCallback(() => {
-        setInspectorTab('topic');
         setMobilePane('brief');
         queueMicrotask(() => {
             const inspector = briefInspectorRef.current;
@@ -286,12 +285,18 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
         setBusy(true);
         setError(null);
         try {
-            const result = await action();
+            // Prevent hanging on bridge read timeout (common in seat retry for "market" role).
+            const result = await Promise.race([
+                action(),
+                new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error('recover action timed out after 30s')), 30000)
+                ),
+            ]);
             pendingRecoveryFocusRef.current = true;
             applyRoom(result.room);
             await refresh(roomId, { quiet: true });
         } catch (e) {
-            setError(e instanceof Error ? e.message : String(e));
+            setError(`recover failed: ${e instanceof Error ? e.message : String(e)}`);
         } finally {
             setBusy(false);
         }
@@ -308,8 +313,6 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
 
     const selectMobilePane = (pane: RoundtableMobilePane) => {
         setMobilePane(pane);
-        if (pane === 'brief') setInspectorTab('topic');
-        if (pane === 'participants') setInspectorTab('participants');
     };
 
     const retrySeat = (role: RoundtableSeat['role']) => {
@@ -438,30 +441,16 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
                 drafting ? (
                     <R1Workbench
                         room={room}
-                        seats={seats}
-                        turns={turns}
-                        sending={busy}
-                        onSend={sendR1}
-                        onFocusBrief={focusBriefInspector}
-                        onOpenReferee={openSeatSession}
+                        loading={loading}
+                        sectionRef={briefInspectorRef}
+                        onRoomUpdate={applyRoom}
+                        onReload={() => void refresh(roomId, { quiet: true })}
                     />
                 ) : (
                     <StageWorkbench room={room} seats={seats} turns={turns} onOpenSeat={openSeatSession} />
                 )
             }
-            sidebar={
-                <RoundtableSidebar
-                    room={room}
-                    seats={seats}
-                    turns={turns}
-                    loading={loading}
-                    activeTab={inspectorTab}
-                    onTabChange={setInspectorTab}
-                    inspectorRef={briefInspectorRef}
-                    onRoomUpdate={applyRoom}
-                    onReload={() => void refresh(roomId, { quiet: true })}
-                />
-            }
+            sidebar={<RoundtableSidebar room={room} />}
         />
     );
 }

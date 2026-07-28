@@ -448,4 +448,12 @@ export const roundtableService = {
         if (!res.ok) throw new Error(await readError(res));
         return res.json();
     },
+
+    /** DELETE /api/roundtable/rooms/{id} — permanent delete of room record and all seat content. */
+    async deleteRoom(id: string): Promise<void> {
+        const res = await apiFetch(`/roundtable/rooms/${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+        });
+        if (!res.ok) throw new Error(await readError(res));
+    },
 };

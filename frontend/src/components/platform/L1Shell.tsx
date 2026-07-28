@@ -38,14 +38,14 @@ export interface L1NavEntry {
 
 /**
  * Apps launched only from 发现中心 / 更多应用 (not permanent left-sidebar L1 nav).
- * design §6.3: Agents 圆桌 entry is 更多 → 发现中心 → 应用 → card.
+ * design §6.3: Agents 圆桌 entry now appears in sidebar 「应用」 as folder.
  */
-const DISCOVERY_ONLY_APP_IDS = new Set(['agents-roundtable']);
+const DISCOVERY_ONLY_APP_IDS = new Set<string>();
 
 /**
  * Returns the list of L1 nav entries from enabled apps for the left sidebar.
- * Discovery-only apps (e.g. agents-roundtable) are excluded — they still open
- * via DiscoveryPanel → openAppById → enterL1App, but do not appear under 侧栏「应用」.
+ * Roundtable (agents-roundtable) now appears under 侧栏「应用」 as expandable folder
+ * with seat cards (click seat card to open dialogue page).
  *
  * @example
  * // In LeftSidebar.tsx, alongside the built-in nav items:

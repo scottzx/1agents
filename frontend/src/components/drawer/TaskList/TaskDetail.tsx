@@ -627,7 +627,12 @@ export function TaskDetail({
     // Spawn a NEW session via unified SessionSetup (P1-3): same modal/skip as
     // the main path, agent prefilled from assignee or chosen composer agent, taskId bound,
     // optional initialMessage auto-sent after create. PM paths stay on createPMSession.
-    const openNewSession = async (initialMessage?: string, agentType?: AgentType, taskId?: string, includeTimeline = true) => {
+    const openNewSession = async (
+        initialMessage?: string,
+        agentType?: AgentType,
+        taskId?: string,
+        includeTimeline = true
+    ) => {
         if (!task) return;
 
         // Build rich background summary for the seeded initial message
@@ -640,7 +645,7 @@ export function TaskDetail({
         if (task.assignee) seedMessage += `负责人：${task.assignee}\n`;
 
         if (includeTimeline && task.replies && task.replies.length > 0) {
-            seedMessage += `\n之前回复摘要（前 3 条）：\n`;
+            seedMessage += '\n之前回复摘要（前 3 条）：\n';
             const recent = task.replies.slice(0, 3);
             recent.forEach((rp, i) => {
                 const who = rp.sessionRef ? `agent (${rp.agentType || rp.author?.name})` : rp.author?.name || '用户';

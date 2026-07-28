@@ -1,13 +1,15 @@
 /**
- * Persist roundtable app navigation so sidebar re-entry restores list or room.
+ * Persist roundtable navigation for reloads and explicit room/session returns.
  * - view=list  → topic card grid
  * - view=room  → last open room page (needs roomId)
+ * User-facing app entries call requestRoundtableListView() and always open list.
  */
 
 export type RoundtableView = 'list' | 'room';
 
 const LS_VIEW = 'oneagents.roundtable.view';
 const LS_ROOM = 'oneagents.roundtable.activeRoomId';
+const listViewListeners = new Set<() => void>();
 
 export function readStoredView(): RoundtableView {
     try {
@@ -33,6 +35,21 @@ export function persistListView(): void {
     } catch {
         /* ignore */
     }
+}
+
+/**
+ * User-facing app entries always mean "open the roundtable list".
+ * Persist first so a not-yet-mounted view starts on the list, then notify an
+ * already-mounted view so clicking the active app also leaves the room page.
+ */
+export function requestRoundtableListView(): void {
+    persistListView();
+    for (const listener of Array.from(listViewListeners)) listener();
+}
+
+export function subscribeRoundtableListView(listener: () => void): () => void {
+    listViewListeners.add(listener);
+    return () => listViewListeners.delete(listener);
 }
 
 export function persistRoomView(roomId: string): void {

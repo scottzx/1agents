@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'preact/hooks';
 import { t, type Lang } from '../i18n';
 import * as appStore from '../../stores/appManifestStore';
 import type { AppManifest } from '../../services/appManifestService';
+import { requestRoundtableListView } from '../roundtable/navState';
 
 type CategoryId = 'apps' | 'featured' | 'opensource';
 
@@ -159,7 +160,10 @@ export function DiscoveryPanel({
                     if (card.appId) {
                         e.preventDefault();
                         if (disabled) return;
-                        if (onOpenApp) onOpenApp(card.appId);
+                        if (onOpenApp) {
+                            if (card.appId === 'agents-roundtable') requestRoundtableListView();
+                            onOpenApp(card.appId);
+                        }
                     } else if (onOpenBrowserTab) {
                         e.preventDefault();
                         onOpenBrowserTab(card.url);

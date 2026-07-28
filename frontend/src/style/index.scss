@@ -357,6 +357,7 @@
   --purple-rgb: 130, 80, 223;
   --orange-fg: #bc4c00;
   --orange-bg: #fff1e5;
+  --orange-rgb: 188, 76, 0;
   --icon-folder: #e2b93b;
   --bg-tooltip: #1f2937;
   --text-tooltip: #f3f4f6;
@@ -462,6 +463,7 @@
   --purple-rgb: 163, 113, 247;
   --orange-fg: #db6d28;
   --orange-bg: rgba(219, 109, 40, 0.15);
+  --orange-rgb: 219, 109, 40;
   --bg-tooltip: #30363d;
   --text-tooltip: #e6edf3;
 
@@ -849,7 +851,7 @@ body {
       font-weight: 600;
       letter-spacing: 0.5px;
       color: var(--text-sidebar-muted);
-      padding: 8px 4px;
+      padding: 8px 12px;
 
       /* Popover lives inside this sticky stacking context; raise above the
        * next section's sticky title (e.g. 项目) while the filter is open. */
@@ -12527,7 +12529,7 @@ body {
 
     &:focus-visible {
       border-color: var(--accent-color);
-      box-shadow: 0 0 0 3px var(--badge-glow, rgba(var(--accent-rgb), 0.18));
+      box-shadow: 0 0 0 3px var(--badge-glow, rgba(var(--accent-color-rgb), 0.18));
     }
 
     &:disabled {
@@ -12699,7 +12701,7 @@ body {
     }
 
     &.active {
-      background: var(--accent-light, var(--accent-bg));
+      background: var(--accent-light, rgba(var(--accent-color-rgb), 0.06));
       color: var(--accent-color);
       font-weight: 500;
 
@@ -12742,7 +12744,7 @@ body {
     color: var(--warning-fg);
   }
   &.is-assistant {
-    background: var(--accent-bg);
+    background: var(--accent-light);
     color: var(--accent-fg);
   }
   &.is-project {
@@ -18042,11 +18044,11 @@ body {
 @keyframes chat-dot-pulse-green {
   0%, 100% {
     transform: scale(1);
-    box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.6);
+    box-shadow: 0 0 0 0 rgba(var(--success-rgb), 0.6);
   }
   50% {
     transform: scale(1.2);
-    box-shadow: 0 0 0 4px rgba(63, 185, 80, 0);
+    box-shadow: 0 0 0 4px rgba(var(--success-rgb), 0);
   }
 }
 
@@ -18450,7 +18452,12 @@ body {
   // Active reasoning: shimmer sweep across the "思考中…" label so the
   // user can tell live thinking from a collapsed historical block.
   &.is-streaming .chat-bubble-label {
-    background: linear-gradient(90deg, var(--warning-fg) 30%, #e3b341 50%, var(--warning-fg) 70%);
+    background: linear-gradient(
+      90deg,
+      var(--warning-fg) 30%,
+      color-mix(in srgb, var(--warning-fg) 72%, var(--on-accent)) 50%,
+      var(--warning-fg) 70%
+    );
     background-size: 200% 100%;
     -webkit-background-clip: text;
     background-clip: text;
@@ -18564,12 +18571,18 @@ body {
 // tool row, so the block reads as document-flow text rather than a card.
 // Collapsed: a single underlined summary line. Expanded: rows "flow"
 // out under the header, each closed by its own bottom divider.
-.chat-bubble-tool-group {
+.chat-messages-body .chat-bubble-tool-group,
+.chat-messages-body .chat-bubble-thinking,
+.chat-message-track .chat-bubble-tool-group,
+.chat-message-track .chat-bubble-thinking,
+.chat-bubble-tool-group,
+.chat-bubble-thinking {
   align-self: flex-start;
   font-size: 13px;
   width: 100%;
   max-width: 100%;
   padding: 0;
+  gap: 0;
   overflow: visible;
   background: transparent;
   border: none;
@@ -18588,6 +18601,17 @@ body {
       border-bottom-style: dashed;
     }
   }
+}
+
+.chat-message-track > .chat-bubble-tool-group + .chat-bubble-tool-group,
+.chat-message-track > .chat-bubble-thinking + .chat-bubble-tool-group,
+.chat-message-track > .chat-bubble-tool-group + .chat-bubble-thinking,
+.chat-message-track > .chat-bubble-thinking + .chat-bubble-thinking,
+.chat-messages-body > .chat-bubble-tool-group + .chat-bubble-tool-group,
+.chat-messages-body > .chat-bubble-thinking + .chat-bubble-tool-group,
+.chat-messages-body > .chat-bubble-tool-group + .chat-bubble-thinking,
+.chat-messages-body > .chat-bubble-thinking + .chat-bubble-thinking {
+  margin-top: -12px;
 }
 
 .chat-tool-group-header {
@@ -18695,7 +18719,7 @@ body {
   }
 
   &.status-running { color: var(--accent-color); }
-  &.status-waiting { color: var(--warning-fg); }
+  &.status-waiting { color: var(--agent-permission); }
   &.status-error { color: var(--danger-fg); }
 }
 
@@ -18719,7 +18743,7 @@ body {
   // The scroll body keeps top padding for the first message. Offset that same
   // value while sticky so the header sits flush against the ChatUI viewport.
   top: calc(-1 * var(--chat-msg-pad-top, 20px));
-  z-index: 2;
+  z-index: 25;  /* Round highest */
   background-color: var(--chat-bg-page);
 
   .chat-tool-group-title {
@@ -18739,8 +18763,13 @@ body {
 .chat-turn-items {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding-top: 12px;
+  gap: 0;
+  padding-top: 0;
+
+  > .chat-message-row-assistant,
+  > .chat-bubble-error {
+    margin-top: 12px;
+  }
 }
 
 // Small ring spinner that inherits its colour from the parent so the
@@ -18759,6 +18788,7 @@ body {
 /* Expanded tool group body — max-height keeps the list nested; .chat-nested-scroll
  * aligns the thumb with the outer timeline and chains wheel at edges. */
 .chat-tool-calls-list {
+  position: relative;
   max-height: min(50vh, 480px);
   display: flex;
   flex-direction: column;
@@ -18783,8 +18813,29 @@ body {
   // no fill wash that would re-introduce card weight.
   &.status-waiting {
     background: transparent;
-    box-shadow: inset 2px 0 0 var(--warning-fg);
+    box-shadow: inset 2px 0 0 var(--agent-permission);
   }
+}
+
+.chat-tool-row.is-current {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  background-color: var(--chat-bg-page);
+  border-bottom: 1px solid var(--border-color);
+  /* Keep the hairline divider for the expanded tool */
+}
+
+.chat-tool-group-header.is-current {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background-color: var(--chat-bg-page);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.chat-tool-row-body {
+  z-index: 10;
 }
 
 .chat-tool-row-header {
@@ -19122,7 +19173,7 @@ body {
   }
 
   &.status-success {
-    background-color: rgba(26, 127, 55, 0.08);
+    background-color: rgba(var(--success-rgb), 0.08);
     color: var(--success-fg);
   }
 
@@ -19347,8 +19398,8 @@ body {
 
 .chat-bubble-permission {
   align-self: flex-start;
-  background: rgba(var(--danger-rgb), 0.06);
-  border-left: 3px solid var(--danger-fg);
+  background: rgba(var(--orange-rgb), 0.06);
+  border-left: 3px solid var(--agent-permission);
   max-width: 90%;
 }
 
@@ -19838,7 +19889,7 @@ body {
   gap: 8px;
   padding: 10px 12px;
   background: var(--chat-bg-card);
-  border: 1px solid rgba(var(--warning-rgb), 0.32);
+  border: 1px solid rgba(var(--orange-rgb), 0.32);
   border-radius: 10px;
   // Floating overlay feel (allowed on transient overlays, not resting cards).
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
@@ -19858,7 +19909,7 @@ body {
   line-height: 1.45;
   color: var(--text-secondary);
   padding: 6px 8px;
-  background: rgba(var(--warning-rgb), 0.06);
+  background: rgba(var(--orange-rgb), 0.06);
   border-radius: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -19873,15 +19924,15 @@ body {
   flex-direction: column;
   gap: 10px;
   padding: 10px 12px;
-  background: rgba(var(--warning-rgb), 0.07);
-  border: 1px solid rgba(var(--warning-rgb), 0.26);
+  background: rgba(var(--orange-rgb), 0.07);
+  border: 1px solid rgba(var(--orange-rgb), 0.26);
   border-radius: 8px;
 }
 
 .chat-permission-inline-label {
   font-size: 12px;
   font-weight: 600;
-  color: var(--warning-fg);
+  color: var(--agent-permission);
   font-family: var(--font-mono);
 }
 
@@ -20081,7 +20132,7 @@ body {
 
   &:hover {
     text-decoration: underline;
-    background-color: var(--accent-bg);
+    background-color: var(--accent-light);
   }
 }
 
@@ -20566,7 +20617,7 @@ body {
   }
 
   .chat-task-running-badge {
-    background: rgba(var(--accent-rgb), 0.1);
+    background: rgba(var(--accent-color-rgb), 0.1);
     color: var(--accent-fg);
   }
 
@@ -23587,8 +23638,15 @@ body {
   width: 18px;
   height: 18px;
   flex-shrink: 0;
+  overflow: hidden;
 
-  svg { width: 16px; height: 16px; }
+  svg, img {
+    width: 16px;
+    height: 16px;
+    max-width: 16px;
+    max-height: 16px;
+    object-fit: contain;
+  }
 }
 
 .l1-nav-item-icon-default {
@@ -23640,6 +23698,14 @@ body {
   font-weight: 500;
   cursor: pointer;
   text-align: left;
+
+  .folder-icon {
+    width: 16px;
+    height: 16px;
+    max-width: 16px;
+    max-height: 16px;
+    flex-shrink: 0;
+  }
 }
 
 .l1-open-app-archive {
@@ -26325,6 +26391,30 @@ body {
   }
 }
 
+.rt-topic-card-select {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 2;
+    pointer-events: auto;
+}
+
+.rt-topic-card.selected {
+    border-color: var(--accent-color) !important;
+    background: var(--bg-card);
+    box-shadow: 0 0 0 2px var(--accent-color);
+}
+
+.rt-topic-card-content {
+    width: 100%;
+    appearance: none;
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    text-align: left;
+}
+
 .rt-topic-card-top {
   display: flex;
   align-items: center;
@@ -26832,6 +26922,13 @@ body {
     color: var(--danger-fg);
     .rt-stage-dot {
       border-color: var(--danger-fg);
+    }
+  }
+
+  &.is-done {
+    cursor: pointer;
+    &:hover {
+      color: var(--accent-color);
     }
   }
 }

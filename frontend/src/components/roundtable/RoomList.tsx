@@ -18,6 +18,8 @@ export function RoomList({ onOpenRoom, onCreate, refreshKey = 0 }: RoomListProps
     const [rooms, setRooms] = useState<RoundtableRoom[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [selectionMode, setSelectionMode] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -25,12 +27,28 @@ export function RoomList({ onOpenRoom, onCreate, refreshKey = 0 }: RoomListProps
             const list = await roundtableService.listRooms(100);
             setRooms(list);
             setError(null);
+            setSelectedIds(new Set());
         } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
         } finally {
             setLoading(false);
         }
     }, []);
+
+    const deleteSelected = useCallback(
+        async (ids: string[]) => {
+            try {
+                for (const id of ids) {
+                    await roundtableService.deleteRoom(id);
+                }
+                setSelectedIds(new Set());
+                void load();
+            } catch (e) {
+                setError(e instanceof Error ? e.message : String(e));
+            }
+        },
+        [load]
+    );
 
     useEffect(() => {
         void load();
@@ -54,6 +72,28 @@ export function RoomList({ onOpenRoom, onCreate, refreshKey = 0 }: RoomListProps
                     >
                         刷新
                     </button>
+                    <button
+                        type="button"
+                        class={`rt-btn rt-btn-ghost ${selectionMode ? 'rt-btn-primary' : ''}`}
+                        onClick={() => setSelectionMode(!selectionMode)}
+                        aria-label={selectionMode ? '取消选择' : '选择圆桌'}
+                    >
+                        {selectionMode ? '取消' : '选择'}
+                    </button>
+                    {selectionMode && selectedIds.size > 0 && (
+                        <button
+                            type="button"
+                            class="rt-btn rt-btn-danger"
+                            onClick={() => {
+                                const ids = Array.from(selectedIds);
+                                if (window.confirm(`确定删除 ${ids.length} 个圆桌及其所有内容吗？此操作不可恢复。`)) {
+                                    void deleteSelected(ids);
+                                }
+                            }}
+                        >
+                            删除 ({selectedIds.size})
+                        </button>
+                    )}
                     <button type="button" class="rt-btn rt-btn-primary" onClick={onCreate}>
                         新建圆桌
                     </button>
@@ -114,7 +154,21 @@ export function RoomList({ onOpenRoom, onCreate, refreshKey = 0 }: RoomListProps
                     </button>
 
                     {rooms.map(room => (
-                        <TopicCard key={room.id} room={room} onOpen={() => onOpenRoom(room.id)} />
+                        <TopicCard
+                            key={room.id}
+                            room={room}
+                            onOpen={() => onOpenRoom(room.id)}
+                            selected={selectedIds.has(room.id)}
+                            onToggle={() => {
+                                const next = new Set(selectedIds);
+                                if (next.has(room.id)) {
+                                    next.delete(room.id);
+                                } else {
+                                    next.add(room.id);
+                                }
+                                setSelectedIds(next);
+                            }}
+                        />
                     ))}
                 </div>
             )}
@@ -122,76 +176,95 @@ export function RoomList({ onOpenRoom, onCreate, refreshKey = 0 }: RoomListProps
     );
 }
 
-function TopicCard({ room, onOpen }: { room: RoundtableRoom; onOpen: () => void }) {
+function TopicCard({
+    room,
+    onOpen,
+    selected,
+    onToggle,
+}: {
+    room: RoundtableRoom;
+    onOpen: () => void;
+    selected: boolean;
+    onToggle: () => void;
+}) {
     const stageIdx = stageIndexFromState(room.state);
     const tone = stateTone(room.state);
     const needsAction = waitsForUser(room);
 
     return (
-        <button type="button" class={`rt-topic-card is-${tone}`} role="listitem" onClick={onOpen}>
-            <div class="rt-topic-card-top">
-                <span class={`rt-topic-badge is-${needsAction ? 'wait' : tone}`}>{roomCardStatus(room)}</span>
-                <span class="rt-topic-enter" aria-hidden="true">
-                    进入
-                    <svg class="rt-topic-enter-arrow" viewBox="0 0 16 16" width="14" height="14" fill="none">
-                        <path
-                            d="M3 8h9M8.5 4.5 12 8l-3.5 3.5"
-                            stroke="currentColor"
-                            stroke-width="1.5"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        />
-                    </svg>
-                </span>
+        <div
+            class={`rt-topic-card is-${tone} ${selected ? 'selected' : ''}`}
+            role="listitem"
+            onClick={selectionMode ? undefined : onOpen}
+        >
+            <div class="rt-topic-card-select">
+                <input type="checkbox" checked={selected} onChange={onToggle} aria-label="选择此圆桌" />
             </div>
-
-            <h2 class="rt-topic-card-title">{room.title || '未命名议题'}</h2>
-
-            {room.brief?.question ? (
-                <p class="rt-topic-question">{room.brief.question}</p>
-            ) : (
-                <p class="rt-topic-question is-muted">进入后先和主持人把问题、约束与成功标准说清楚。</p>
-            )}
-
-            <div class="rt-topic-stages" aria-hidden="true">
-                <div class="rt-topic-stage-track">
-                    {STAGES.map((s, i) => (
-                        <span
-                            key={s.id}
-                            class={`rt-topic-stage-dot${
-                                stageIdx < 0
-                                    ? i === 0
-                                        ? ' is-error'
-                                        : ''
-                                    : i < stageIdx
-                                      ? ' is-done'
-                                      : i === stageIdx
-                                        ? ' is-active'
-                                        : ''
-                            }`}
-                            title={s.label}
-                        />
-                    ))}
+            <button type="button" class="rt-topic-card-content" onClick={onOpen}>
+                <div class="rt-topic-card-top">
+                    <span class={`rt-topic-badge is-${needsAction ? 'wait' : tone}`}>{roomCardStatus(room)}</span>
+                    <span class="rt-topic-enter" aria-hidden="true">
+                        进入
+                        <svg class="rt-topic-enter-arrow" viewBox="0 0 16 16" width="14" height="14" fill="none">
+                            <path
+                                d="M3 8h9M8.5 4.5 12 8l-3.5 3.5"
+                                stroke="currentColor"
+                                stroke-width="1.5"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            />
+                        </svg>
+                    </span>
                 </div>
-                <div class="rt-topic-stage-labels">
-                    {STAGES.map((s, i) => (
-                        <span
-                            key={s.id}
-                            class={`rt-topic-stage-lab${i === stageIdx ? ' is-active' : ''}${
-                                stageIdx >= 0 && i < stageIdx ? ' is-done' : ''
-                            }`}
-                        >
-                            {s.label}
-                        </span>
-                    ))}
-                </div>
-            </div>
 
-            <div class="rt-topic-card-foot">
-                <span class="rt-topic-time">{formatTime(room.updated_at)}</span>
-                {room.summary_r3 || room.summary_r2 ? <span class="rt-topic-meta">已有阶段结论</span> : null}
-            </div>
-        </button>
+                <h2 class="rt-topic-card-title">{room.title || '未命名议题'}</h2>
+
+                {room.brief?.question ? (
+                    <p class="rt-topic-question">{room.brief.question}</p>
+                ) : (
+                    <p class="rt-topic-question is-muted">进入后先和主持人把问题、约束与成功标准说清楚。</p>
+                )}
+
+                <div class="rt-topic-stages" aria-hidden="true">
+                    <div class="rt-topic-stage-track">
+                        {STAGES.map((s, i) => (
+                            <span
+                                key={s.id}
+                                class={`rt-topic-stage-dot${
+                                    stageIdx < 0
+                                        ? i === 0
+                                            ? ' is-error'
+                                            : ''
+                                        : i < stageIdx
+                                          ? ' is-done'
+                                          : i === stageIdx
+                                            ? ' is-active'
+                                            : ''
+                                }`}
+                                title={s.label}
+                            />
+                        ))}
+                    </div>
+                    <div class="rt-topic-stage-labels">
+                        {STAGES.map((s, i) => (
+                            <span
+                                key={s.id}
+                                class={`rt-topic-stage-lab${i === stageIdx ? ' is-active' : ''}${
+                                    stageIdx >= 0 && i < stageIdx ? ' is-done' : ''
+                                }`}
+                            >
+                                {s.label}
+                            </span>
+                        ))}
+                    </div>
+                </div>
+
+                <div class="rt-topic-card-foot">
+                    <span class="rt-topic-time">{formatTime(room.updated_at)}</span>
+                    {room.summary_r3 || room.summary_r2 ? <span class="rt-topic-meta">已有阶段结论</span> : null}
+                </div>
+            </button>
+        </div>
     );
 }
 

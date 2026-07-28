@@ -30,8 +30,11 @@ import {
     chatsForAssistants,
     terminalsForFolderSessions,
 } from '../../stores/sessionStore';
-import { activeL1PageId, openL1Apps } from '../../stores/appManifestStore';
+import { activeL1PageId, openL1Apps, activeRoundtableRoom, activeRoundtableSeats } from '../../stores/appManifestStore';
 import { getL1NavEntries, L1NavItem } from '../platform/L1Shell';
+import { roleLabel, seatStatusLabel, seatDisplayStatus } from '../roundtable/roleLabels';
+import { requestRoundtableListView } from '../roundtable/navState';
+import type { RoundtableSeat } from '@1agents/core/services/roundtableService';
 import { enterL1App, exitL1App, archiveL1App, layoutMode, projectOverview } from '../../stores/stageStore';
 import { projectItemService } from '@1agents/core/services/taskService';
 import { openSearch } from '../../stores/searchStore';
@@ -105,6 +108,7 @@ function filterTermsByKind(terms: Session[], kind: SessionKindFilter): Session[]
 const SECTION_OPEN_KEY = {
     tasks: '1agents-sidebar-section-tasks',
     projects: '1agents-sidebar-section-projects',
+    apps: '1agents-sidebar-section-apps',
 } as const;
 
 function readSectionOpen(key: keyof typeof SECTION_OPEN_KEY, fallback: boolean): boolean {
@@ -172,12 +176,15 @@ function FolderToggleIcon({ open }: { open: boolean }) {
         <svg
             class="folder-icon"
             viewBox="0 0 24 24"
+            width="16"
+            height="16"
             fill="none"
             stroke="currentColor"
             stroke-width="2"
             stroke-linecap="round"
             stroke-linejoin="round"
             aria-hidden="true"
+            style={{ width: '16px', height: '16px', flexShrink: 0 }}
         >
             {open ? (
                 <path d="M6 14l1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5c0-1.1.9-2 2-2h3.93a2 2 0 0 1 1.66.9l.82 1.2a2 2 0 0 0 1.66.9H18a2 2 0 0 1 2 2v2" />
@@ -391,6 +398,7 @@ export function LeftSidebar({
     /** Section-level fold: 任务 / 项目 region expand (persisted). */
     const [tasksSectionOpen, setTasksSectionOpen] = useState(() => readSectionOpen('tasks', true));
     const [projectsSectionOpen, setProjectsSectionOpen] = useState(() => readSectionOpen('projects', true));
+    const [appsSectionOpen, setAppsSectionOpen] = useState(() => readSectionOpen('apps', true));
     const toggleTasksSection = () => {
         setTasksSectionOpen(prev => {
             const next = !prev;
@@ -405,6 +413,29 @@ export function LeftSidebar({
             return next;
         });
     };
+    const toggleAppsSection = () => {
+        setAppsSectionOpen(prev => {
+            const next = !prev;
+            writeSectionOpen('apps', next);
+            return next;
+        });
+    };
+
+    const [appExpanded, setAppExpanded] = useState<Record<string, boolean>>({});
+    const toggleAppExpanded = (mountId: string) => {
+        setAppExpanded(prev => ({ ...prev, [mountId]: !prev[mountId] }));
+    };
+    const isAppExpanded = (mountId: string) => Boolean(appExpanded[mountId]);
+
+    const onSeatClick = async (seat: RoundtableSeat) => {
+        if (!seat.session_id?.trim() || !activeRoundtableRoom.value) return;
+        const { openSeatSession: open } = await import('../roundtable/openSeatSession');
+        await open(seat, {
+            roomId: activeRoundtableRoom.value.id,
+            roomTitle: activeRoundtableRoom.value.title || '',
+        });
+    };
+
     // Footer utility entries (模型/技能/发现/数据源/系统设置) are collapsed
     // behind a single 「更多」 that pulls up this panel — frees sidebar space.
     const [moreOpen, setMoreOpen] = useState(false);
@@ -1402,9 +1433,10 @@ export function LeftSidebar({
                         )}
                         {/* ── 应用 / L1 apps (#332 + open shortcuts) ─────────────────────────
                             Same stage level as sessions: open apps appear as shortcut cards
-                            (incl. discovery-only like 圆桌). Archive removes the shortcut
-                            and exits if active. Permanent L1 mounts still listed when not
-                            already open. */}
+                            (incl. discovery-only like 圆桌 — now shows seat cards under roundtable
+                            folder when expanded; click referee card opens dialogue page).
+                            Archive removes the shortcut and exits if active.
+                            Permanent L1 mounts still listed when not already open. */}
                         {(() => {
                             const permanent = getL1NavEntries();
                             const opened = openL1Apps.value;
@@ -1413,76 +1445,132 @@ export function LeftSidebar({
                             if (opened.length === 0 && permanentOnly.length === 0) return null;
                             const currentL1Id = activeL1PageId.value;
                             return (
-                                <div class="workspace-section">
+                                <div class={`workspace-section apps-section${appsSectionOpen ? '' : ' is-collapsed'}`}>
                                     <div class="section-header">
-                                        <span>{t('sidebar.openApps', language)}</span>
+                                        <button
+                                            type="button"
+                                            class="section-fold-btn"
+                                            aria-expanded={appsSectionOpen}
+                                            title={t(
+                                                appsSectionOpen ? 'sidebar.section.collapse' : 'sidebar.section.expand',
+                                                language
+                                            )}
+                                            aria-label={t(
+                                                appsSectionOpen ? 'sidebar.section.collapse' : 'sidebar.section.expand',
+                                                language
+                                            )}
+                                            onClick={toggleAppsSection}
+                                        >
+                                            <FolderToggleIcon open={appsSectionOpen} />
+                                        </button>
+                                        <button type="button" class="section-header-label" onClick={toggleAppsSection}>
+                                            {t('sidebar.openApps', language)}
+                                        </button>
                                     </div>
-                                    <div class="l1-apps-nav">
-                                        {opened.map(entry => (
-                                            <div
-                                                key={entry.mountId}
-                                                class={`l1-open-app-row${
-                                                    currentL1Id === entry.mountId ? ' is-active' : ''
-                                                }`}
-                                            >
-                                                <button
-                                                    type="button"
-                                                    class="l1-open-app-main"
-                                                    title={entry.label}
+                                    {appsSectionOpen && (
+                                        <div class="l1-apps-nav">
+                                            {opened.map(entry => {
+                                                const isRoundtable = entry.appId === 'agents-roundtable';
+                                                const isActive = currentL1Id === entry.mountId;
+                                                const expanded = isAppExpanded(entry.mountId);
+                                                return (
+                                                    <div
+                                                        key={entry.mountId}
+                                                        class={`l1-open-app-row${isActive ? ' is-active' : ''} ${expanded ? 'expanded' : ''}`}
+                                                    >
+                                                        <button
+                                                            type="button"
+                                                            class="l1-open-app-main"
+                                                            title={entry.label}
+                                                            onClick={(e: MouseEvent) => {
+                                                                e.stopPropagation();
+                                                                if (isRoundtable) {
+                                                                    requestRoundtableListView();
+                                                                    if (!isActive) {
+                                                                        enterL1App(entry.mountId);
+                                                                        toggleAppExpanded(entry.mountId);
+                                                                    }
+                                                                } else if (isActive) {
+                                                                    exitL1App();
+                                                                } else {
+                                                                    enterL1App(entry.mountId);
+                                                                    toggleAppExpanded(entry.mountId);
+                                                                }
+                                                            }}
+                                                        >
+                                                            <FolderToggleIcon open={expanded} />
+                                                            <span class="l1-nav-item-icon" aria-hidden="true">
+                                                                {entry.icon || '◇'}
+                                                            </span>
+                                                            <span class="l1-nav-item-label">{entry.label}</span>
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            class="l1-open-app-archive"
+                                                            title={t('sidebar.archiveApp', language)}
+                                                            aria-label={t('sidebar.archiveApp', language)}
+                                                            onClick={(e: MouseEvent) => {
+                                                                e.stopPropagation();
+                                                                archiveL1App(entry.mountId);
+                                                            }}
+                                                        >
+                                                            <svg
+                                                                viewBox="0 0 24 24"
+                                                                fill="none"
+                                                                stroke="currentColor"
+                                                                stroke-width="2"
+                                                                stroke-linecap="round"
+                                                                stroke-linejoin="round"
+                                                                width="14"
+                                                                height="14"
+                                                            >
+                                                                <polyline points="3 6 5 6 21 6" />
+                                                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                                            </svg>
+                                                        </button>
+                                                        {isRoundtable && expanded && (
+                                                            <div class="rt-side-seats">
+                                                                {activeRoundtableSeats.value.map(seat => (
+                                                                    <button
+                                                                        key={seat.id}
+                                                                        type="button"
+                                                                        class="rt-side-seat is-clickable bento-card"
+                                                                        onClick={() => onSeatClick(seat)}
+                                                                        title={`打开「${roleLabel(seat.role)}」完整讨论 · ${seatStatusLabel(seatDisplayStatus(seat))}`}
+                                                                    >
+                                                                        <span
+                                                                            class="rt-seat-dot is-idle"
+                                                                            aria-hidden="true"
+                                                                        />
+                                                                        <span class="rt-side-seat-name">
+                                                                            {roleLabel(seat.role)}
+                                                                        </span>
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                            {permanentOnly.map(entry => (
+                                                <L1NavItem
+                                                    key={entry.id}
+                                                    entry={entry}
+                                                    isActive={currentL1Id === entry.id}
                                                     onClick={() => {
-                                                        if (currentL1Id === entry.mountId) {
+                                                        if (entry.appId === 'agents-roundtable') {
+                                                            requestRoundtableListView();
+                                                        }
+                                                        if (currentL1Id === entry.id) {
                                                             exitL1App();
                                                         } else {
-                                                            enterL1App(entry.mountId);
+                                                            enterL1App(entry.id);
                                                         }
                                                     }}
-                                                >
-                                                    <span class="l1-nav-item-icon" aria-hidden="true">
-                                                        {entry.icon || '◇'}
-                                                    </span>
-                                                    <span class="l1-nav-item-label">{entry.label}</span>
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    class="l1-open-app-archive"
-                                                    title={t('sidebar.archiveApp', language)}
-                                                    aria-label={t('sidebar.archiveApp', language)}
-                                                    onClick={(e: MouseEvent) => {
-                                                        e.stopPropagation();
-                                                        archiveL1App(entry.mountId);
-                                                    }}
-                                                >
-                                                    <svg
-                                                        viewBox="0 0 24 24"
-                                                        fill="none"
-                                                        stroke="currentColor"
-                                                        stroke-width="2"
-                                                        stroke-linecap="round"
-                                                        stroke-linejoin="round"
-                                                        width="14"
-                                                        height="14"
-                                                    >
-                                                        <polyline points="3 6 5 6 21 6" />
-                                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                                    </svg>
-                                                </button>
-                                            </div>
-                                        ))}
-                                        {permanentOnly.map(entry => (
-                                            <L1NavItem
-                                                key={entry.id}
-                                                entry={entry}
-                                                isActive={currentL1Id === entry.id}
-                                                onClick={() => {
-                                                    if (currentL1Id === entry.id) {
-                                                        exitL1App();
-                                                    } else {
-                                                        enterL1App(entry.id);
-                                                    }
-                                                }}
-                                            />
-                                        ))}
-                                    </div>
+                                                />
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             );
                         })()}

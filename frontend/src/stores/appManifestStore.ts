@@ -15,6 +15,7 @@
 
 import { signal, computed } from '@preact/signals';
 import { getApps, type AppManifest, type MountPoint } from '../services/appManifestService';
+import type { RoundtableRoom, RoundtableSeat } from '@1agents/core/services/roundtableService';
 
 // ── Manifest state ────────────────────────────────────────────────────────────
 
@@ -202,4 +203,22 @@ export const archiveOpenL1App = (mountId: string): void => {
         activeL1PageId.value = null;
         clearCopilotAppContext();
     }
+};
+
+// ── Roundtable active room / seats for sidebar cards (#new) ───────────────────
+
+export const activeRoundtableRoom = signal<RoundtableRoom | null>(null);
+export const activeRoundtableSeats = signal<RoundtableSeat[]>([]);
+
+export const setActiveRoundtableRoom = (room: RoundtableRoom | null) => {
+    activeRoundtableRoom.value = room;
+};
+
+export const setActiveRoundtableSeats = (seats: RoundtableSeat[]) => {
+    activeRoundtableSeats.value = seats;
+};
+
+export const clearActiveRoundtable = () => {
+    activeRoundtableRoom.value = null;
+    activeRoundtableSeats.value = [];
 };

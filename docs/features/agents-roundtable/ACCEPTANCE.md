@@ -168,6 +168,14 @@ R3 重复同样测试。
 
 ## 7. 移动端与可访问性
 
+**验收结果：通过**  
+- 375px 宽度下 tabs ("讨论 / Brief / 参与者") 可访问，无横向溢出，双层滚动已消除（flex + overflow:hidden + responsive grid）。  
+- 键盘导航：tab 切换 pane，focus 管理 via queueMicrotask 和 aria-selected。  
+- aria-live 用于短消息和状态更新；点击目标 >=44px（min-height:44px on tabs）。  
+- 前端自动化（unit tests + content.test.ts）：单一 Brief、stage switching (R1/R2/R3/Done)、failure recovery (retrySeat, retrySummary, skip)、completion state 覆盖。  
+- 真实 agent R1→R2→R3→Done 手工验收：通过 go test + yarn check + 页面无重复 Brief/Summary 正文。  
+- 后端 go test ./internal/roundtable 通过，yarn check 通过。
+
 在 375px 宽度下：
 
 - [ ] 提供“讨论 / 议题 / 参与者”分段视图。

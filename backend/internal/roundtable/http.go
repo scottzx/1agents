@@ -172,6 +172,12 @@ func (h *Handler) HandleRoomsItem(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+
+	// DELETE /api/roundtable/rooms/{id} — permanent delete of room + content
+	if r.Method == http.MethodDelete {
+		h.deleteRoom(w, r, id)
+		return
+	}
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -426,6 +432,23 @@ func (h *Handler) confirmBriefVersion(w http.ResponseWriter, r *http.Request, id
 		return
 	}
 	writeJSON(w, room)
+}
+
+// deleteRoom handles DELETE /api/roundtable/rooms/{id} — permanent delete.
+func (h *Handler) deleteRoom(w http.ResponseWriter, r *http.Request, id string) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := h.svc.DeleteRoom(id); err != nil {
+		if errors.Is(err, meta.ErrNotFound) {
+			http.Error(w, "room not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func writeBriefMutationErr(w http.ResponseWriter, err error) {

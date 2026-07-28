@@ -647,7 +647,7 @@ function ToolGroupBubble({
             class={`chat-bubble chat-bubble-tool-group chat-content-outer ${expanded ? 'is-expanded' : 'is-collapsed'} ${pending ? 'is-pending' : ''}`}
         >
             <div
-                class="chat-tool-group-header"
+                class={`chat-tool-group-header ${expanded || active ? 'is-current' : ''}`}
                 role="button"
                 tabIndex={0}
                 onClick={toggle}
@@ -823,6 +823,23 @@ function summarizeArgs(args: Record<string, unknown>): string | undefined {
  */
 function getToolSummary(toolName: string, args: Record<string, unknown>): string {
     const lower = toolName.toLowerCase();
+    const kind = deriveToolKind(toolName);
+
+    if (Object.keys(args).length === 0) {
+        switch (kind) {
+            case 'read':
+                return '读取工具';
+            case 'execute':
+                return '执行工具';
+            case 'edit':
+                return '编写工具';
+            case 'search':
+                return '搜索工具';
+            default:
+                return '工具';
+        }
+    }
+
     if (lower === 'readfile' || lower.includes('read')) {
         const target = args.target_file || args.path || args.file || '';
         if (target) {
@@ -947,7 +964,9 @@ function GroupedToolCallItem({ call, status }: { call: GroupedToolCall; status: 
             : null;
 
     return (
-        <div class={`chat-tool-row ${expanded ? 'is-expanded' : 'is-collapsed'} status-${status}`}>
+        <div
+            class={`chat-tool-row ${expanded ? 'is-expanded' : 'is-collapsed'} status-${status} ${expanded ? 'is-current' : ''}`}
+        >
             <div
                 class="chat-tool-row-header"
                 role="button"
