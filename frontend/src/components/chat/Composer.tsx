@@ -185,7 +185,7 @@ export function Composer({
             cycleMode();
             return;
         }
-        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.isComposing) {
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
             e.preventDefault();
             submit();
         }
