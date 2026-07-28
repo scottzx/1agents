@@ -3,6 +3,7 @@ import { FsEntry, getFileTag, formatBytes } from '../types';
 import { t, type Lang } from '../i18n';
 import { renderMermaidBlocks } from '../../utils/mermaid';
 import { detectCodeLang, highlightToLines } from '../../utils/highlight';
+import { renderMarkdown } from '../../utils/markdown';
 import { theme } from '../../stores/uiStore';
 
 interface FileDetailViewProps {
@@ -168,11 +169,16 @@ export class FileDetailView extends Component<FileDetailViewProps> {
         // Spin up the markdown worker. `new URL(..., import.meta.url)` is the
         // webpack 5-native pattern; ts-loader + webpack will emit a separate
         // worker chunk and bundle `marked` into it.
-        this._mdWorker = new Worker(new URL('../../workers/markdown.worker.ts', import.meta.url), {
-            type: 'module',
-        });
-        this._mdWorker.addEventListener('message', this.handleMdWorkerMessage);
-        this._mdWorker.addEventListener('error', this.handleMdWorkerError);
+        try {
+            this._mdWorker = new Worker(new URL('../../workers/markdown.worker.ts', import.meta.url), {
+                type: 'module',
+            });
+            this._mdWorker.addEventListener('message', this.handleMdWorkerMessage);
+            this._mdWorker.addEventListener('error', this.handleMdWorkerError);
+        } catch (err) {
+            console.warn('[FileDetailView] Markdown worker disabled, falling back to sync render:', err);
+            this._mdWorker = null;
+        }
 
         // Kick off an initial parse if the mounted file is markdown.
         this.dispatchMarkdownParse();
@@ -258,7 +264,8 @@ export class FileDetailView extends Component<FileDetailViewProps> {
     private dispatchMarkdownParse() {
         const { selectedFsEntry, fileContent } = this.props;
         if (!selectedFsEntry) return;
-        if (!selectedFsEntry.name.toLowerCase().endsWith('.md')) return;
+        const lowerName = selectedFsEntry.name.toLowerCase();
+        if (!lowerName.endsWith('.md') && !lowerName.endsWith('.markdown') && !lowerName.endsWith('.mdx')) return;
         if (!this._mdWorker) return;
         if (this._mdLastRenderedPath === selectedFsEntry.path && this._mdLastRenderedContent === fileContent) {
             return;
@@ -392,9 +399,10 @@ export class FileDetailView extends Component<FileDetailViewProps> {
         const isFav = favoriteFiles.includes(selectedFsEntry.path);
         const tag = getFileTag(selectedFsEntry.name);
         const isImg = tag === 'img';
-        const isMd = selectedFsEntry.name.endsWith('.md');
-        const isHtml = selectedFsEntry.name.endsWith('.html') || selectedFsEntry.name.endsWith('.htm');
-        const isPdf = selectedFsEntry.name.toLowerCase().endsWith('.pdf');
+        const lowerName = selectedFsEntry.name.toLowerCase();
+        const isMd = lowerName.endsWith('.md') || lowerName.endsWith('.markdown') || lowerName.endsWith('.mdx');
+        const isHtml = lowerName.endsWith('.html') || lowerName.endsWith('.htm');
+        const isPdf = lowerName.endsWith('.pdf');
         const isVideo = tag === 'video';
         const isAudio = tag === 'audio';
 
@@ -734,7 +742,9 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                             ref={el => {
                                 this.mdRenderEl = el;
                             }}
-                            dangerouslySetInnerHTML={{ __html: this._mdLatestHtml || this.escapeHtml(fileContent) }}
+                            dangerouslySetInnerHTML={{
+                                __html: this._mdLatestHtml || (fileContent ? renderMarkdown(fileContent) : ''),
+                            }}
                             onClick={this.handleMarkdownClick}
                         />
                     ) : (
