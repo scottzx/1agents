@@ -5,15 +5,22 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { stageIndexFromState, isTerminalState, pollIntervalMs, speakingRoundFromState, STAGES } from './stage';
+import {
+    stageIdFromState,
+    stageIndexFromState,
+    isTerminalState,
+    pollIntervalMs,
+    speakingRoundFromState,
+    STAGES,
+} from './stage';
 import { roleLabel, seatUiStatus, resolveTurnAuthor, ROLE_LABELS } from './roleLabels';
 import { FIXED_ROSTER } from './LaunchWizard';
 import type { RoundtableSeat, RoundtableTurn } from '@1agents/core/services/roundtableService';
 
-test('stage strip maps state machine to R1–R3–终稿', () => {
+test('stage progress maps the state machine to user-facing workflow steps', () => {
     assert.deepEqual(
         STAGES.map(s => s.label),
-        ['R1 命题', 'R2 首轮', 'R3 次轮', '终稿']
+        ['提案', '独立分析', '交叉回应', '最终结论']
     );
     assert.equal(stageIndexFromState('drafting_brief'), 0);
     assert.equal(stageIndexFromState('waiting_r2'), 1);
@@ -22,6 +29,10 @@ test('stage strip maps state machine to R1–R3–终稿', () => {
     assert.equal(stageIndexFromState('summarizing_r3'), 2);
     assert.equal(stageIndexFromState('done'), 3);
     assert.equal(stageIndexFromState('failed'), -1);
+    assert.equal(stageIdFromState('drafting_brief'), 'r1');
+    assert.equal(stageIdFromState('summarizing_r2'), 'r2');
+    assert.equal(stageIdFromState('waiting_r3'), 'r3');
+    assert.equal(stageIdFromState('done'), 'final');
 });
 
 test('terminal states stop polling', () => {

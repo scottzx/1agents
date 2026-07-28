@@ -3,6 +3,7 @@ import type { RoundtableRoom, RoundtableSeat, RoundtableTurn } from '@1agents/co
 import { TurnCard } from './TurnCard';
 import { timelineTurnsWithoutR1Chat } from './r1Timeline';
 import { StageBar } from './StageBar';
+import type { StageId } from './stage';
 
 interface RoundtableRoomContentProps {
     room: RoundtableRoom;
@@ -16,12 +17,13 @@ interface RoundtableRoomContentProps {
     primaryContent?: ComponentChildren;
     mobilePane?: RoundtableMobilePane;
     onMobilePaneChange?: (pane: RoundtableMobilePane) => void;
-    onStepClick?: (stepId: string) => void;
+    selectedStage: StageId;
+    onStageChange: (stageId: StageId) => void;
 }
 
-export type RoundtableMobilePane = 'discussion' | 'brief' | 'participants';
+export type RoundtableMobilePane = 'discussion' | 'participants';
 
-const MOBILE_PANES: RoundtableMobilePane[] = ['discussion', 'brief', 'participants'];
+const MOBILE_PANES: RoundtableMobilePane[] = ['discussion', 'participants'];
 
 export function mobilePaneForKey(current: RoundtableMobilePane, key: string): RoundtableMobilePane | null {
     const index = MOBILE_PANES.indexOf(current);
@@ -45,24 +47,17 @@ export function RoundtableRoomContent({
     primaryContent,
     mobilePane = 'discussion',
     onMobilePaneChange,
+    selectedStage,
+    onStageChange,
 }: RoundtableRoomContentProps) {
     const timelineTurns = timelineTurnsWithoutR1Chat(turns);
     const selectMobilePane = (pane: RoundtableMobilePane) => {
         onMobilePaneChange?.(pane);
     };
 
-    const handleStepClick = (stepId: string) => {
-        if (stepId === 'r1') {
-            onMobilePaneChange?.('brief');
-            // Focus proposal area if needed
-            queueMicrotask(() => {
-                const proposalStep = document.querySelector('.rt-r1-workbench');
-                if (proposalStep) proposalStep.scrollIntoView({ behavior: 'smooth' });
-            });
-        } else {
-            // For other stages, switch to discussion view
-            onMobilePaneChange?.('discussion');
-        }
+    const handleStepClick = (stepId: StageId) => {
+        onStageChange(stepId);
+        onMobilePaneChange?.('discussion');
     };
     const onMobileTabKeyDown = (event: KeyboardEvent, pane: RoundtableMobilePane) => {
         const next = mobilePaneForKey(pane, event.key);
@@ -76,7 +71,7 @@ export function RoundtableRoomContent({
         <div class="rt-room" data-room-id={room.id} data-mobile-pane={mobilePane}>
             <div class="rt-room-main">
                 {header}
-                <StageBar state={room.state} onStepClick={handleStepClick} />
+                <StageBar state={room.state} selectedStage={selectedStage} onStepClick={handleStepClick} />
                 <div class="rt-mobile-tabs" role="tablist" aria-label="圆桌视图">
                     {MOBILE_PANES.map(pane => (
                         <button
@@ -93,7 +88,7 @@ export function RoundtableRoomContent({
                             onClick={() => selectMobilePane(pane)}
                             onKeyDown={event => onMobileTabKeyDown(event, pane)}
                         >
-                            {pane === 'discussion' ? '讨论' : pane === 'brief' ? 'Brief' : '参与者'}
+                            {pane === 'discussion' ? '阶段内容' : '参与者'}
                         </button>
                     ))}
                 </div>
@@ -134,7 +129,7 @@ export function RoundtableRoomContent({
                 id="rt-mobile-panel-inspector"
                 class="rt-mobile-inspector-panel"
                 role="tabpanel"
-                aria-labelledby={mobilePane === 'participants' ? 'rt-mobile-tab-participants' : 'rt-mobile-tab-brief'}
+                aria-labelledby="rt-mobile-tab-participants"
             >
                 {sidebar}
             </div>

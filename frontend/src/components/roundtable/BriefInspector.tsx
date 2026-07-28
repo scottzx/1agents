@@ -239,9 +239,9 @@ export function BriefInspector({
     const stateText = useMemo(() => {
         switch (mode) {
             case 'loading':
-                return '正在加载服务端 Brief…';
+                return '正在加载提案…';
             case 'empty':
-                return '尚无 Brief 版本。填写四个必填字段并保存，将创建 v1。';
+                return '尚无提案版本。填写四个必填字段并保存，将创建 v1。';
             case 'saving':
                 if (savingAction === 'confirm') return '正在确认当前版本…';
                 if (savingAction === 'reload') return '正在加载最新版本…';
@@ -253,7 +253,7 @@ export function BriefInspector({
             case 'error':
                 return error || 'Brief 操作失败。';
             case 'confirmed':
-                return `Brief v${version?.version || expectedVersion} 已确认，已锁定为后续讨论快照。`;
+                return `提案 v${version?.version || expectedVersion} 已确认，已锁定为后续讨论快照。`;
             case 'ready':
                 return dirty ? '有未保存修改。保存会创建一个新版本。' : '当前内容已与服务端同步。';
         }
@@ -268,7 +268,7 @@ export function BriefInspector({
                 tabIndex={-1}
             >
                 <h3 id={`rt-brief-title-${room.id}`} class="rt-side-title">
-                    Brief Inspector
+                    提案内容
                 </h3>
                 <div class="rt-brief-loading" role="status">
                     {stateText}
@@ -286,7 +286,7 @@ export function BriefInspector({
         >
             <div class="rt-brief-inspector-head">
                 <h3 id={`rt-brief-title-${room.id}`} class="rt-side-title">
-                    Brief Inspector
+                    提案内容
                 </h3>
                 <span class={`rt-brief-status is-${status}`}>
                     {version ? `v${version.version} · ${statusLabel(status)}` : '未创建'}
@@ -392,7 +392,7 @@ export function BriefInspector({
                         title={dirty ? '请先保存当前修改' : undefined}
                         onClick={() => void confirm()}
                     >
-                        {savingAction === 'confirm' ? '确认中…' : '确认并进入 R2'}
+                        {savingAction === 'confirm' ? '确认中…' : '确认并进入独立分析'}
                     </button>
                 </div>
             )}

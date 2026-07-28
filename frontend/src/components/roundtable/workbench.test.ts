@@ -256,21 +256,22 @@ test('Done is final-first, renders each Summary section once, and keeps history 
     assert.equal(html.includes('<details class="rt-history" open'), false);
 });
 
-test('Inspector uses topic and participant tabs without copying Summary content', () => {
+test('Inspector is a permanent clickable role panel without proposal tabs or Summary content', () => {
     const finalRoom = room({ summary_r3: '不要复制这段 Summary 正文' });
     const html = renderToString(
         h(RoundtableSidebarView, {
-            room: finalRoom,
             seats,
-            turns: [summary(3, '不要复制这段 Summary 正文')],
+            onSeatClick: () => undefined,
         })
     );
 
-    assert.match(html, /role="tab"[^>]*>议题</);
-    assert.match(html, /role="tab"[^>]*>参与者</);
     assert.match(html, /六席参与者/);
-    assert.match(html, /终稿已生成/);
+    assert.equal(count(html, 'rt-side-seat-avatar'), 6);
+    assert.equal(count(html, 'is-clickable'), 6);
+    assert.equal(html.includes('role="tab"'), false);
+    assert.equal(html.includes('议题'), false);
     assert.equal(html.includes('不要复制这段 Summary 正文'), false);
+    assert.equal(finalRoom.summary_r3, '不要复制这段 Summary 正文');
 });
 
 test('creation wizard is problem-first and exposes no session or harness terminology', () => {

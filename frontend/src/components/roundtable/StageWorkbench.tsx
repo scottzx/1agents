@@ -2,6 +2,7 @@ import { Fragment, h } from 'preact';
 import type { RoundtableRoom, RoundtableSeat, RoundtableTurn } from '@1agents/core/services/roundtableService';
 import { renderMarkdown } from '../../utils/markdown';
 import { roleLabel } from './roleLabels';
+import type { StageId } from './stage';
 import {
     analysisStatus,
     analysisStatusLabel,
@@ -19,12 +20,15 @@ interface StageWorkbenchProps {
     room: RoundtableRoom;
     seats: RoundtableSeat[];
     turns: RoundtableTurn[];
+    stage?: Exclude<StageId, 'r1'>;
     onOpenSeat?: (seat: RoundtableSeat) => void | Promise<void>;
 }
 
 export function StageWorkbench(props: StageWorkbenchProps) {
-    if (props.room.phase === 'done') return <DoneWorkbench {...props} />;
-    if (props.room.phase === 'r3') return <RoundWorkbench {...props} round={3} />;
+    const displayStage =
+        props.stage || (props.room.phase === 'done' ? 'final' : props.room.phase === 'r3' ? 'r3' : 'r2');
+    if (displayStage === 'final') return <DoneWorkbench {...props} />;
+    if (displayStage === 'r3') return <RoundWorkbench {...props} round={3} />;
     return <RoundWorkbench {...props} round={2} />;
 }
 
@@ -38,7 +42,7 @@ function RoundWorkbench({ room, seats, turns, round, onOpenSeat }: StageWorkbenc
         <section class={`rt-stage-workbench is-r${round}`} aria-labelledby={`rt-r${round}-title`}>
             <header class="rt-workbench-intro">
                 <div>
-                    <p class="rt-workbench-kicker">{round === 2 ? 'R2 · 独立分析' : 'R3 · 交叉回应'}</p>
+                    <p class="rt-workbench-kicker">{round === 2 ? '第 2 步 · 独立分析' : '第 3 步 · 交叉回应'}</p>
                     <h2 id={`rt-r${round}-title`} class="rt-workbench-title">
                         {round === 2 ? '比较五席的独立判断' : '查看观点如何被保留、修正或反驳'}
                     </h2>
@@ -191,7 +195,7 @@ function DoneWorkbench(props: StageWorkbenchProps) {
         <section class="rt-stage-workbench is-done" aria-labelledby="rt-done-title">
             <header class="rt-workbench-intro">
                 <div>
-                    <p class="rt-workbench-kicker">Done · 已收敛</p>
+                    <p class="rt-workbench-kicker">第 4 步 · 最终结论</p>
                     <h2 id="rt-done-title" class="rt-workbench-title">
                         最终结论与执行重点
                     </h2>

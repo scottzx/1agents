@@ -14,7 +14,7 @@ import { RoundtableSidebar } from './RoundtableSidebar';
 import { StageWorkbench } from './StageWorkbench';
 import { LaunchWizard } from './LaunchWizard';
 import { RoomList } from './RoomList';
-import { isTerminalState, pollIntervalMs } from './stage';
+import { isTerminalState, pollIntervalMs, stageIdFromState, type StageId } from './stage';
 import { primaryActionForRoom, type RoundtablePrimaryActionId } from './primaryAction';
 import {
     persistListView,
@@ -61,6 +61,7 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     const [mobilePane, setMobilePane] = useState<RoundtableMobilePane>('discussion');
+    const [selectedStage, setSelectedStage] = useState<StageId | null>(null);
     const [listRefreshKey, setListRefreshKey] = useState(0);
     const pollRef = useRef<number | null>(null);
     const briefInspectorRef = useRef<HTMLElement>(null);
@@ -75,6 +76,7 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
         setSeats([]);
         setError(null);
         setMobilePane('discussion');
+        setSelectedStage(null);
         persistListView();
         setListRefreshKey(k => k + 1);
         appStore.clearActiveRoundtable();
@@ -86,6 +88,7 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
         setError(null);
         setLoading(true);
         setMobilePane('discussion');
+        setSelectedStage(null);
         setRoomId(id);
         setShell('room');
         persistRoomView(id);
@@ -97,6 +100,7 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
         setRoom(null);
         setError(null);
         setMobilePane('discussion');
+        setSelectedStage(null);
         // Creating is transient; remember list so cancel/back returns to cards.
         persistListView();
         appStore.clearActiveRoundtable();
@@ -189,6 +193,12 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
 
     const anySpeaking = seats.some(s => s.status === 'speaking');
     const drafting = room?.state === 'drafting_brief';
+    const actualStage = stageIdFromState(room?.state);
+    const displayStage = selectedStage || actualStage;
+
+    useEffect(() => {
+        setSelectedStage(null);
+    }, [room?.id, actualStage]);
 
     useEffect(() => {
         if (pollRef.current) {
@@ -231,7 +241,8 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
     };
 
     const focusBriefInspector = useCallback(() => {
-        setMobilePane('brief');
+        setSelectedStage('r1');
+        setMobilePane('discussion');
         queueMicrotask(() => {
             const inspector = briefInspectorRef.current;
             if (!inspector) return;
@@ -313,6 +324,10 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
 
     const selectMobilePane = (pane: RoundtableMobilePane) => {
         setMobilePane(pane);
+    };
+
+    const selectStage = (stageId: StageId) => {
+        setSelectedStage(stageId === actualStage ? null : stageId);
     };
 
     const retrySeat = (role: RoundtableSeat['role']) => {
@@ -420,6 +435,8 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
             header={header}
             mobilePane={mobilePane}
             onMobilePaneChange={selectMobilePane}
+            selectedStage={displayStage}
+            onStageChange={selectStage}
             notice={
                 <div class="rt-room-notices">
                     {error && (
@@ -438,16 +455,23 @@ export function RoundtableRoomView({ roomId: roomIdProp, defaultTitle }: Roundta
                 </div>
             }
             primaryContent={
-                drafting ? (
+                displayStage === 'r1' ? (
                     <R1Workbench
                         room={room}
                         loading={loading}
+                        readOnly={!drafting}
                         sectionRef={briefInspectorRef}
                         onRoomUpdate={applyRoom}
                         onReload={() => void refresh(roomId, { quiet: true })}
                     />
                 ) : (
-                    <StageWorkbench room={room} seats={seats} turns={turns} onOpenSeat={openSeatSession} />
+                    <StageWorkbench
+                        room={room}
+                        seats={seats}
+                        turns={turns}
+                        stage={displayStage}
+                        onOpenSeat={openSeatSession}
+                    />
                 )
             }
             sidebar={<RoundtableSidebar room={room} />}

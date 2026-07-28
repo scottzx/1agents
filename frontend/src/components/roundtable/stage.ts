@@ -1,6 +1,6 @@
 import type { RoomState } from '@1agents/core/services/roundtableService';
 
-/** Stage strip: R1 命题 · R2 首轮 · R3 次轮 · 终稿 */
+/** User-facing roundtable stages. */
 export type StageId = 'r1' | 'r2' | 'r3' | 'final';
 
 export interface StageDef {
@@ -9,10 +9,10 @@ export interface StageDef {
 }
 
 export const STAGES: StageDef[] = [
-    { id: 'r1', label: 'R1 命题' },
-    { id: 'r2', label: 'R2 首轮' },
-    { id: 'r3', label: 'R3 次轮' },
-    { id: 'final', label: '终稿' },
+    { id: 'r1', label: '提案' },
+    { id: 'r2', label: '独立分析' },
+    { id: 'r3', label: '交叉回应' },
+    { id: 'final', label: '最终结论' },
 ];
 
 /** Map room state machine → active stage index (0–3). */
@@ -33,6 +33,11 @@ export function stageIndexFromState(state: RoomState | string | undefined): numb
         default:
             return 0;
     }
+}
+
+export function stageIdFromState(state: RoomState | string | undefined): StageId {
+    const index = stageIndexFromState(state);
+    return index >= 0 ? STAGES[index].id : 'r1';
 }
 
 export function isTerminalState(state: RoomState | string | undefined): boolean {

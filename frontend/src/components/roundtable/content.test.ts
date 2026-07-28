@@ -8,8 +8,10 @@ import renderToString from 'preact-render-to-string';
 
 import type { RoundtableRoom, RoundtableTurn } from '@1agents/core/services/roundtableService';
 import { BriefInspector, isBriefContentComplete, resolveBriefInspectorMode } from './BriefInspector';
+import { R1Workbench } from './R1Workbench';
 import { mobilePaneForKey, RoundtableRoomContent } from './RoundtableRoomContent';
 import { RoundtableSidebarView } from './RoundtableSidebarView';
+import { StageBar } from './StageBar';
 import { TurnCard } from './TurnCard';
 import { briefEventFromTurn, r1BriefEvents, timelineTurnsWithoutR1Chat } from './r1Timeline';
 
@@ -59,30 +61,29 @@ const room: RoundtableRoom = {
     updated_at: '2026-07-27T00:01:00Z',
 };
 
-test('a loaded room renders one complete Brief and one copy of the Summary body', () => {
+test('the proposal stage owns the only full proposal body and the role panel does not duplicate it', () => {
     const html = renderToString(
         h(RoundtableRoomContent, {
             room,
             seats: [],
             turns: [legacyBriefTurn, summaryTurn],
             header: h('header', { class: 'rt-room-header' }, h('h1', null, room.title)),
-            sidebar: h(RoundtableSidebarView, {
-                room,
-                seats: [],
-                turns: [legacyBriefTurn, summaryTurn],
-            }),
+            primaryContent: h(R1Workbench, { room, readOnly: true }),
+            sidebar: h(RoundtableSidebarView, { seats: [] }),
+            selectedStage: 'r1',
+            onStageChange: () => undefined,
         })
     );
 
     assert.equal(count(html, 'class="rt-brief"'), 1);
     assert.equal(html.includes('rt-brief-readonly'), false);
     for (const value of Object.values(brief)) {
-        assert.equal(count(html, value), 1, `${value} should only render in the Inspector`);
+        assert.equal(count(html, value), 1, `${value} should only render in the proposal stage`);
     }
 
-    assert.equal(count(html, summaryTurn.content_text), 1);
-    assert.match(html, /终稿已生成/);
-    assert.match(html, /href="#rt-summary-3-title"/);
+    assert.equal(count(html, summaryTurn.content_text), 0);
+    assert.match(html, /六席参与者/);
+    assert.equal(html.includes('rt-inspector-tabs'), false);
 });
 
 test('legacy system and dedicated brief_confirmed turns render as compact events', () => {
@@ -155,6 +156,8 @@ test('R1 workbench owns chat messages and ordinary timeline never duplicates the
                 h('p', null, r1Turns[1].content_text)
             ),
             sidebar: h('aside', null),
+            selectedStage: 'r1',
+            onStageChange: () => undefined,
         })
     );
 
@@ -258,35 +261,29 @@ test('Brief Inspector binds current version and renders confirmed state as the o
     assert.equal(isBriefContentComplete({ ...brief, constraints: '—' }), false);
 });
 
-test('mobile room exposes discussion, Brief, and participant tabs without duplicating Inspector content', () => {
+test('mobile room keeps proposal in stage content and exposes only stage content and participant tabs', () => {
     const selected: string[] = [];
+    const selectedStages: string[] = [];
     const props = {
         room,
         seats: [],
         turns: [summaryTurn],
         header: h('header', null, room.title),
         primaryContent: h('section', null, '讨论主区'),
-        sidebar: h(RoundtableSidebarView, {
-            room,
-            seats: [],
-            turns: [summaryTurn],
-            activeTab: 'topic' as const,
-        }),
-        mobilePane: 'brief' as const,
+        sidebar: h(RoundtableSidebarView, { seats: [] }),
+        mobilePane: 'participants' as const,
         onMobilePaneChange: (pane: string) => selected.push(pane),
+        selectedStage: 'final' as const,
+        onStageChange: (stageId: string) => selectedStages.push(stageId),
     };
     const html = renderToString(h(RoundtableRoomContent, props));
 
-    assert.match(html, /data-mobile-pane="brief"/);
-    assert.match(html, /role="tab"[^>]*aria-selected="true"[^>]*>Brief</);
-    assert.equal(count(html, '>讨论<'), 1);
-    assert.equal(count(html, '>Brief<'), 1);
-    assert.equal(
-        count(html, '>参与者<'),
-        2,
-        'mobile tab and desktop Inspector tab share one canonical participant panel'
-    );
-    assert.equal(count(html, 'class="rt-brief"'), 1);
+    assert.match(html, /data-mobile-pane="participants"/);
+    assert.match(html, /role="tab"[^>]*aria-selected="true"[^>]*>参与者</);
+    assert.equal(count(html, '>阶段内容<'), 1);
+    assert.equal(count(html, '>参与者<'), 1);
+    assert.equal(html.includes('>Brief<'), false);
+    assert.equal(html.includes('rt-inspector-tabs'), false);
 
     const tree = RoundtableRoomContent(props);
     const participantTab = buttonNodes(tree).find(node => nodeText(node.props?.children) === '参与者');
@@ -294,8 +291,14 @@ test('mobile room exposes discussion, Brief, and participant tabs without duplic
     (participantTab?.props?.onClick as () => void)();
     assert.deepEqual(selected, ['participants']);
 
-    assert.equal(mobilePaneForKey('discussion', 'ArrowRight'), 'brief');
-    assert.equal(mobilePaneForKey('brief', 'ArrowRight'), 'participants');
+    const stageBar = findNodeByType(tree, StageBar);
+    assert.equal(typeof stageBar?.props?.onStepClick, 'function');
+    (stageBar?.props?.onStepClick as (stageId: string) => void)('r1');
+    assert.deepEqual(selectedStages, ['r1']);
+    assert.deepEqual(selected, ['participants', 'discussion']);
+
+    assert.equal(mobilePaneForKey('discussion', 'ArrowRight'), 'participants');
+    assert.equal(mobilePaneForKey('participants', 'ArrowRight'), 'discussion');
     assert.equal(mobilePaneForKey('discussion', 'ArrowLeft'), 'participants');
     assert.equal(mobilePaneForKey('participants', 'Home'), 'discussion');
     assert.equal(mobilePaneForKey('discussion', 'End'), 'participants');
@@ -312,6 +315,20 @@ function buttonNodes(value: unknown): TestVNode[] {
     const node = value as TestVNode;
     const nested = buttonNodes(node.props?.children);
     return node.type === 'button' ? [node, ...nested] : nested;
+}
+
+function findNodeByType(value: unknown, type: unknown): TestVNode | undefined {
+    if (Array.isArray(value)) {
+        for (const child of value) {
+            const match = findNodeByType(child, type);
+            if (match) return match;
+        }
+        return undefined;
+    }
+    if (!value || typeof value !== 'object') return undefined;
+    const node = value as TestVNode;
+    if (node.type === type) return node;
+    return findNodeByType(node.props?.children, type);
 }
 
 function nodeText(value: unknown): string {

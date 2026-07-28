@@ -25,6 +25,7 @@ export function RoundtableSidebarView({
                 <p class="rt-side-hint">查看状态；需要时打开对应席位的完整讨论。</p>
                 <ul class="rt-side-seats">
                     {ordered.map(seat => {
+                        const label = roleLabel(seat.role);
                         const sid = seat.session_id?.trim() || '';
                         const ui = seatDisplayStatus(seat, sid ? liveMap[sid] : undefined);
                         const canOpen = Boolean(sid && onSeatClick);
@@ -39,13 +40,16 @@ export function RoundtableSidebarView({
                                     disabled={!canOpen || Boolean(openingId)}
                                     title={
                                         canOpen
-                                            ? `打开「${roleLabel(seat.role)}」完整讨论 · ${seatStatusLabel(ui)}`
+                                            ? `打开「${label}」完整讨论 · ${seatStatusLabel(ui)}`
                                             : '该席讨论尚未就绪'
                                     }
                                     onClick={() => void onSeatClick?.(seat)}
                                 >
-                                    <span class={`rt-seat-dot is-${ui}`} aria-hidden="true" />
-                                    <span class="rt-side-seat-name">{roleLabel(seat.role)}</span>
+                                    <span class="rt-side-seat-avatar" aria-hidden="true">
+                                        <span>{label.slice(0, 1)}</span>
+                                        <span class={`rt-seat-dot is-${ui}`} />
+                                    </span>
+                                    <span class="rt-side-seat-name">{label}</span>
                                     <span class="rt-side-seat-status">
                                         {isOpening ? '打开中…' : seatStatusLabel(ui)}
                                     </span>
