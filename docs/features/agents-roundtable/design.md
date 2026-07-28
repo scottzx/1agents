@@ -1,11 +1,13 @@
 # Agents 圆桌脑暴 MVP
 
-**Status:** MVP 已实现；交互改版 vNext 待实施
+**Status:** MVP 与 vNext 主流程已实现；当前行为以 runtime-reference.md 为准
 **Author:** scott + Grok  
 **Date:** 2026-07-23  
 **Scope:** 真多 session 编排（路线 B）、tmp 席位、1acp resume、发现中心/应用入口、固定 3 轮剧本  
 **成功标准:** 三轮可可靠运行；Brief 单一真源；用户无需离开圆桌即可完成 R1；完成态优先展示最终结论
 **执行人:** grok-build  
+**当前实现参考:** [runtime-reference.md](./runtime-reference.md)
+**门禁设计解释:** [runtime-gates-explained.md](./runtime-gates-explained.md)
 
 ---
 

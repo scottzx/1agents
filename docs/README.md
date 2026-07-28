@@ -83,6 +83,7 @@ docs/
 | Git 面板 | [git-panel/](./features/git-panel/) | PRD |
 | 多维表格 DataGrid | [data-grid/](./features/data-grid/) | PRD |
 | 游戏化大屏 Hangar | [gamified-dashboard/](./features/gamified-dashboard/) | 设计评审 / 素材 |
+| 多 Agent 圆桌 | [当前运行机制](./features/agents-roundtable/runtime-reference.md) | 已实现：多人讨论、进度、门禁与恢复 |
 | npm 多包拆分 | [npm-package-split/](./features/npm-package-split/) | 分发权威 PRD |
 | PM 插件能力 | [pm-standalone/](./features/pm-standalone/) | PRD（主入口仍为 1agents） |
 

@@ -1,10 +1,12 @@
 # PRD：Agents 圆桌脑暴
 
-**Status:** MVP 已实现；交互改版 vNext 待实施
+**Status:** MVP 与 vNext 主流程已实现；异步前端事件消费和同房间多周期仍待完善
 **Updated:** 2026-07-27
 **看板:** #273 Epic：Agents 圆桌交互改版 vNext
 **设计详稿:** [design.md](./design.md)
 **验收清单:** [ACCEPTANCE.md](./ACCEPTANCE.md)
+**当前实现:** [runtime-reference.md](./runtime-reference.md)
+**门禁说明:** [runtime-gates-explained.md](./runtime-gates-explained.md)
 
 ---
 
