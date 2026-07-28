@@ -10073,7 +10073,7 @@ body {
 
   .panel-body-scroll {
     flex: 1;
-    overflow-y: auto;
+    overflow: hidden;
     // 1 grid unit = 8px on all sides
     margin: 8px;
     padding: 0;
@@ -10096,17 +10096,6 @@ body {
     > .flat-file-browser,
     > .fb-detail-view {
       margin: -8px;
-    }
-
-    &::-webkit-scrollbar {
-      width: 4px;
-    }
-    &::-webkit-scrollbar-track {
-      background: transparent;
-    }
-    &::-webkit-scrollbar-thumb {
-      background: var(--border-color);
-      border-radius: 2px;
     }
   }
 
@@ -14297,7 +14286,8 @@ body {
 
   .fb-detail-content {
     flex: 1;
-    overflow: auto;
+    overflow-y: auto;
+    overflow-x: hidden;
     background-color: var(--bg-terminal-inner);
     border: 1px solid var(--border-color);
     border-radius: 8px;
@@ -18142,7 +18132,7 @@ body {
  * - Per-turn content
  * - Long text blocks
  * - Thinking blocks
- * All now share one main scroll track, eliminating multiple interfering wheels.
+ * All now share **one single visible scroll track**. No second track remains.
  */
 .chat-messages {
   flex: 1;
@@ -18154,14 +18144,12 @@ body {
 }
 
 .chat-message-track {
-  --chat-msg-pad-x: 24px;
-  --chat-msg-pad-top: 20px;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
-  padding: var(--chat-msg-pad-top) var(--chat-msg-pad-x) 24px;
+  padding: 20px 24px 24px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -18178,13 +18166,23 @@ body {
     background-color: transparent;
   }
 
-  /* All inner blocks (tool group, thinking blocks, long text, per-turn content) now share this single main track. */
+  /* Inner blocks that need their own scroll (tool results, long text, thinking) now use the single main track. */
   .chat-bubble-tool-group,
   .chat-assistant-block,
   .markdown-body,
   .chat-nested-content {
-    max-height: none; /* disable individual caps that created extra wheels */
-    overflow-y: visible; /* merge into the main track */
+    max-height: 280px;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+
+  /* Outer container for tool groups, per-turn content and long text blocks.
+     Internal 8px gap added so the scroll track has enough space and does not overlap text. */
+  .chat-content-outer {
+    position: relative;
+    z-index: 1;
+    padding: 8px;
+    gap: 8px;
   }
 }
 
