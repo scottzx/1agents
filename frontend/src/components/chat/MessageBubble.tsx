@@ -380,7 +380,7 @@ function AssistantContent({
     const canCollapse = limitHeight && showActions && isCollapsible.value;
     const expanded = !limitHeight || !canCollapse || isExpanded.value;
     const actionsVisible = showActions && isActive.value;
-    // Limited blocks join the nested right-edge scroller (.chat-nested-scroll);
+    // All blocks now use the single consolidated main track (no nested scroll wheels).
     // latest answer stays unlimited and only rides the outer timeline.
     const contentClass = !limitHeight
         ? 'chat-assistant-content is-unlimited'
@@ -515,7 +515,7 @@ function ThinkingBubble({ content, streaming }: { content: string; streaming: bo
             </div>
             {expanded && (
                 <div
-                    class="chat-bubble-body chat-thinking-body markdown-body"
+                    class="chat-bubble-body chat-thinking-body chat-content-outer markdown-body"
                     dangerouslySetInnerHTML={{ __html: html }}
                 />
             )}
@@ -644,7 +644,7 @@ function ToolGroupBubble({
 
     return (
         <div
-            class={`chat-bubble chat-bubble-tool-group ${expanded ? 'is-expanded' : 'is-collapsed'} ${pending ? 'is-pending' : ''}`}
+            class={`chat-bubble chat-bubble-tool-group chat-content-outer ${expanded ? 'is-expanded' : 'is-collapsed'} ${pending ? 'is-pending' : ''}`}
         >
             <div
                 class="chat-tool-group-header"
