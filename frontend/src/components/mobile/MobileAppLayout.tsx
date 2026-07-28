@@ -26,6 +26,7 @@ import { activeL1PageId } from '../../stores/appManifestStore';
 import { globalBridgeManager } from '../chat/hooks';
 import { SETTINGS_STATIC_MANIFEST, type SettingsCategory } from '../../modules/settings-manifest';
 import { paneWorkspaceIdFor, paneWorkspacePathFor } from '../../utils/oneshot';
+import { fsService } from '../../services/fsService';
 import './MobileAppLayout.scss';
 
 /**
@@ -863,11 +864,10 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                     rightPanelWidth={window.innerWidth}
                                                     onToggleFullscreen={() => {
                                                         if (selectedFsEntry) {
-                                                            const encodedPath = selectedFsEntry.path
-                                                                .split('/')
-                                                                .map(encodeURIComponent)
-                                                                .join('/');
-                                                            window.open(`/api/fs/view/${encodedPath}`, '_blank');
+                                                            window.open(
+                                                                fsService.previewUrl(selectedFsEntry.path),
+                                                                '_blank'
+                                                            );
                                                         }
                                                     }}
                                                     onSelectSession={s => {

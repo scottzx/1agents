@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -281,7 +282,7 @@ func (h *Handler) Read(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rel := r.URL.Query().Get("path")
-	abs, ok := h.safeAbs(rel)
+	abs, ok := h.previewAbs(r, rel)
 	if !ok {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
@@ -327,7 +328,7 @@ func (h *Handler) View(w http.ResponseWriter, r *http.Request) {
 		rel = r.URL.Query().Get("path")
 	}
 
-	abs, ok := h.safeAbs(rel)
+	abs, ok := h.previewAbs(r, rel)
 	if !ok {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
@@ -370,7 +371,7 @@ func (h *Handler) ImageStream(w http.ResponseWriter, r *http.Request) {
 		rel = r.URL.Query().Get("path")
 	}
 
-	abs, ok := h.safeAbs(rel)
+	abs, ok := h.previewAbs(r, rel)
 	if !ok {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
@@ -412,7 +413,7 @@ func (h *Handler) Image(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rel := r.URL.Query().Get("path")
-	abs, ok := h.safeAbs(rel)
+	abs, ok := h.previewAbs(r, rel)
 	if !ok {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
@@ -903,6 +904,28 @@ func (h *Handler) Rename(w http.ResponseWriter, r *http.Request) {
 }
 
 // --- Helpers ---
+
+// previewAbs resolves paths used by read-only preview endpoints. A browser
+// connected over loopback may preview any local absolute path, independent of
+// the backend's current working directory or registered workspace. Remote
+// clients and every mutating endpoint retain the normal workspace sandbox.
+func (h *Handler) previewAbs(r *http.Request, path string) (string, bool) {
+	expanded := expandTilde(path)
+	cleaned := filepath.Clean(filepath.FromSlash(expanded))
+	if filepath.IsAbs(cleaned) && isLoopbackRequest(r) {
+		return cleaned, true
+	}
+	return h.safeAbs(path)
+}
+
+func isLoopbackRequest(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = strings.Trim(r.RemoteAddr, "[]")
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
 
 // safeAbs resolves a relative path against the root and verifies the result
 // is still within the root (path traversal guard).

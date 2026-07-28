@@ -18,12 +18,17 @@ export const fsService = {
     },
 
     /**
-     * Build a direct URL for the image preview. The browser fetches and decodes
-     * the image itself — no base64 round-trip, no state, no in-memory dataURL string.
-     * Used as <img src={fsService.imageUrl(entry.path)}>.
+     * Build a direct read-only preview URL. Keeping the complete filesystem
+     * path in a query parameter preserves an absolute path's leading slash;
+     * embedding it after /api/fs/view/ lets browsers/proxies normalize `//`
+     * and causes localhost 404s.
      */
+    previewUrl(path: string): string {
+        return `/api/fs/view?path=${encodeURIComponent(path)}`;
+    },
+
     imageUrl(path: string): string {
-        return `/api/fs/image/${path.split('/').map(encodeURIComponent).join('/')}`;
+        return this.previewUrl(path);
     },
 
     /**

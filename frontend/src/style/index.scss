@@ -10089,16 +10089,6 @@ body {
       min-height: 0;
     }
 
-    // The file browser / detail view manage their own internal layout and
-    // are designed to fill their container edge-to-edge (the project detail's
-    // .file-split-list has zero padding). Cancel the panel-body-scroll's
-    // 8px margin only for them, so the file UI sits flush against the
-    // drawer edges — matching how it looks in 项目详情 → 文件. GitPanel and
-    // ThemeSettings keep the breathing room.
-    > .flat-file-browser,
-    > .fb-detail-view {
-      margin: -8px;
-    }
   }
 
   /* File list tree viewer in Right sidebar */
@@ -14142,7 +14132,6 @@ body {
     align-items: center;
     justify-content: center;
     gap: 12px;
-    padding-bottom: 12px;
     border-bottom: 1px solid var(--border-color);
     margin: 8px 8px 12px;
 
@@ -14353,8 +14342,10 @@ body {
 
       .fb-code-gutter {
         flex: 0 0 auto;
-        width: var(--fb-gutter-w, 3ch);
-        padding: 0 16px 0 8px;
+        box-sizing: content-box;
+        width: var(--fb-gutter-w, 2ch);
+        min-width: var(--fb-gutter-w, 2ch);
+        padding: 0 16px 0 12px;
         text-align: right;
         color: var(--text-muted);
         user-select: none;

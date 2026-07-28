@@ -12,10 +12,9 @@ import { signal } from '@preact/signals';
 import * as wsStore from './workspaceStore';
 import * as tabsStore from './tabsStore';
 import * as ui from './uiStore';
-import * as fsStore from './fsStore';
-import { fsService } from '../services/fsService';
 import { projectItemService } from '@1agents/core/services/taskService';
 import { parseTaskPermalink } from '../utils/markdown';
+import { parseMarkdownFileLink } from '../utils/fileLinks';
 
 /**
  * A pending request to open a task, consumed by the mounted <TaskList> for the
@@ -106,27 +105,11 @@ export const taskPermalink = (projectName: string, number: number): string =>
 /**
  * Open a file by its path (relative to the current workspace root, or
  * absolute) in the right-side files pane's detail view — the same surface the
- * file browser uses when you click a file. Silently does nothing when the file
- * can't be found, so a mistyped ref is treated as a typo.
+ * file browser uses when you click a file.
  */
 const openFileByPath = async (path: string, line?: number, lineEnd?: number): Promise<void> => {
-    // Preflight: bail silently on 404 so a mistyped ref is treated as a typo
-    // rather than opening the pane onto an error.
-    try {
-        await fsService.read(path);
-    } catch {
-        return;
-    }
-
     const name = path.split('/').pop() || path;
-    // Open the files pane (mobile = files subview, desktop = reusable side
-    // panel tab), then load the file into its detail view via the shared store.
-    if (ui.isMobile.value) {
-        tabsStore.selectTab('files');
-    } else {
-        tabsStore.openOrReuseSidePanelTab('files', { path, line, lineEnd, title: name });
-    }
-    void fsStore.openFileDetail({ name, path, isDir: false, size: 0, modTime: 0 }, line, lineEnd);
+    await tabsStore.openPreviewTab(path, name, line, lineEnd);
 };
 
 /**
@@ -174,6 +157,17 @@ const onDocumentClick = (e: MouseEvent): void => {
             void openTaskByRef(ref.project, ref.number);
             return;
         }
+    }
+
+    // Explicit Markdown file link, e.g.
+    // [PRD](/absolute/path/file.md:40). Unlike data-file-ref links
+    // these are emitted by marked as ordinary anchors, so recognize the href
+    // shape here and route it to the same side-pane preview.
+    const fileLink = parseMarkdownFileLink(href);
+    if (fileLink) {
+        e.preventDefault();
+        void openFileByPath(fileLink.path, fileLink.line, fileLink.lineEnd);
+        return;
     }
 
     // External / local http(s) links → built-in browser side pane

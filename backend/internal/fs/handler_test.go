@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -375,6 +376,97 @@ func TestHandler_View(t *testing.T) {
 		bodyBytes := w.Body.Bytes()
 		if string(bodyBytes) != nestedContent {
 			t.Errorf("expected body %q, got %q", nestedContent, string(bodyBytes))
+		}
+	})
+}
+
+func TestHandler_ReadOnlyPreviewAllowsAnyAbsolutePathFromLoopback(t *testing.T) {
+	root := t.TempDir()
+	outsideRoot := t.TempDir()
+	path := filepath.Join(outsideRoot, "设计 文档.md")
+	content := []byte("# outside workspace")
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	h := NewHandler(root)
+
+	t.Run("read", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/fs/read?path="+url.QueryEscape(path), nil)
+		req.RemoteAddr = "127.0.0.1:43120"
+		w := httptest.NewRecorder()
+
+		h.Read(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("read returned %d: %s", w.Code, w.Body.String())
+		}
+		if got := w.Body.String(); got != string(content) {
+			t.Fatalf("read body = %q, want %q", got, content)
+		}
+	})
+
+	t.Run("view query preserves absolute path", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/fs/view?path="+url.QueryEscape(path), nil)
+		req.RemoteAddr = "[::1]:43121"
+		w := httptest.NewRecorder()
+
+		h.View(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("view returned %d: %s", w.Code, w.Body.String())
+		}
+		if got := w.Body.String(); got != string(content) {
+			t.Fatalf("view body = %q, want %q", got, content)
+		}
+	})
+}
+
+func TestHandler_AbsolutePathOutsideWorkspaceRemainsSandboxedForRemoteAndWrites(t *testing.T) {
+	root := t.TempDir()
+	outsideRoot := t.TempDir()
+	path := filepath.Join(outsideRoot, "private.txt")
+	if err := os.WriteFile(path, []byte("private"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Isolate the workspace registry so developer state cannot make the
+	// outside temp directory an accepted workspace during this test.
+	t.Setenv("ONEAGENTS_HOME", t.TempDir())
+	h := NewHandler(root)
+
+	t.Run("remote read", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/fs/read?path="+url.QueryEscape(path), nil)
+		req.RemoteAddr = "192.0.2.1:43122"
+		w := httptest.NewRecorder()
+
+		h.Read(w, req)
+
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("remote read returned %d, want 403", w.Code)
+		}
+	})
+
+	t.Run("loopback write", func(t *testing.T) {
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/api/fs/write?path="+url.QueryEscape(path),
+			strings.NewReader("changed"),
+		)
+		req.RemoteAddr = "127.0.0.1:43123"
+		w := httptest.NewRecorder()
+
+		h.Write(w, req)
+
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("loopback write returned %d, want 403", w.Code)
+		}
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != "private" {
+			t.Fatalf("outside file changed to %q", got)
 		}
 	})
 }

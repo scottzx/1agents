@@ -5,6 +5,7 @@ import { renderMermaidBlocks } from '../../utils/mermaid';
 import { detectCodeLang, highlightToLines } from '../../utils/highlight';
 import { renderMarkdown } from '../../utils/markdown';
 import { theme } from '../../stores/uiStore';
+import { fsService } from '../../services/fsService';
 
 interface FileDetailViewProps {
     selectedFsEntry: FsEntry;
@@ -338,7 +339,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
         }
 
         return (
-            <div class="fb-code-view" style={{ ['--fb-gutter-w' as string]: `${String(lines.length).length + 1}ch` }}>
+            <div class="fb-code-view" style={{ ['--fb-gutter-w' as string]: `${Math.max(2, String(lines.length).length)}ch` }}>
                 {lines.map((text, i) => {
                     const ln = i + 1;
                     const hl = targetLine !== undefined && ln >= targetLine && (end === undefined || ln <= end);
@@ -393,6 +394,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
             onShareFile,
             isStandalone,
             hideBack,
+            targetLine,
             language,
         } = this.props;
 
@@ -460,10 +462,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                         {(isHtml || isPdf) && (
                             <a
                                 class="fb-icon-btn"
-                                href={`/api/fs/view/${selectedFsEntry.path
-                                    .split('/')
-                                    .map(encodeURIComponent)
-                                    .join('/')}`}
+                                href={fsService.previewUrl(selectedFsEntry.path)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 title={t('fileDetail.openInWindow', language)}
@@ -672,10 +671,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                                 class="fb-video-player"
                                 controls
                                 preload="metadata"
-                                src={`/api/fs/view/${selectedFsEntry.path
-                                    .split('/')
-                                    .map(encodeURIComponent)
-                                    .join('/')}`}
+                                src={fsService.previewUrl(selectedFsEntry.path)}
                             >
                                 {t('fileDetail.videoUnsupported', language)}
                             </video>
@@ -697,10 +693,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                                     class="fb-audio-player"
                                     controls
                                     preload="metadata"
-                                    src={`/api/fs/view/${selectedFsEntry.path
-                                        .split('/')
-                                        .map(encodeURIComponent)
-                                        .join('/')}`}
+                                    src={fsService.previewUrl(selectedFsEntry.path)}
                                 >
                                     {t('fileDetail.audioUnsupported', language)}
                                 </audio>
@@ -718,25 +711,13 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                         />
                     ) : isHtml ? (
                         <div class="fb-html-preview-container">
-                            <iframe
-                                src={`/api/fs/view/${selectedFsEntry.path
-                                    .split('/')
-                                    .map(encodeURIComponent)
-                                    .join('/')}`}
-                                class="fb-html-iframe"
-                            />
+                            <iframe src={fsService.previewUrl(selectedFsEntry.path)} class="fb-html-iframe" />
                         </div>
                     ) : isPdf ? (
                         <div class="fb-pdf-preview-container">
-                            <iframe
-                                src={`/api/fs/view/${selectedFsEntry.path
-                                    .split('/')
-                                    .map(encodeURIComponent)
-                                    .join('/')}`}
-                                class="fb-pdf-iframe"
-                            />
+                            <iframe src={fsService.previewUrl(selectedFsEntry.path)} class="fb-pdf-iframe" />
                         </div>
-                    ) : isMd ? (
+                    ) : isMd && targetLine === undefined ? (
                         <div
                             class="fb-md-render md-doc"
                             ref={el => {

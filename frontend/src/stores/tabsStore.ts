@@ -463,16 +463,20 @@ export const selectTab = async (tabId: string) => {
     }
 };
 
-export const openPreviewTab = async (path: string, fileName: string) => {
+export const openPreviewTab = async (path: string, fileName: string, line?: number, lineEnd?: number) => {
     if (!ui.isMobile.value) {
-        openOrReuseSidePanelTab('files', { path, title: fileName || defaultSidePanelTitle('files') });
-        await fs.openFileDetail({
-            name: fileName || path.split('/').pop() || path,
-            path,
-            isDir: false,
-            size: 0,
-            modTime: 0,
-        });
+        openOrReuseSidePanelTab('files', { path, line, lineEnd, title: fileName || defaultSidePanelTitle('files') });
+        await fs.openFileDetail(
+            {
+                name: fileName || path.split('/').pop() || path,
+                path,
+                isDir: false,
+                size: 0,
+                modTime: 0,
+            },
+            line,
+            lineEnd
+        );
         return;
     }
 
@@ -489,7 +493,18 @@ export const openPreviewTab = async (path: string, fileName: string) => {
         };
         tabs.value = [...tabs.value, newTab];
     }
-    selectTab(tabId);
+    activeTabId.value = tabId;
+    await fs.openFileDetail(
+        {
+            name: fileName || path.split('/').pop() || path,
+            path,
+            isDir: false,
+            size: 0,
+            modTime: 0,
+        },
+        line,
+        lineEnd
+    );
 };
 
 /** Normalize a user/agent-facing URL for the built-in browser. */
