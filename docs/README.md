@@ -23,7 +23,7 @@ docs/
 
 | 文档 | 说明 |
 |------|------|
-| [名称定义表.md](./product/名称定义表.md) | **术语与名称总表**（§0 冲突裁决 · ProjectItem / workforce / executor×assignee） |
+| [名称定义表.md](./product/名称定义表.md) | **术语与名称总表**（§0 冲突裁决 · ProjectItem / workforce / executor×assignee / Session×AgentTurn） |
 | [术语迁移引用清单-M1.md](./product/术语迁移引用清单-M1.md) | Epic #184 迁移触点盘点（代码 + docs 过时句） |
 | [roadmap.md](./product/roadmap.md) | **权威版本路线图**（1.x→4.x 里程碑与 issue 归位） |
 | [1Agents_项目介绍.md](./product/1Agents_项目介绍.md) | 对外项目介绍 / 关于我们 |
