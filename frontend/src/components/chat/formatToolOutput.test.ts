@@ -85,3 +85,28 @@ test('formatToolOutput: returns raw text unchanged when not JSON', () => {
     const result = formatToolOutput(raw);
     assert.equal(result, raw);
 });
+
+test('formatToolOutput: prioritizes file_matches when type is GrepSearch', () => {
+    const raw = JSON.stringify({
+        type: 'GrepSearch',
+        file_matches: [{ Filename: '/path/to/file.ts', LineNumber: 10, LineContent: 'const a = 1;' }],
+        output_for_prompt: 'some prompt output',
+        formatted_output: 'some formatted output',
+    });
+    const result = formatToolOutput(raw);
+    const expected = JSON.stringify(
+        [{ Filename: '/path/to/file.ts', LineNumber: 10, LineContent: 'const a = 1;' }],
+        null,
+        2
+    );
+    assert.equal(result, expected);
+});
+
+test('formatToolOutput: falls back to output_for_prompt if type is GrepSearch but file_matches is missing', () => {
+    const raw = JSON.stringify({
+        type: 'GrepSearch',
+        output_for_prompt: 'fallback prompt output',
+    });
+    const result = formatToolOutput(raw);
+    assert.equal(result, 'fallback prompt output');
+});

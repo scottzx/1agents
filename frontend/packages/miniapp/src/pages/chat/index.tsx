@@ -583,7 +583,19 @@ function GroupedToolCallItem({
     try {
       const parsed = JSON.parse(call.output);
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        const targetVal = parsed.output_for_prompt ?? parsed.formatted_output ?? parsed.output;
+        const typeKeyMap: Record<string, string> = {
+          GrepSearch: 'file_matches',
+        };
+        let targetVal: unknown = undefined;
+        if (typeof parsed.type === 'string' && parsed.type in typeKeyMap) {
+          const typeKey = typeKeyMap[parsed.type];
+          if (typeKey in parsed && parsed[typeKey] !== undefined && parsed[typeKey] !== null) {
+            targetVal = parsed[typeKey];
+          }
+        }
+        if (targetVal === undefined) {
+          targetVal = parsed.output_for_prompt ?? parsed.formatted_output ?? parsed.output;
+        }
         if (targetVal !== undefined && targetVal !== null) {
           if (typeof targetVal === 'object') {
             parsedOutput = JSON.stringify(targetVal, null, 2);

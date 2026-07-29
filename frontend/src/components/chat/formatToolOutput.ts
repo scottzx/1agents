@@ -35,6 +35,18 @@ export function formatToolOutput(raw: string): string {
             const parsed = JSON.parse(s);
             if (parsed !== null && typeof parsed === 'object') {
                 if (!Array.isArray(parsed)) {
+                    // 1. Specific "type" rules (e.g. type === 'GrepSearch' -> file_matches)
+                    const typeKeyMap: Record<string, string> = {
+                        GrepSearch: 'file_matches',
+                    };
+                    if (typeof parsed.type === 'string' && parsed.type in typeKeyMap) {
+                        const targetKey = typeKeyMap[parsed.type];
+                        if (targetKey in parsed && parsed[targetKey] !== undefined && parsed[targetKey] !== null) {
+                            return tryFormatValue(parsed[targetKey]);
+                        }
+                    }
+
+                    // 2. Priority fallback keys: output_for_prompt -> formatted_output -> output
                     const keys = ['output_for_prompt', 'formatted_output', 'output'];
                     for (const key of keys) {
                         if (key in parsed && parsed[key] !== undefined && parsed[key] !== null) {
