@@ -82,6 +82,8 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
     // plain useState toggles are known to not re-render under @preact/signals
     // v2 in this repo. Reset to "not dismissed" whenever a new takeover fires.
     const bannerDismissed = useSignal(false);
+    const pendingEdit = useSignal<{ turnId: string; text: string } | null>(null);
+    const composerRefill = useSignal<{ text: string; nonce: number } | null>(null);
     if (!takenOver && bannerDismissed.value) bannerDismissed.value = false;
 
     // The composer is only usable once BOTH the WS handshake finished
@@ -127,6 +129,25 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
     // Resolved ones stay as receipts inside the (default-collapsed) tool group.
     const nextPrompt = collectNextPendingPrompt(items);
     const projectedItems = useProjectedTurnItems(session, items, typing);
+    const requestedEdit = pendingEdit.value;
+    useEffect(() => {
+        if (!requestedEdit) return;
+        const cancelled = projectedItems.some(
+            item => item.kind === 'user' && item.turnId === requestedEdit.turnId && item.turnStatus === 'cancelled'
+        );
+        if (!cancelled) return;
+        composerRefill.value = { text: requestedEdit.text, nonce: Date.now() };
+        pendingEdit.value = null;
+    }, [projectedItems, requestedEdit]);
+
+    const editTurn = (turnId: string, text: string, status: 'queued' | 'running') => {
+        pendingEdit.value = { turnId, text };
+        if (status === 'queued') {
+            cancelQueued(turnId);
+        } else {
+            cancel();
+        }
+    };
     const focusRequest =
         turnFocusRequest.value?.sessionId === session.id
             ? { turnId: turnFocusRequest.value.turnId, nonce: turnFocusRequest.value.nonce }
@@ -161,6 +182,7 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
                 }
                 loading={showInitLoading}
                 onCancelQueued={cancelQueued}
+                onEditTurn={editTurn}
                 focusTurn={focusRequest}
             />
             {/* Page-persistent error banner — sits above the Composer. Cleared
@@ -182,7 +204,7 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
                 onSend={send}
                 onCancel={cancel}
                 isRunning={typing}
-                disabled={composerDisabled}
+                disabled={composerDisabled || pendingEdit.value !== null}
                 permissionMode={permissionMode}
                 onPermissionModeChange={setPermissionMode}
                 sessionModes={modes}
@@ -191,6 +213,7 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
                 usage={usage}
                 configOptions={configOptions}
                 onConfigOptionChange={setConfigOption}
+                draftRefill={composerRefill.value}
             />
         </div>
     );

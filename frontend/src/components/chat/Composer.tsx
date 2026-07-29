@@ -67,6 +67,8 @@ interface ComposerProps {
     /** NATIVE config options (model/effort); each renders a picker. */
     configOptions?: SessionConfigOption[];
     onConfigOptionChange?: (key: string, value: string) => void;
+    /** One-shot Turn edit refill. A new nonce reapplies even when the text is unchanged. */
+    draftRefill?: { text: string; nonce: number } | null;
 }
 
 export function Composer({
@@ -84,6 +86,7 @@ export function Composer({
     usage,
     configOptions = [],
     onConfigOptionChange,
+    draftRefill,
 }: ComposerProps) {
     const ref = useRef<HTMLTextAreaElement | null>(null);
     const lang = getLang();
@@ -161,6 +164,17 @@ export function Composer({
         // Re-derive slash palette if the restored draft starts with `/`.
         if (el.value) refreshSlash(el.value);
     }, [sessionId]);
+
+    useEffect(() => {
+        const el = ref.current;
+        if (!el || !draftRefill) return;
+        el.value = draftRefill.text;
+        writeDraft(sessionId, draftRefill.text);
+        lastLineCountRef.current = 1;
+        fitHeight(el, true);
+        refreshSlash(el.value);
+        el.focus();
+    }, [draftRefill]);
 
     const pickSlash = (command: AvailableCommand) => {
         const el = ref.current;

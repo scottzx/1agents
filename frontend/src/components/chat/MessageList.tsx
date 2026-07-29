@@ -30,6 +30,8 @@ interface MessageListProps {
      * which only stops `activeTurn` and leaves the queue running.
      */
     onCancelQueued?: (queueRequestId: string) => void;
+    /** Cancel a queued/running Turn, then refill its prompt after cancelled is confirmed. */
+    onEditTurn?: (turnId: string, content: string, status: 'queued' | 'running') => void;
     /** Optional references rendered inside the same scroll timeline. */
     timelineFooter?: ComponentChildren;
     /** One-shot request to reveal a persisted Turn after cross-navigation. */
@@ -374,6 +376,7 @@ export function MessageList({
     loading,
     loadingHint,
     onCancelQueued,
+    onEditTurn,
     timelineFooter,
     focusTurn,
 }: MessageListProps) {
@@ -549,6 +552,7 @@ export function MessageList({
                             active={typing && index === activeProcessIndex}
                             isLatestAssistant={index === latestAssistantIndex}
                             onCancelQueued={onCancelQueued}
+                            onEditTurn={onEditTurn}
                         />
                     </Fragment>
                 ))}

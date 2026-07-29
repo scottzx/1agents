@@ -75,11 +75,9 @@ interface UseBridgeState {
     backgroundTasks: BackgroundTask[] | null;
     send: (content: string) => void;
     /**
-     * Stop generating: cancels the running turn and drops every queued
-     * prompt, but KEEPS the session alive so the user can continue
-     * chatting immediately. Distinct from `cancelQueued`, which only
-     * removes a single queued entry. (Full session teardown lives on the
-     * sidebar archive action — bridgeManager.destroy.)
+     * Stop generating: cancels the running Turn while preserving the session
+     * and queued Turns. Distinct from `cancelQueued`, which removes one queued
+     * entry. Full teardown lives on the sidebar archive action.
      */
     cancel: () => void;
     cancelQueued: (requestId: string) => void;

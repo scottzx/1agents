@@ -81,6 +81,26 @@ test('keeps legacy chat items untouched when no persisted turns exist', () => {
     assert.equal(projectChatTurns(items, [], []), items);
 });
 
+test('uses explicit history turnId for repeated prompts without text matching', () => {
+    const first = turn('turn-first', 'same', '2026-01-01T00:00:00Z');
+    const second = turn('turn-second', 'same', '2026-01-02T00:00:00Z');
+    const projected = projectChatTurns(
+        [
+            { ...user('u2', 'same'), turnId: 'turn-second' },
+            { ...answer('a2'), turnId: 'turn-second' },
+            { ...user('u1', 'same'), turnId: 'turn-first' },
+            { ...answer('a1'), turnId: 'turn-first' },
+        ],
+        [first, second],
+        []
+    );
+
+    assert.deepEqual(
+        projected.filter(item => item.kind === 'user').map(item => item.turnId),
+        ['turn-second', 'turn-first']
+    );
+});
+
 test('surfaces failed and cancelled terminal states even without an assistant answer', () => {
     const failed = {
         ...turn('turn-failed', 'run', '2026-01-01T00:00:00Z'),

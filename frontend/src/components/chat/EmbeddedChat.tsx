@@ -55,7 +55,8 @@
  */
 
 import { h } from 'preact';
-import { useMemo } from 'preact/hooks';
+import { useEffect, useMemo } from 'preact/hooks';
+import { useSignal } from '@preact/signals';
 import type { ChatSession } from '../types';
 import { t } from '../../i18n';
 import * as ui from '../../stores/uiStore';
@@ -169,6 +170,26 @@ export function EmbeddedChat({
     const heightCss = formatMaxHeight(maxHeight);
     const composerSend = onSendProp ?? send;
     const composerRunning = isRunningProp ?? typing;
+    const pendingEdit = useSignal<{ turnId: string; text: string } | null>(null);
+    const composerRefill = useSignal<{ text: string; nonce: number } | null>(null);
+    const requestedEdit = pendingEdit.value;
+    useEffect(() => {
+        if (!requestedEdit) return;
+        const cancelled = items.some(
+            item => item.kind === 'user' && item.turnId === requestedEdit.turnId && item.turnStatus === 'cancelled'
+        );
+        if (!cancelled) return;
+        composerRefill.value = { text: requestedEdit.text, nonce: Date.now() };
+        pendingEdit.value = null;
+    }, [items, requestedEdit]);
+    const editTurn = (turnId: string, text: string, status: 'queued' | 'running') => {
+        pendingEdit.value = { turnId, text };
+        if (status === 'queued') {
+            cancelQueued(turnId);
+        } else {
+            cancel();
+        }
+    };
     const latestEvent = events[events.length - 1];
     const eventRefs =
         events.length > 0 ? (
@@ -228,6 +249,7 @@ export function EmbeddedChat({
                 }
                 loading={showInitLoading}
                 onCancelQueued={composerVisible ? cancelQueued : undefined}
+                onEditTurn={composerVisible && !onSendProp ? editTurn : undefined}
                 timelineFooter={eventRefs}
             />
             {composerVisible && (
@@ -236,7 +258,7 @@ export function EmbeddedChat({
                     onSend={composerSend}
                     onCancel={cancel}
                     isRunning={composerRunning}
-                    disabled={composerDisabled}
+                    disabled={composerDisabled || pendingEdit.value !== null}
                     permissionMode={permissionMode}
                     onPermissionModeChange={setPermissionMode}
                     sessionModes={modes}
@@ -245,6 +267,7 @@ export function EmbeddedChat({
                     usage={usage}
                     configOptions={configOptions}
                     onConfigOptionChange={setConfigOption}
+                    draftRefill={composerRefill.value}
                 />
             )}
         </div>

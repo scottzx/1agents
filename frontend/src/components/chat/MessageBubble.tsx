@@ -153,9 +153,17 @@ interface MessageBubbleProps {
      */
     isLatestAssistant?: boolean;
     onCancelQueued?: (queueRequestId: string) => void;
+    onEditTurn?: (turnId: string, content: string, status: 'queued' | 'running') => void;
 }
 
-export function MessageBubble({ item, isLast, active, isLatestAssistant, onCancelQueued }: MessageBubbleProps) {
+export function MessageBubble({
+    item,
+    isLast,
+    active,
+    isLatestAssistant,
+    onCancelQueued,
+    onEditTurn,
+}: MessageBubbleProps) {
     switch (item.kind) {
         case 'user':
             return (
@@ -163,7 +171,10 @@ export function MessageBubble({ item, isLast, active, isLatestAssistant, onCance
                     content={item.content}
                     queueStatus={item.queueStatus}
                     queueRequestId={item.queueRequestId}
+                    turnId={item.turnId}
+                    turnStatus={item.turnStatus}
                     onCancel={onCancelQueued}
+                    onEdit={onEditTurn}
                 />
             );
         case 'assistant_text':
@@ -293,14 +304,21 @@ function UserBubble({
     content,
     queueStatus,
     queueRequestId,
+    turnId,
+    turnStatus,
     onCancel,
+    onEdit,
 }: {
     content: string;
     queueStatus?: 'queued';
     queueRequestId?: string;
+    turnId?: string;
+    turnStatus?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
     onCancel?: (queueRequestId: string) => void;
+    onEdit?: (turnId: string, content: string, status: 'queued' | 'running') => void;
 }) {
     const isQueued = queueStatus === 'queued';
+    const editableStatus = turnStatus === 'queued' || turnStatus === 'running' ? turnStatus : undefined;
 
     return (
         <div class={`chat-bubble chat-bubble-user${isQueued ? ' chat-bubble-user-queued' : ''}`}>
@@ -327,6 +345,17 @@ function UserBubble({
                         </button>
                     )}
                 </>
+            )}
+            {turnId && editableStatus && onEdit && (
+                <button
+                    type="button"
+                    class="chat-bubble-turn-edit"
+                    title={t('common.edit', getLang())}
+                    aria-label={t('common.edit', getLang())}
+                    onClick={() => onEdit(turnId, content, editableStatus)}
+                >
+                    {t('common.edit', getLang())}
+                </button>
             )}
         </div>
     );

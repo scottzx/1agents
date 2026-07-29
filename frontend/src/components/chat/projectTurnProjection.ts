@@ -46,10 +46,17 @@ export function projectChatTurns(
     if (starts.length === 0) return items;
 
     const assignment = new Map<number, AgentTurn>();
-    // First pass is content-authoritative and handles reordered/native history.
+    // v2 runtime history already carries the canonical identity. Reserve those
+    // Turns before applying the legacy prompt-text fallback.
     for (const start of starts) {
         const user = items[start];
-        if (user.kind !== 'user') continue;
+        if (user.kind === 'user' && user.turnId) unused.delete(user.turnId);
+    }
+    // Legacy-only first pass is content-authoritative and handles reordered
+    // native history that predates the Turn protocol.
+    for (const start of starts) {
+        const user = items[start];
+        if (user.kind !== 'user' || user.turnId) continue;
         const exact = turns.find(turn => unused.has(turn.id) && turn.promptText === user.content);
         if (!exact) continue;
         assignment.set(start, exact);
@@ -61,6 +68,8 @@ export function projectChatTurns(
     for (let index = starts.length - 1; index >= 0; index--) {
         const start = starts[index];
         if (assignment.has(start)) continue;
+        const user = items[start];
+        if (user.kind === 'user' && user.turnId) continue;
         const fallback = [...turns].reverse().find(turn => unused.has(turn.id));
         if (!fallback) continue;
         assignment.set(start, fallback);
@@ -74,7 +83,7 @@ export function projectChatTurns(
         const user = items[start];
         if (user.kind !== 'user') continue;
 
-        const turn = assignment.get(start);
+        const turn = user.turnId ? turns.find(candidate => candidate.id === user.turnId) : assignment.get(start);
         if (!turn) {
             output.push(...items.slice(start, end));
             continue;
