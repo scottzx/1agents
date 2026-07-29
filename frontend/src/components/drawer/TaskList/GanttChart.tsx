@@ -10,6 +10,7 @@ import {
     type GanttRow,
     type TimeGranularity,
 } from './ganttModel';
+import { GanttUnscheduledTasks } from './GanttUnscheduledTasks';
 
 interface GanttChartProps {
     workspaceId: string;
@@ -48,7 +49,12 @@ export function GanttChart({ workspaceId, data }: GanttChartProps) {
     );
 
     if (!axis) {
-        return <div class="gantt-chart-empty">暂无日程安排数据</div>;
+        return (
+            <div class="gantt-chart">
+                <div class="gantt-chart-empty">暂无已排期数据</div>
+                <GanttUnscheduledTasks tasks={data.unscheduled} onTaskClick={handleTaskClick} />
+            </div>
+        );
     }
 
     const rowPositions = new Map<string, number>();
@@ -232,19 +238,7 @@ export function GanttChart({ workspaceId, data }: GanttChartProps) {
                 </div>
             </div>
 
-            {data.unscheduled && data.unscheduled.length > 0 && (
-                <div class="gantt-unscheduled">
-                    <h4>未排期任务 ({data.unscheduled.length})</h4>
-                    <div class="gantt-unscheduled-list">
-                        {data.unscheduled.map(task => (
-                            <div key={task.id} class="gantt-unscheduled-item" onClick={() => handleTaskClick(task.id)}>
-                                <span>{`#${task.number} ${task.title}`}</span>
-                                <span class="gantt-badge">{task.status}</span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
+            <GanttUnscheduledTasks tasks={data.unscheduled} onTaskClick={handleTaskClick} />
 
             {hoveredTask && (
                 <div class="gantt-tooltip">
