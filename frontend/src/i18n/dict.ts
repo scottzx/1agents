@@ -1280,6 +1280,7 @@ export const zhCN: Record<string, string> = {
     'settings.nav.account': '账号与订阅',
     'settings.nav.relay': '远程控制',
     'settings.nav.devices': '设备',
+    'settings.nav.coffee': '请作者喝杯咖啡',
     'settings.nav.about': '关于与支持',
 
     'settings.devices.desc': '管理账户下的所有设备，查看在线状态，并扫描同一 Tailscale 网络中的新设备。',
@@ -3233,6 +3234,7 @@ export const enUS: Record<string, string> = {
     'settings.nav.account': 'Account & Subscription',
     'settings.nav.relay': 'Remote Control',
     'settings.nav.devices': 'Devices',
+    'settings.nav.coffee': 'Buy the author a coffee',
     'settings.nav.about': 'About & Support',
 
     'settings.devices.desc':

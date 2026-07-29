@@ -40,9 +40,32 @@ export function projectChatTurns(
 
     const starts: number[] = [];
     for (let index = 0; index < items.length; index++) {
-        if (items[index].kind === 'user' && items[index].queueStatus !== 'queued') starts.push(index);
+        const item = items[index];
+        if (item.kind === 'user' && item.queueStatus !== 'queued') starts.push(index);
     }
     if (starts.length === 0) return items;
+
+    const assignment = new Map<number, AgentTurn>();
+    // First pass is content-authoritative and handles reordered/native history.
+    for (const start of starts) {
+        const user = items[start];
+        if (user.kind !== 'user') continue;
+        const exact = turns.find(turn => unused.has(turn.id) && turn.promptText === user.content);
+        if (!exact) continue;
+        assignment.set(start, exact);
+        unused.delete(exact.id);
+    }
+    // If a runtime normalized prompt text, align unmatched records from newest
+    // to newest. This avoids assigning a limited newest-100 Turn page to the
+    // oldest messages in a long native transcript.
+    for (let index = starts.length - 1; index >= 0; index--) {
+        const start = starts[index];
+        if (assignment.has(start)) continue;
+        const fallback = [...turns].reverse().find(turn => unused.has(turn.id));
+        if (!fallback) continue;
+        assignment.set(start, fallback);
+        unused.delete(fallback.id);
+    }
 
     const output: ChatItem[] = items.slice(0, starts[0]);
     for (let segment = 0; segment < starts.length; segment++) {
@@ -51,13 +74,11 @@ export function projectChatTurns(
         const user = items[start];
         if (user.kind !== 'user') continue;
 
-        const exact = turns.find(turn => unused.has(turn.id) && turn.promptText === user.content);
-        const turn = exact ?? turns.find(candidate => unused.has(candidate.id));
+        const turn = assignment.get(start);
         if (!turn) {
             output.push(...items.slice(start, end));
             continue;
         }
-        unused.delete(turn.id);
 
         for (const item of items.slice(start, end)) {
             output.push({ ...item, turnId: turn.id, turnStatus: turn.status });

@@ -14,7 +14,7 @@
 import type { ModuleManifest } from './module-types';
 import { isLocalOperatorHost } from '../utils/localHost';
 
-export type SettingsCategory = 'general' | 'account' | 'agents' | 'relay' | 'devices' | 'updates' | 'about';
+export type SettingsCategory = 'general' | 'account' | 'agents' | 'relay' | 'devices' | 'updates' | 'coffee' | 'about';
 
 export interface SettingsNavItem {
     key: SettingsCategory;
@@ -31,6 +31,7 @@ export const SETTINGS_CATEGORIES: SettingsNavItem[] = [
     { key: 'relay', path: '/relay', i18nKey: 'settings.nav.relay' },
     { key: 'devices', path: '/devices', i18nKey: 'settings.nav.devices' },
     { key: 'updates', path: '/updates', i18nKey: 'settings.nav.updates' },
+    { key: 'coffee', path: '/coffee', i18nKey: 'settings.nav.coffee' },
     { key: 'about', path: '/about', i18nKey: 'settings.nav.about' },
 ];
 

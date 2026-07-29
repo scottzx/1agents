@@ -2,12 +2,13 @@
 
 | 字段 | 内容 |
 |------|------|
-| 状态 | **产品方案已确认 · 待人工实施** |
-| 版本 | **v0.1** |
-| 日期 | 2026-07-27 |
+| 状态 | **已实现（#282–#288，2026-07-29）** |
+| 版本 | **v1.0** |
+| 日期 | 2026-07-29 |
 | 看板 | Epic **#281**；人工执行任务 **#282–#288**；里程碑 **Agent Turn 与项目动态时间轴** |
 | 定位一句话 | 将每次用户请求及其项目操作持久化为 Agent Turn，并由不可变 `project_events` 自动生成项目上下文时间轴 |
 | 详细设计 | [design.md](./design.md) |
+| 实现走查 | [walkthrough.md](./walkthrough.md) |
 | 关联 | [project-model](../project-model/design.md)、[issue-model](../issue-model/design.md)、[pm-standalone](../pm-standalone/prd.md)、[verification-gate](../verification-gate/design.md) |
 
 ---
@@ -55,6 +56,14 @@
 | D12 | Turn 不替代 TaskRun 或完成审计 | 最终回答不是 completed 的验收证据 |
 | D13 | 显式 `attach-item` 非 MVP | 仅用于“讨论但未修改”或人工修复关系 |
 | D14 | 旧历史继续使用前端边界推断 | 新旧 Session 可同时展示 |
+| D15 | Prompt 保存用户可见原文 | 保存收到的用户文本，不保存合并后的系统提示、附件二进制或私有思维链 |
+| D16 | Event 快照使用字段白名单 | 禁止盲存整行；自由文本、凭据和内部执行载荷不进入 `before_json/after_json` |
+| D17 | 不自动重放失联 Turn | 临时 WS 断线保持 running；runtime 丢失或后端重启时 running→failed、queued→cancelled |
+| D18 | 宿主内无 active Turn 时拒绝写入 | 有可信 Session 身份但无唯一 running Turn 时返回 409，不降级为无归因写入 |
+| D19 | Turn 完成与操作结果分层 | `completed` 允许包含 rejected/failed Event；Activity 由 Event 计算 `partial` |
+| D20 | `event_type` 为注册表键 | 固定为 `<target_type>.<operation>`，只允许注册表中的组合 |
+| D21 | Event 只追加不可修改 | 更正通过新的 Event 表达，禁止 UPDATE/DELETE 历史 Event |
+| D22 | Activity cursor 基于聚合项末事件 | 使用 `(occurred_at, event_id)` 的不透明 cursor，避免实时插入导致重复或漏项 |
 
 ---
 
@@ -622,6 +631,8 @@ MVP 上线后应能无文本解析地得到：
 - 状态机、队列、重启恢复、隐私范围；
 - Event 类型注册表；
 - API 和 CLI/MCP 归因契约。
+- 冻结测试矩阵，覆盖迁移、队列、取消、重连、重启、部分失败、权限和旧历史兼容；
+- Phase 0 不修改数据库或运行时代码。
 
 ### Phase 1：Turn 与 Event 存储（#283）
 

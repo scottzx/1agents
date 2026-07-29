@@ -105,7 +105,7 @@ func (db *DB) Close() error { return db.sql.Close() }
 // migrations without touching the global schemaVersion counter.
 func (db *DB) SQL() *sql.DB { return db.sql }
 
-const schemaVersion = 25
+const schemaVersion = 27
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -252,6 +252,20 @@ func (db *DB) migrateSchema() error {
 			return fmt.Errorf("meta: apply schema v25: %w", err)
 		}
 	}
+	// v26 (#281/#283) introduces the persistent AgentTurn and ProjectEvent
+	// stores plus replies.turn_id. The actual DDL runs through the idempotent
+	// reconcile helper below so a DB whose user_version was advanced by a
+	// sibling branch still heals missing tables, indexes, or the reply column.
+	if version < 26 {
+		if _, err := db.sql.Exec(schemaV26); err != nil {
+			return fmt.Errorf("meta: apply schema v26: %w", err)
+		}
+	}
+	if version < 27 {
+		if _, err := db.sql.Exec(schemaV27); err != nil {
+			return fmt.Errorf("meta: apply schema v27: %w", err)
+		}
+	}
 	// Schema v9–v12 only add project_items columns, but the v9 branch collision
 	// between #47 (source, user_confirm) and #50 (verifier/review fields) left
 	// some DBs with user_version bumped to the latest while the other branch's
@@ -305,6 +319,12 @@ func (db *DB) migrateSchema() error {
 	// a sibling branch before this column landed.
 	if err := db.ensureSessionsColumns(); err != nil {
 		return fmt.Errorf("meta: reconcile sessions columns: %w", err)
+	}
+	if err := db.ensureTurnModelSchema(); err != nil {
+		return fmt.Errorf("meta: reconcile turn model schema: %w", err)
+	}
+	if err := db.ensureTaskRunSchema(); err != nil {
+		return fmt.Errorf("meta: reconcile task run schema: %w", err)
 	}
 	// v24 (#202 / #204): Workspace Inbox envelope columns + backfill of legacy
 	// unscoped rows onto the builtin default assistant workspace.
@@ -943,6 +963,153 @@ const schemaV24 = ``
 // by ensureSessionsColumns (idempotent ADD COLUMN).
 const schemaV25 = ``
 
+// schemaV26 adds the Agent Turn / Project Event model. DDL is intentionally
+// reconciled by ensureTurnModelSchema instead of living behind a version gate:
+// this repository has seen branch-collision user_version bumps, and the
+// turn/event audit tables must never be silently absent on a "current" DB.
+const schemaV26 = ``
+
+// schemaV27 adds TaskRun/completion-audit persistence. Reconciled
+// unconditionally to heal databases affected by schema-version branch overlap.
+const schemaV27 = ``
+
+func (db *DB) ensureTaskRunSchema() error {
+	if _, err := db.sql.Exec(`
+		CREATE TABLE IF NOT EXISTS task_runs (
+			id             TEXT PRIMARY KEY,
+			project_id     TEXT NOT NULL,
+			task_id        TEXT NOT NULL,
+			origin_turn_id TEXT,
+			session_id     TEXT NOT NULL DEFAULT '',
+			kind           TEXT NOT NULL CHECK (kind IN ('execution','verification')),
+			status         TEXT NOT NULL CHECK (status IN ('running','completed','failed','cancelled')),
+			attempt        INTEGER NOT NULL,
+			evidence_json  TEXT NOT NULL DEFAULT '[]',
+			verdict_json   TEXT NOT NULL DEFAULT '',
+			closed_by_json TEXT NOT NULL DEFAULT '',
+			error_text     TEXT NOT NULL DEFAULT '',
+			started_at     TEXT NOT NULL,
+			completed_at   TEXT,
+			created_at     TEXT NOT NULL,
+			updated_at     TEXT NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_task_runs_task
+			ON task_runs(task_id, created_at DESC, id DESC);
+		CREATE INDEX IF NOT EXISTS idx_task_runs_origin_turn
+			ON task_runs(origin_turn_id, created_at DESC) WHERE origin_turn_id IS NOT NULL;
+		CREATE INDEX IF NOT EXISTS idx_task_runs_session
+			ON task_runs(session_id, created_at DESC) WHERE session_id != '';
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_task_runs_running_session
+			ON task_runs(session_id) WHERE session_id != '' AND status = 'running';
+	`); err != nil {
+		return err
+	}
+	have, err := db.projectItemsColumns()
+	if err != nil {
+		return err
+	}
+	if !have["closed_by"] {
+		if _, err := db.sql.Exec(`ALTER TABLE project_items ADD COLUMN closed_by TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (db *DB) ensureTurnModelSchema() error {
+	if _, err := db.sql.Exec(`
+		CREATE TABLE IF NOT EXISTS agent_turns (
+			id                  TEXT PRIMARY KEY,
+			project_id          TEXT NOT NULL,
+			session_id          TEXT NOT NULL,
+			client_request_id   TEXT NOT NULL DEFAULT '',
+			initiating_reply_id TEXT NOT NULL DEFAULT '',
+			agent_type          TEXT NOT NULL DEFAULT '',
+			status              TEXT NOT NULL CHECK (
+				status IN ('queued','running','completed','failed','cancelled')
+			),
+			prompt_text         TEXT NOT NULL DEFAULT '',
+			final_answer        TEXT NOT NULL DEFAULT '',
+			error_code          TEXT NOT NULL DEFAULT '',
+			error_text          TEXT NOT NULL DEFAULT '',
+			started_at          TEXT,
+			completed_at        TEXT,
+			created_at          TEXT NOT NULL,
+			updated_at          TEXT NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_agent_turns_session
+			ON agent_turns(session_id, created_at, id);
+		CREATE INDEX IF NOT EXISTS idx_agent_turns_project
+			ON agent_turns(project_id, created_at DESC, id DESC);
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_turns_one_running
+			ON agent_turns(session_id) WHERE status = 'running';
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_turns_client_request
+			ON agent_turns(session_id, client_request_id)
+			WHERE client_request_id != '';
+
+		CREATE TABLE IF NOT EXISTS project_events (
+			id             TEXT PRIMARY KEY,
+			project_id     TEXT NOT NULL,
+			correlation_id TEXT NOT NULL DEFAULT '',
+			turn_id        TEXT,
+			session_id     TEXT NOT NULL DEFAULT '',
+			task_run_id    TEXT NOT NULL DEFAULT '',
+			actor_kind     TEXT NOT NULL,
+			actor_name     TEXT NOT NULL DEFAULT '',
+			origin         TEXT NOT NULL,
+			event_type     TEXT NOT NULL,
+			target_type    TEXT NOT NULL,
+			target_id      TEXT NOT NULL,
+			operation      TEXT NOT NULL,
+			before_json    TEXT NOT NULL DEFAULT '{}',
+			after_json     TEXT NOT NULL DEFAULT '{}',
+			status         TEXT NOT NULL CHECK (
+				status IN ('succeeded','rejected','failed')
+			),
+			error_code     TEXT NOT NULL DEFAULT '',
+			error_text     TEXT NOT NULL DEFAULT '',
+			sequence       INTEGER NOT NULL,
+			created_at     TEXT NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_project_events_project
+			ON project_events(project_id, created_at DESC, id DESC);
+		CREATE INDEX IF NOT EXISTS idx_project_events_turn
+			ON project_events(turn_id, sequence) WHERE turn_id IS NOT NULL;
+		CREATE INDEX IF NOT EXISTS idx_project_events_session
+			ON project_events(session_id, created_at DESC, id DESC)
+			WHERE session_id != '';
+		CREATE INDEX IF NOT EXISTS idx_project_events_correlation
+			ON project_events(correlation_id, sequence) WHERE correlation_id != '';
+		CREATE INDEX IF NOT EXISTS idx_project_events_target
+			ON project_events(project_id, target_type, target_id, created_at DESC, id DESC);
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_project_events_turn_sequence
+			ON project_events(turn_id, sequence) WHERE turn_id IS NOT NULL;
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_project_events_correlation_sequence
+			ON project_events(correlation_id, sequence)
+			WHERE turn_id IS NULL AND correlation_id != '';
+	`); err != nil {
+		return err
+	}
+
+	replyCols, err := db.tableColumns("replies")
+	if err != nil {
+		return err
+	}
+	if !replyCols["turn_id"] {
+		if _, err := db.sql.Exec(
+			`ALTER TABLE replies ADD COLUMN turn_id TEXT`,
+		); err != nil {
+			return fmt.Errorf("add replies.turn_id: %w", err)
+		}
+	}
+	if _, err := db.sql.Exec(
+		`CREATE INDEX IF NOT EXISTS idx_replies_turn ON replies(turn_id, created_at)`,
+	); err != nil {
+		return fmt.Errorf("create idx_replies_turn: %w", err)
+	}
+	return nil
+}
+
 // ensureInboxItemsColumns adds Workspace Inbox envelope columns (#202 Phase 1)
 // when missing and backfills empty workspace_id onto the builtin default
 // assistant ("default"). Idempotent and independent of user_version.
@@ -1038,6 +1205,13 @@ func strToTime(s string) time.Time {
 		return time.Time{}
 	}
 	return t.UTC()
+}
+
+func nullableString(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 // timePtrToVal converts *time.Time to a driver value (NULL when nil/zero).

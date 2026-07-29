@@ -89,6 +89,14 @@ else
     echo "WARNING: build/happy-cli not found. The happy daemon will be unavailable in this bundle."
 fi
 
+if [ -d "build/alipay-coffee" ]; then
+    echo "=== Copying Alipay coffee payment service ==="
+    rm -rf "$RESOURCE_DIR/alipay-coffee"
+    cp -r "build/alipay-coffee" "$RESOURCE_DIR/alipay-coffee"
+else
+    echo "WARNING: build/alipay-coffee not found. The coffee payment module will be unavailable."
+fi
+
 # 4.1. Ad-hoc sign binaries on macOS to satisfy Gatekeeper
 if [ "$(uname)" = "Darwin" ]; then
     echo "=== Ad-hoc signing binaries for macOS ==="

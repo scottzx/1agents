@@ -49,6 +49,15 @@ func TestApplyIMDecision_ApprovePendingReviewCompletes(t *testing.T) {
 	if status != string(TaskStatusCompleted) {
 		t.Fatalf("status = %q, want completed", status)
 	}
+	task, found, getErr := store.GetTask(id)
+	if getErr != nil || !found || task.ClosedBy == nil || task.ClosedBy.TaskRunID == "" {
+		t.Fatalf("completed IM decision missing audit: task=%+v found=%v err=%v", task, found, getErr)
+	}
+	runs, runsErr := store.TaskRuns().ListByTask(id)
+	if runsErr != nil || len(runs) != 1 || len(runs[0].Evidence) != 1 ||
+		runs[0].Evidence[0].Kind != "im_human_decision" {
+		t.Fatalf("IM TaskRun=%+v err=%v", runs, runsErr)
+	}
 }
 
 func TestApplyIMDecision_RejectCancels(t *testing.T) {

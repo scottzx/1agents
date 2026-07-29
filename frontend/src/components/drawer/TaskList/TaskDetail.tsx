@@ -16,6 +16,8 @@ import { taskPermalink } from '../../../stores/taskNavStore';
 import * as wsStore from '../../../stores/workspaceStore';
 import * as sessionStore from '../../../stores/sessionStore';
 import * as ui from '../../../stores/uiStore';
+import { ProjectActivityTimeline } from '../../activity/ProjectActivityTimeline';
+import { TaskRunAuditTrail } from '../../activity/TaskRunAuditTrail';
 
 // Tab / control icons — feather-style outline, inherit color via currentColor
 // (matches the inline-SVG convention in SessionsView/TaskTable).
@@ -1152,6 +1154,8 @@ export function TaskDetail({
                                     {replies.length} 条回复 · {task.sessions.length} 个执行分支
                                 </span>
                             </div>
+                            <ProjectActivityTimeline workspaceId={workspaceId} targetId={task.id} compact />
+                            <TaskRunAuditTrail taskId={task.id} />
                             <div class="topic-replies">
                                 {timelineNodes.map(node => {
                                     if (node.kind === 'comment') {

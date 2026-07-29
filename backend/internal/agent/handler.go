@@ -21,11 +21,14 @@ import (
 
 // Handler exposes the REST surface for the chat session and task index.
 type Handler struct {
-	store      *Store
-	tasksStore *TasksStore
-	acpxClient *AcpxClient
-	scheduler  *Scheduler
-	catalog    *CatalogStore
+	store         *Store
+	tasksStore    *TasksStore
+	turnStore     *meta.AgentTurnStore
+	activityStore *meta.ProjectActivityStore
+	taskRunStore  *meta.TaskRunStore
+	acpxClient    *AcpxClient
+	scheduler     *Scheduler
+	catalog       *CatalogStore
 	// selfBaseURL is this daemon's own loopback HTTP base (e.g.
 	// http://127.0.0.1:8080), injected into the AI Project Manager's
 	// task-tool MCP subprocess so it can call back into the task API.
@@ -35,13 +38,29 @@ type Handler struct {
 // NewHandler returns a Handler backed by stores and client. selfBaseURL is the
 // daemon's own loopback HTTP base used by the PM task-tool MCP subprocess.
 func NewHandler(store *Store, tasksStore *TasksStore, acpxClient *AcpxClient, scheduler *Scheduler, catalog *CatalogStore, selfBaseURL string) *Handler {
+	var turnStore *meta.AgentTurnStore
+	var activityStore *meta.ProjectActivityStore
+	var taskRunStore *meta.TaskRunStore
+	if acpxClient != nil {
+		turnStore = acpxClient.turnStore
+	}
+	if db, err := meta.OpenDefault(); err == nil {
+		activityStore = meta.NewProjectActivityStore(db)
+		taskRunStore = meta.NewTaskRunStore(db)
+		if turnStore == nil {
+			turnStore = meta.NewAgentTurnStore(db)
+		}
+	}
 	return &Handler{
-		store:       store,
-		tasksStore:  tasksStore,
-		acpxClient:  acpxClient,
-		scheduler:   scheduler,
-		catalog:     catalog,
-		selfBaseURL: selfBaseURL,
+		store:         store,
+		tasksStore:    tasksStore,
+		turnStore:     turnStore,
+		activityStore: activityStore,
+		taskRunStore:  taskRunStore,
+		acpxClient:    acpxClient,
+		scheduler:     scheduler,
+		catalog:       catalog,
+		selfBaseURL:   selfBaseURL,
 	}
 }
 
@@ -375,15 +394,15 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 
 	case http.MethodPost:
 		var body struct {
-			WorkspaceID         string          `json:"workspace_id"`
-			Title               string          `json:"title"`
-			Description         string          `json:"description"`
-			AcceptanceCriteria  string          `json:"acceptanceCriteria"`
-			Priority            string          `json:"priority"`
-			Assignee            string          `json:"assignee"`
+			WorkspaceID        string `json:"workspace_id"`
+			Title              string `json:"title"`
+			Description        string `json:"description"`
+			AcceptanceCriteria string `json:"acceptanceCriteria"`
+			Priority           string `json:"priority"`
+			Assignee           string `json:"assignee"`
 			// Executor is agent|function|human; empty defaults via matrix (#198).
-			Executor     string `json:"executor"`
-			FunctionType string `json:"functionType"`
+			Executor            string          `json:"executor"`
+			FunctionType        string          `json:"functionType"`
 			Labels              []string        `json:"labels"`
 			ParentID            string          `json:"parentId"`
 			Milestone           string          `json:"milestone"`
@@ -455,6 +474,19 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
+		projectID, err := h.tasksStore.ProjectIDForPath(wsPath)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if projectID == "" {
+			projectID = body.WorkspaceID
+		}
+		mutationCtx, err := h.resolveMutationContext(r, projectID)
+		if err != nil {
+			writeMutationContextError(w, err)
+			return
+		}
 
 		maxRetries := 1
 		if body.MaxRetries != nil && *body.MaxRetries >= 0 {
@@ -519,11 +551,25 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			newTask.ScheduleType = ScheduleTypeImmediate
 		}
 
-		if err := h.tasksStore.Mutate(wsPath, func(cfg *TasksConfig) bool {
+		events := []meta.ProjectEvent{
+			mutationEvent(mutationCtx, "project_item", newTask.ID, "create", map[string]any{}, taskEventSnapshot(newTask)),
+		}
+		for _, dependencyID := range newTask.DependsOn {
+			events = append(events, mutationEvent(
+				mutationCtx,
+				"dependency",
+				newTask.ID+":"+dependencyID,
+				"link",
+				map[string]any{},
+				map[string]any{"taskId": newTask.ID, "dependsOn": dependencyID},
+			))
+		}
+		storedEvents, err := h.tasksStore.MutateWithEvents(wsPath, events, func(cfg *TasksConfig) bool {
 			cfg.Tasks = append(cfg.Tasks, newTask)
 			return true
-		}); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		})
+		if err != nil {
+			writeMutationContextError(w, err)
 			return
 		}
 		// Keep the roadmap's milestone list complete: a task may name a
@@ -538,7 +584,7 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 		// Save assigns the short number (#N) on the stored row, so re-fetch
 		// rather than returning the pre-save copy.
 		saved, _, _ := h.tasksStore.GetTask(newTask.ID)
-		writeJSON(w, saved)
+		writeMutationJSON(w, saved, storedEvents[0])
 
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -610,6 +656,7 @@ func (h *Handler) workspaceIDForPath(path string) string {
 //	DELETE /api/agent/project-items/{id}          → remove item (legacy, needs workspace_id)
 //	POST   /api/agent/project-items/{id}/replies  → append a user reply to the timeline
 //	GET    /api/agent/project-items/{id}/graph    → cross-reference graph (outgoing + backlinks)
+//	GET    /api/agent/project-items/{id}/runs     → structured execution/verification audit
 func (h *Handler) HandleTasksItem(w http.ResponseWriter, r *http.Request) {
 	const prefix = "/api/agent/project-items/"
 	rest := r.URL.Path[len(prefix):]
@@ -645,6 +692,30 @@ func (h *Handler) HandleTasksItem(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.handleTaskGraph(w, r, id)
+		return
+	}
+	if sub == "runs" {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if h.taskRunStore == nil {
+			http.Error(w, "task run store is unavailable", http.StatusInternalServerError)
+			return
+		}
+		if _, ok, err := h.tasksStore.GetTask(id); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		} else if !ok {
+			http.Error(w, "task not found", http.StatusNotFound)
+			return
+		}
+		runs, err := h.taskRunStore.ListByTask(id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]any{"items": runs})
 		return
 	}
 	if sub != "" {
@@ -812,6 +883,16 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		http.Error(w, "task not found", http.StatusNotFound)
 		return
 	}
+	projectID, err := h.tasksStore.ProjectIDForPath(existing.WorkspacePath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	mutationCtx, err := h.resolveMutationContext(r, projectID)
+	if err != nil {
+		writeMutationContextError(w, err)
+		return
+	}
 
 	// Pre-validate executor×assignee matrix before Mutate (#198).
 	var patchAsg *meta.ExecutorAssignment
@@ -841,7 +922,10 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 	}
 
 	found := false
-	if err := h.tasksStore.Mutate(existing.WorkspacePath, func(cfg *TasksConfig) bool {
+	events := []meta.ProjectEvent{
+		mutationEvent(mutationCtx, "project_item", id, "update", taskEventSnapshot(existing), taskEventSnapshot(existing)),
+	}
+	storedEvents, err := h.tasksStore.MutateWithEvents(existing.WorkspacePath, events, func(cfg *TasksConfig) bool {
 		var target *Task
 		for i := range cfg.Tasks {
 			if cfg.Tasks[i].ID == id {
@@ -993,9 +1077,11 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 			target.Summary = *body.Summary
 		}
 		target.UpdatedAt = time.Now().UTC()
+		events[0].After, _ = json.Marshal(taskEventSnapshot(*target))
 		return true
-	}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	})
+	if err != nil {
+		writeMutationContextError(w, err)
 		return
 	}
 	if !found {
@@ -1010,6 +1096,58 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 	if body.Title != nil || body.Description != nil {
 		_, _ = h.tasksStore.SyncRefLinks(id)
 	}
+	updated, updatedOK, updatedErr := h.tasksStore.GetTask(id)
+	if updatedErr != nil {
+		http.Error(w, updatedErr.Error(), http.StatusInternalServerError)
+		return
+	}
+	if updatedOK && updated.Type == ItemTypeTask && updated.Status == TaskStatusCompleted && existing.Status != TaskStatusCompleted {
+		run, runErr := h.tasksStore.TaskRuns().Create(existing.WorkspacePath, meta.TaskRun{
+			TaskID: id, OriginTurnID: mutationCtx.TurnID, SessionID: mutationCtx.SessionID,
+			Kind: meta.TaskRunExecution,
+		})
+		if runErr == nil {
+			closedBy := &meta.ClosedBy{Kind: "manual_decision", Verdict: "accepted"}
+			run, runErr = h.tasksStore.TaskRuns().Finish(run.ID, meta.TaskRunCompleted, []meta.CompletionEvidence{{
+				Kind: "human_override", Summary: "A user or explicitly authorized PM completed the task.",
+				SessionID: mutationCtx.SessionID, TurnID: mutationCtx.TurnID,
+			}}, nil, closedBy, "")
+			if runErr == nil {
+				now := time.Now().UTC()
+				_ = h.tasksStore.Mutate(existing.WorkspacePath, func(cfg *TasksConfig) bool {
+					for i := range cfg.Tasks {
+						if cfg.Tasks[i].ID != id {
+							continue
+						}
+						cfg.Tasks[i].ClosedBy = run.ClosedBy
+						cfg.Tasks[i].Replies = append(cfg.Tasks[i].Replies, Reply{
+							Author: Author{Kind: "system", Name: "completion-gate"},
+							Text:   fmt.Sprintf("完成审计：TaskRun `%s`，记录人工决策 Evidence。", run.ID),
+							Mode:   ModePureComment, CreatedAt: now,
+						})
+						return true
+					}
+					return false
+				})
+			}
+		}
+		if runErr != nil {
+			_ = h.tasksStore.Mutate(existing.WorkspacePath, func(cfg *TasksConfig) bool {
+				for i := range cfg.Tasks {
+					if cfg.Tasks[i].ID == id {
+						cfg.Tasks[i].Status = TaskStatusFailed
+						cfg.Tasks[i].CompletedAt = nil
+						cfg.Tasks[i].ClosedBy = nil
+						cfg.Tasks[i].Summary = "completion audit failed: " + runErr.Error()
+						return true
+					}
+				}
+				return false
+			})
+			http.Error(w, "completion audit failed: "+runErr.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
 
 	task, ok, err := h.tasksStore.GetTask(id)
 	if err != nil {
@@ -1020,7 +1158,7 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		http.Error(w, "task not found", http.StatusNotFound)
 		return
 	}
-	writeJSON(w, task)
+	writeMutationJSON(w, task, storedEvents[0])
 }
 
 // handleTaskGraph returns the cross-reference knowledge graph around a task
@@ -1190,16 +1328,35 @@ func (h *Handler) HandleMilestonesRoot(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		ms, err := h.tasksStore.CreateMilestone(wsPath, strings.TrimSpace(body.Name), body.Description, body.TargetDate, body.PredecessorID)
+		projectID, err := h.tasksStore.ProjectIDForPath(wsPath)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		mutationCtx, err := h.resolveMutationContext(r, projectID)
+		if err != nil {
+			writeMutationContextError(w, err)
+			return
+		}
+		event := mutationEvent(mutationCtx, "milestone", "", "create", map[string]any{}, nil)
+		ms, err := h.tasksStore.CreateMilestone(
+			wsPath,
+			strings.TrimSpace(body.Name),
+			body.Description,
+			body.TargetDate,
+			body.PredecessorID,
+			event,
+		)
 		if err != nil {
 			if errors.Is(err, ErrMilestoneExists) {
 				http.Error(w, "milestone name already exists", http.StatusConflict)
 				return
 			}
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeMutationContextError(w, err)
 			return
 		}
-		writeJSON(w, ms)
+		event.TargetID = ms.ID
+		writeMutationJSON(w, ms, event)
 
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1289,12 +1446,23 @@ func (h *Handler) HandleMilestonesItem(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
+		projectID, err := h.tasksStore.ProjectIDForPath(wsPath)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		mutationCtx, err := h.resolveMutationContext(r, projectID)
+		if err != nil {
+			writeMutationContextError(w, err)
+			return
+		}
 		patch := MilestonePatch{Description: body.Description, TargetDate: body.TargetDate, PredecessorID: body.PredecessorID}
 		if body.Name != nil {
 			trimmed := strings.TrimSpace(*body.Name)
 			patch.Name = &trimmed
 		}
-		ms, err := h.tasksStore.UpdateMilestone(wsPath, id, patch)
+		event := mutationEvent(mutationCtx, "milestone", id, "update", nil, nil)
+		ms, err := h.tasksStore.UpdateMilestone(wsPath, id, patch, event)
 		if err != nil {
 			switch {
 			case errors.Is(err, ErrMilestoneExists):
@@ -1302,11 +1470,11 @@ func (h *Handler) HandleMilestonesItem(w http.ResponseWriter, r *http.Request) {
 			case errors.Is(err, ErrNotFound):
 				http.Error(w, "milestone not found", http.StatusNotFound)
 			default:
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				writeMutationContextError(w, err)
 			}
 			return
 		}
-		writeJSON(w, ms)
+		writeMutationJSON(w, ms, event)
 
 	case http.MethodDelete:
 		wsID := r.URL.Query().Get("workspace_id")
@@ -1319,15 +1487,26 @@ func (h *Handler) HandleMilestonesItem(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		if err := h.tasksStore.DeleteMilestone(wsPath, id); err != nil {
+		projectID, err := h.tasksStore.ProjectIDForPath(wsPath)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		mutationCtx, err := h.resolveMutationContext(r, projectID)
+		if err != nil {
+			writeMutationContextError(w, err)
+			return
+		}
+		event := mutationEvent(mutationCtx, "milestone", id, "delete", nil, map[string]any{})
+		if err := h.tasksStore.DeleteMilestone(wsPath, id, event); err != nil {
 			if errors.Is(err, ErrNotFound) {
 				http.Error(w, "milestone not found", http.StatusNotFound)
 				return
 			}
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeMutationContextError(w, err)
 			return
 		}
-		writeJSON(w, map[string]any{"ok": true})
+		writeMutationJSON(w, map[string]any{"ok": true}, event)
 
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1554,7 +1733,7 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	h.acpxClient.Bridge(w, r, wsPath, taskId, sessionId, agentType, systemContext, mcpServers, h.scheduler, h.tasksStore, h.store, acpSessionID, replyID)
+	h.acpxClient.Bridge(w, r, wsID, wsPath, taskId, sessionId, agentType, systemContext, mcpServers, h.scheduler, h.tasksStore, h.store, acpSessionID, replyID)
 }
 
 // buildIssueBackground renders the issue-model §9 plain-text background
@@ -1655,6 +1834,7 @@ func getProjectSlug(path string) string {
 //  1. Claude Code: ~/.claude/projects/<slug>/<id>.jsonl (aiTitle, then slug)
 //  2. Grok Build:  ~/.grok/sessions/<url-encoded-cwd>/<id>/summary.json
 //     (generated_title, then session_summary)
+//
 // Falls back to defaultName when neither source has a title yet.
 func resolveAcpSessionTitle(workspacePath, acpSessionID, defaultName string) string {
 	if acpSessionID == "" {

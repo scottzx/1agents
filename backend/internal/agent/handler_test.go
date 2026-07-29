@@ -351,7 +351,8 @@ func TestHandlerTaskGetPatchReply(t *testing.T) {
 	if patched.Description != "新描述" || patched.IssueState != IssueClosed {
 		t.Fatalf("patch not applied: %+v", patched)
 	}
-	if len(patched.Replies) != 1 || patched.Replies[0].Text != "先调研" {
+	if len(patched.Replies) != 2 || patched.Replies[0].Text != "先调研" ||
+		patched.ClosedBy == nil || patched.ClosedBy.TaskRunID == "" {
 		t.Fatalf("timeline missing after patch: %+v", patched.Replies)
 	}
 
@@ -481,10 +482,10 @@ func TestSessionUserRenamePreservedByList(t *testing.T) {
 	// Seed a default-named session with an AcpSessionID so the AI-title
 	// auto-resolution branch is on the code path.
 	rec := ChatSessionRecord{
-		ID:          "user-1",
-		WorkspaceID: "ws-1",
-		Name:        "新建会话",
-		AgentType:   AgentTypeClaudecode,
+		ID:           "user-1",
+		WorkspaceID:  "ws-1",
+		Name:         "新建会话",
+		AgentType:    AgentTypeClaudecode,
 		AcpSessionID: "uuid-1",
 	}
 	if err := s.Add(rec); err != nil {
@@ -544,10 +545,10 @@ func TestSessionDefaultNameStillAutoTitle(t *testing.T) {
 	h, s := newTestHandler(t)
 
 	rec := ChatSessionRecord{
-		ID:          "auto-1",
-		WorkspaceID: "ws-1",
-		Name:        "新建会话",
-		AgentType:   AgentTypeClaudecode,
+		ID:           "auto-1",
+		WorkspaceID:  "ws-1",
+		Name:         "新建会话",
+		AgentType:    AgentTypeClaudecode,
 		AcpSessionID: "uuid-auto",
 	}
 	if err := s.Add(rec); err != nil {

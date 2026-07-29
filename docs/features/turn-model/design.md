@@ -2,16 +2,17 @@
 
 | 字段 | 内容 |
 |------|------|
-| 状态 | **设计草案 · 待讨论** |
-| 版本 | **v0.1** |
-| 日期 | 2026-07-27 |
+| 状态 | **已实现（#282–#288，2026-07-29）** |
+| 版本 | **v1.0** |
+| 日期 | 2026-07-29 |
 | 范围 | ChatUI、Agent Bridge、ProjectItems CLI/MCP、PM 看板、Task Detail、meta.db |
 | 产品 PRD | [prd.md](./prd.md)（产品决策与 MVP 范围以 PRD 为准） |
+| 实现走查 | [walkthrough.md](./walkthrough.md) |
 | 关联 | [issue-model](../issue-model/design.md)、[project-model](../project-model/design.md)、[pm-standalone](../pm-standalone/prd.md)、[verification-gate](../verification-gate/design.md) |
 
 ---
 
-> **2026-07-27 决策补充：**项目动态需要覆盖 ProjectItem、Milestone、Dependency、Session、TaskRun 与 Verification，因此目标事件源由本文初稿中的 `project_item_events` 收敛为通用 `project_events`。Project Activity 不单独存储，而是按 `turn_id / correlation_id` 聚合 Events 的只读投影。详细产品契约见 [PRD](./prd.md)。
+> **Phase 0 ADR（2026-07-29）：**本文是 #282 冻结后的实施基线。事件源唯一命名为 `project_events`；Project Activity 是按 `turn_id / correlation_id` 聚合 Events 的只读投影。本文所有“候选”均明确标为非 MVP，不是后续任务的待决策项。
 
 ## 0. 一句话定位
 
@@ -104,9 +105,9 @@ Project
 AgentTurn #2
   ├── 用户请求
   ├── 最终回答
-  ├── ProjectItemEvent → 创建 A
-  ├── ProjectItemEvent → 创建 B
-  ├── ProjectItemEvent → 更新 C
+  ├── ProjectEvent → 创建 A
+  ├── ProjectEvent → 创建 B
+  ├── ProjectEvent → 更新 C
   └── 可选：触发一个或多个 TaskRun
 ```
 
@@ -115,7 +116,7 @@ AgentTurn #2
 ```text
 Project       1 ── N ChatSession
 ChatSession   1 ── N AgentTurn
-AgentTurn     N ── M ProjectItem（通过 ProjectItemEvent）
+AgentTurn     N ── M ProjectItem（通过 ProjectEvent）
 ProjectItem   1 ── N TaskRun
 AgentTurn     1 ── N TaskRun（可选 origin_turn_id）
 ```
@@ -128,7 +129,7 @@ AgentTurn     1 ── N TaskRun（可选 origin_turn_id）
 | Turn | 这次用户意图产生了什么结果？ | 一次请求到最终回答 |
 | ProjectItem | 项目中需要跟踪的事实是什么？ | 从创建到关闭/归档 |
 | TaskRun | 某个 Task 这一次如何执行？ | 一次执行/验收/返工尝试 |
-| ProjectItemEvent | 项目事实具体发生了什么变化？ | 一次不可变变更事件 |
+| ProjectEvent | 项目事实具体发生了什么变化？ | 一次不可变变更事件 |
 | Completion Audit | 为什么允许判定 completed/closed？ | 一次有证据的裁定 |
 
 ---
@@ -170,17 +171,17 @@ status = completed
 每次创建 Task 时，后端同时写入事件：
 
 ```text
-ProjectItemEvent E1
+ProjectEvent E1
 turn_id = T100
 operation = create
 target_id = Task A
 
-ProjectItemEvent E2
+ProjectEvent E2
 turn_id = T100
 operation = create
 target_id = Task B
 
-ProjectItemEvent E3
+ProjectEvent E3
 turn_id = T100
 operation = create
 target_id = Task C
@@ -221,7 +222,7 @@ target_id = Task C
 
 2. **Project Activity**
    - 以 Turn 为单位展示一次批量操作；
-   - 可展开查看三个 ProjectItemEvent。
+   - 可展开查看三个 ProjectEvent。
 
 3. **Task Detail**
    - 每张 Task 只投影与自身相关的 Event；
@@ -243,7 +244,7 @@ CLI/MCP create/update
   → 请求携带可信 Session 上下文
   → 后端解析当前 running Turn
   → 写 ProjectItem
-  → 同事务写 ProjectItemEvent
+  → 同事务写 ProjectEvent
 ```
 
 Agent 不需要在每次创建后再执行一次：
@@ -266,7 +267,7 @@ bind task to current turn
 
 #### A. 操作归因：这个 Turn 创建或修改了哪些 Items
 
-这是 `ProjectItemEvent.turn_id`，应自动完成。
+这是 `ProjectEvent.turn_id`，应自动完成。
 
 不需要用户或 Agent 手动执行 CLI bind。
 
@@ -356,7 +357,7 @@ relation = referenced
 
 - `sessions attach-task` 改变后续会话上下文和可能的权限边界；
 - `turns attach-item` 只补充历史/审计关系；
-- 自动 ProjectItemEvent 只是记录本轮实际写操作。
+- 自动 ProjectEvent 只是记录本轮实际写操作。
 
 是否允许把一个已经运行中的 project-wide Session 转为 task-scoped Session，需要单独讨论，不能作为 Turn MVP 的隐式行为。
 
@@ -371,13 +372,17 @@ relation = referenced
 ```sql
 CREATE TABLE agent_turns (
     id                  TEXT PRIMARY KEY,
-    project_id          TEXT NOT NULL REFERENCES projects(id),
-    session_id          TEXT NOT NULL REFERENCES sessions(id),
-    initiating_reply_id TEXT,
+    project_id          TEXT NOT NULL,
+    session_id          TEXT NOT NULL,
+    client_request_id   TEXT NOT NULL DEFAULT '',
+    initiating_reply_id TEXT NOT NULL DEFAULT '',
     agent_type          TEXT NOT NULL DEFAULT '',
-    status              TEXT NOT NULL,
+    status              TEXT NOT NULL CHECK (
+                            status IN ('queued','running','completed','failed','cancelled')
+                        ),
     prompt_text         TEXT NOT NULL DEFAULT '',
     final_answer        TEXT NOT NULL DEFAULT '',
+    error_code          TEXT NOT NULL DEFAULT '',
     error_text          TEXT NOT NULL DEFAULT '',
     started_at          TEXT,
     completed_at        TEXT,
@@ -386,10 +391,18 @@ CREATE TABLE agent_turns (
 );
 
 CREATE INDEX idx_agent_turns_session
-    ON agent_turns(session_id, created_at);
+    ON agent_turns(session_id, created_at, id);
 
 CREATE INDEX idx_agent_turns_project
-    ON agent_turns(project_id, created_at DESC);
+    ON agent_turns(project_id, created_at DESC, id DESC);
+
+CREATE UNIQUE INDEX idx_agent_turns_one_running
+    ON agent_turns(session_id)
+    WHERE status = 'running';
+
+CREATE UNIQUE INDEX idx_agent_turns_client_request
+    ON agent_turns(session_id, client_request_id)
+    WHERE client_request_id != '';
 ```
 
 MVP 状态：
@@ -404,47 +417,103 @@ queued | running | completed | failed | cancelled
 waiting_approval | partial_failure
 ```
 
-### 5.2 `project_item_events`
+`client_request_id` 接收前端/Bridge 的 `requestId`。旧客户端不提供时由后端生成；同一 Session
+重复提交同一个非空 ID 时返回已有 Turn，不能再创建第二轮。
+
+`prompt_text` 只保存用户实际提交的可见文本，不保存合并后的 role/system context、附件二进制、
+私有思维链或工具原始日志。`final_answer` 只保存最终用户可见回答；过程消息继续由 Session
+transcript 承载。`error_text` 只能写可展示的脱敏错误，内部堆栈留在服务日志。
+
+### 5.2 `project_events`
 
 ```sql
-CREATE TABLE project_item_events (
-    id          TEXT PRIMARY KEY,
-    project_id  TEXT NOT NULL REFERENCES projects(id),
-    turn_id     TEXT REFERENCES agent_turns(id),
-    task_run_id TEXT,
-    target_type TEXT NOT NULL,
-    target_id   TEXT NOT NULL,
-    operation   TEXT NOT NULL,
-    before_json TEXT,
-    after_json  TEXT,
-    actor_kind  TEXT NOT NULL,
-    actor_name  TEXT NOT NULL DEFAULT '',
-    sequence    INTEGER NOT NULL,
-    status      TEXT NOT NULL,
-    error_text  TEXT NOT NULL DEFAULT '',
-    created_at  TEXT NOT NULL
+CREATE TABLE project_events (
+    id             TEXT PRIMARY KEY,
+    project_id     TEXT NOT NULL,
+    correlation_id TEXT NOT NULL DEFAULT '',
+    turn_id        TEXT,
+    session_id     TEXT NOT NULL DEFAULT '',
+    task_run_id    TEXT NOT NULL DEFAULT '',
+    actor_kind     TEXT NOT NULL,
+    actor_name     TEXT NOT NULL DEFAULT '',
+    origin         TEXT NOT NULL,
+    event_type     TEXT NOT NULL,
+    target_type    TEXT NOT NULL,
+    target_id      TEXT NOT NULL,
+    operation      TEXT NOT NULL,
+    before_json    TEXT NOT NULL DEFAULT '{}',
+    after_json     TEXT NOT NULL DEFAULT '{}',
+    status         TEXT NOT NULL CHECK (
+                       status IN ('succeeded','rejected','failed')
+                   ),
+    error_code     TEXT NOT NULL DEFAULT '',
+    error_text     TEXT NOT NULL DEFAULT '',
+    sequence       INTEGER NOT NULL,
+    created_at     TEXT NOT NULL
 );
 
-CREATE INDEX idx_project_item_events_turn
-    ON project_item_events(turn_id, sequence);
+CREATE INDEX idx_project_events_project
+    ON project_events(project_id, created_at DESC, id DESC);
 
-CREATE INDEX idx_project_item_events_target
-    ON project_item_events(project_id, target_type, target_id, created_at DESC);
+CREATE INDEX idx_project_events_turn
+    ON project_events(turn_id, sequence)
+    WHERE turn_id IS NOT NULL;
+
+CREATE INDEX idx_project_events_session
+    ON project_events(session_id, created_at DESC, id DESC)
+    WHERE session_id != '';
+
+CREATE INDEX idx_project_events_correlation
+    ON project_events(correlation_id, sequence)
+    WHERE correlation_id != '';
+
+CREATE INDEX idx_project_events_target
+    ON project_events(project_id, target_type, target_id, created_at DESC, id DESC);
+
+CREATE UNIQUE INDEX idx_project_events_turn_sequence
+    ON project_events(turn_id, sequence)
+    WHERE turn_id IS NOT NULL;
+
+CREATE UNIQUE INDEX idx_project_events_correlation_sequence
+    ON project_events(correlation_id, sequence)
+    WHERE turn_id IS NULL AND correlation_id != '';
 ```
 
-MVP `target_type`：
+Event 是只追加事实。Store 和 HTTP API 不提供 UPDATE/DELETE；任何更正都写一个新的反向或修正
+Event。成功变更必须与目标写入同事务提交。业务规则拒绝写 `status=rejected` 且目标不变；内部失败
+可以在身份和 Project 已验证后尽力写 `status=failed`，但数据库本身不可用时不承诺审计落盘。
 
-```text
-project_item | milestone | dependency
-```
+`before_json/after_json` 是按目标类型构造的字段白名单，不是数据库整行 dump：
 
-MVP `operation`：
+| 目标 | 允许保留值 | 必须排除或只记 `changed=true` |
+|------|------------|------------------------------|
+| `project_item` | id、number、title、type、issueState、status、priority、assignee、executor、milestone、labels、dependsOn、计划时间 | description、acceptanceCriteria、taskTarget、result、replies、凭据 |
+| `milestone` | id、name、targetDate、predecessorId、position | description 正文 |
+| `dependency` | taskId、dependsOn、relation | 无额外自由文本 |
+| `session` | id、projectId、taskId、role、agentType、archivedAt | sessionKey、permission token、transcript |
+| `turn` | id、sessionId、status、时间、errorCode | promptText、finalAnswer、errorText |
+| `task_run` | id、taskId、originTurnId、status、attempt、时间 | 原始日志、环境变量、凭据 |
+| `verification` | id、taskId、taskRunId、verdict、closedBy、证据引用 | 证据正文和可能含密钥的命令输出 |
 
-```text
-create | update | close | reopen | delete | link | unlink
-```
+### 5.3 Event 注册表
 
-### 5.3 `replies.turn_id`
+`event_type` 固定为 `<target_type>.<operation>`。MVP 只接受下表组合；增加组合必须先更新
+注册表和兼容性测试，不能把任意字符串直接写入数据库。
+
+| `target_type` | 允许的 `operation` | 对应 `event_type` |
+|---------------|--------------------|-------------------|
+| `project_item` | `create`、`update`、`close`、`reopen`、`complete`、`cancel`、`delete` | `project_item.<operation>` |
+| `milestone` | `create`、`update`、`delete` | `milestone.<operation>` |
+| `dependency` | `link`、`unlink` | `dependency.<operation>` |
+| `session` | `create`、`update`、`archive`、`reopen` | `session.<operation>` |
+| `turn` | `queue`、`start`、`complete`、`fail`、`cancel` | `turn.<operation>` |
+| `task_run` | `create`、`start`、`complete`、`fail`、`cancel` | `task_run.<operation>` |
+| `verification` | `create`、`complete`、`fail` | `verification.<operation>` |
+
+`operation=complete/cancel` 用于 Task status 的终态；`close/reopen` 只用于 requirement/bug
+的 `issueState`。这两个生命周期不能混用。
+
+### 5.4 `replies.turn_id`
 
 给现有 `replies` 增加：
 
@@ -457,7 +526,7 @@ CREATE INDEX idx_replies_turn ON replies(turn_id, created_at);
 
 旧数据允许 `turn_id IS NULL`，ChatUI 使用当前的消息边界算法兼容。
 
-### 5.4 `task_runs.origin_turn_id`
+### 5.5 `task_runs.origin_turn_id`
 
 当 `task_runs` 事件源落地时，建议增加：
 
@@ -488,15 +557,33 @@ queued ──► running ──► completed
    └─────────────────► cancelled
 ```
 
+只允许以下迁移：
+
+| 当前状态 | 允许下一状态 | 触发 |
+|----------|--------------|------|
+| 不存在 | `queued` | 后端接受 prompt 并持久化 Turn |
+| `queued` | `running` | 该 Session 无 running Turn，且队首 prompt 开始发送给 ACP |
+| `queued` | `cancelled` | 用户取消排队 prompt，或服务重启取消未确认派发的队列 |
+| `running` | `completed` | 收到对应 Turn 的自然 `done` |
+| `running` | `failed` | Agent/Bridge error、ACP runtime 丢失或后端启动恢复 |
+| `running` | `cancelled` | 用户停止当前轮；随后到达的旧 `done/error` 只记诊断日志 |
+
+终态不可再迁移。`completed` 只表示 AgentTurn 正常给出最终回答，不表示其中每次项目写入都成功，
+也不表示任何 Task 已通过完成门。Activity 根据同一 Turn 的 Event 计算
+`succeeded | partial | failed | cancelled` 展示状态。
+
 不变量：
 
 1. 一个 Session 同一时间最多只有一个 `running` Turn；
 2. 一个 Session 可以有多个 `queued` Turn；
-3. 工具调用只归因到当前 `running` Turn；
-4. `done/error/cancel` 必须终结当前 Turn；
-5. Session 断开不等于 Turn 自动完成；
-6. reconnect 后必须能恢复当前 Turn；
-7. Turn 完成后不再接受新的 ProjectItemEvent。
+3. 队列按 `(created_at, id)` FIFO；只有队首能迁移为 `running`；
+4. 工具调用只归因到当前 `running` Turn；
+5. `done/error/cancel` 必须按 `turn_id` 或 `client_request_id` 终结对应 Turn，不能只取“当前最后一轮”；
+6. Session 断开不等于 Turn 自动完成；
+7. reconnect 到仍存活的 Bridge 时恢复同一 Turn，不创建新 ID；
+8. Turn 完成后不再接受新的 ProjectEvent；
+9. 同一 `client_request_id` 的重复 prompt 返回原 Turn，不能重复执行；
+10. Turn 状态变更和对应 `turn.*` Event 在同一事务中写入。
 
 ### 6.2 Bridge 上下文
 
@@ -505,7 +592,7 @@ queued ──► running ──► completed
 ```text
 TurnContext
 - turnID
-- requestID / clientTurnID
+- clientRequestID
 - promptReplyID
 - status
 - finalText
@@ -519,7 +606,9 @@ activeTurn
 pendingTurns[]
 ```
 
-如果前端协议可以携带 `clientTurnId`，后端应校验并持久化；如果旧客户端没有，则后端生成 ID 并通过事件返回。
+协议统一沿用现有 `requestId` 字段作为 `clientRequestID`。后端校验为非空、长度不超过 128
+字节的 UTF-8 字符串并持久化；旧客户端没有该字段时，后端生成 ID 并在首个 `turn_queued`
+或 `turn_started` 事件中返回。
 
 ### 6.3 终止条件
 
@@ -529,8 +618,13 @@ pendingTurns[]
 | Agent error | 保存错误，`failed` |
 | 用户取消当前轮 | `cancelled` |
 | 取消排队 prompt | 对应 queued Turn `cancelled` |
-| WS 临时断开、runtime 仍运行 | 保持 `running` |
-| 后端重启后发现失联运行轮 | 恢复或经超时修复为 `failed`，策略待定 |
+| WS 临时断开、backend 与 runtime 仍运行 | 保持 `running`，重连恢复同一 Turn |
+| Bridge server/ACP runtime 连接丢失 | running→`failed(error_code=runtime_lost)`；queued→`cancelled` |
+| 后端启动发现遗留 running | →`failed(error_code=backend_restarted)` |
+| 后端启动发现遗留 queued | →`cancelled(error_code=backend_restarted)` |
+
+后端重启后不自动重放 prompt。ACP 工具可能产生非幂等外部副作用，系统无法证明重启前是否已发送或
+执行，因此自动重放会制造重复写入。用户重连后可以在原 ACP Session 历史上发起一个新的 Turn。
 
 ---
 
@@ -562,13 +656,17 @@ X-1Agents-Origin: cli | mcp
 
 后端处理写操作时：
 
-1. 验证 internal token；
-2. 验证 Session 属于当前 Project；
-3. 查询该 Session 当前唯一的 `running` Turn；
-4. 生成 `MutationContext`；
-5. 在同一事务中写 ProjectItem 和 ProjectItemEvent。
+1. 只在 loopback 请求上验证 `Authorization: Bearer <ONEAGENTS_INTERNAL_TOKEN>`；
+2. 读取 `X-1Agents-Session-ID`，并要求它与 token 所属进程注入的 Session 一致；
+3. 验证 Session 存在、未跨 Project，且请求 workspace 与 Session.project_id 一致；
+4. 查询该 Session 当前唯一的 `running` Turn；
+5. 若没有 running Turn，返回 HTTP 409、`error.code=no_active_turn`，不得降级为 `turn_id=null`；
+6. 若出现多个 running Turn，返回 HTTP 500、`error.code=turn_invariant_violated`，不得猜测；
+7. 从 Session 记录推导 actor/agentType，从请求面推导 `origin=cli|mcp`；
+8. 生成 `MutationContext`，在同一事务中写 Project 数据和 ProjectEvent。
 
-不允许普通外部请求通过任意 Header 声明 `turn_id`。
+不允许任何客户端直接声明 `turn_id`。非 loopback 请求即使携带上述 Header 也按普通外部请求
+处理；无有效内部 bearer 时不得信任 Session、origin 或 actor Header。
 
 ### 7.3 CLI 在宿主外运行
 
@@ -583,16 +681,20 @@ X-1Agents-Origin: cli | mcp
 - 操作仍然正常；
 - `turn_id = null`；
 - `actor_kind = user` 或 `cli`；
-- 仍写 ProjectItemEvent；
+- 仍写 ProjectEvent；
 - 不伪造一个 Agent Turn。
 
 这样保持 [pm-standalone](../pm-standalone/prd.md) 的“CLI 自运行、无完整工作台也能记任务”定位。
+
+宿主外 CLI 的 `actor_kind=user`，`origin=cli`。人工 UI 写入使用后端认证身份和
+`origin=ui|api`；Scheduler 使用 `actor_kind=scheduler`。这些值都由可信服务端路径设置，
+不接受调用方自由填写。
 
 ---
 
 ## 8. 写入一致性
 
-ProjectItem 变更和 ProjectItemEvent 必须在同一 SQLite 事务中提交。
+ProjectItem 变更和 ProjectEvent 必须在同一 SQLite 事务中提交。
 
 推荐底层写入接口接受：
 
@@ -604,6 +706,7 @@ MutationContext
 - sessionID
 - turnID
 - taskRunID
+- correlationID
 - origin
 ```
 
@@ -615,13 +718,22 @@ BEGIN
   校验业务规则和权限
   修改 ProjectItem
   写 after snapshot
-  INSERT ProjectItemEvent
+  INSERT ProjectEvent
 COMMIT
 ```
 
 失败时整个事务回滚。
 
-ProjectItemEvent 应由底层 Store 生成，而不是由 Agent 最终回答、MCP 外层或前端推测。
+ProjectEvent 应由底层 Store 生成，而不是由 Agent 最终回答、MCP 外层或前端推测。
+
+单个命令只有两种原子结果：
+
+- 业务写入与 `status=succeeded` Event 一起提交；
+- 业务写入不发生，身份和 Project 已验证后单独追加 `status=rejected|failed` Event。
+
+一轮五个命令中四个成功、一个被完成门拒绝时，Turn 仍可在最终回答后成为 `completed`；
+Activity 状态为 `partial`，并展示 4 个 succeeded 与 1 个 rejected Event。失败 Event
+不能包含无权访问对象的 before/after，也不能泄露目标是否存在。
 
 ---
 
@@ -632,11 +744,21 @@ ProjectItemEvent 应由底层 Store 生成，而不是由 Agent 最终回答、M
 ```text
 GET /api/agent/turns?session_id=<id>&cursor=<cursor>
 GET /api/agent/turns/<turn-id>
-GET /api/agent/project-items/<item-id>/turns?cursor=<cursor>
-GET /api/agent/projects/<project-id>/turns?cursor=<cursor>
+GET /api/agent/projects/<project-id>/activity?cursor=<cursor>&source=<source>&target=<target>&status=<status>
+GET /api/agent/project-items/<item-id>/activity?cursor=<cursor>&source=<source>&status=<status>
 ```
 
 项目和任务历史应分页，不把全部 Turn 塞进现有 ProjectItem 列表响应。
+
+公共分页契约：
+
+- `limit` 默认 50，最小 1，最大 200；
+- 排序为 `(occurredAt DESC, lastEventId DESC)`；
+- `cursor` 是上述二元组的 base64url 不透明编码，调用方不得解析或构造；
+- 下一页严格查询 `< (occurredAt, lastEventId)`；
+- 返回 `{items, nextCursor, hasMore}`；
+- 非法 cursor 返回 HTTP 400、`error.code=invalid_cursor`；
+- Activity 的 `occurredAt/lastEventId` 取聚合项最后一个 Event，实时插入不会让已翻过的项重复出现。
 
 ### 9.2 Turn 响应
 
@@ -645,6 +767,7 @@ GET /api/agent/projects/<project-id>/turns?cursor=<cursor>
   "id": "T100",
   "projectId": "P1",
   "sessionId": "S10",
+  "clientRequestId": "request-100",
   "status": "completed",
   "promptText": "把 Turn 能力拆成三个 Tasks",
   "finalAnswer": "已创建三个任务并建立依赖。",
@@ -656,11 +779,14 @@ GET /api/agent/projects/<project-id>/turns?cursor=<cursor>
       "targetType": "project_item",
       "targetId": "A",
       "operation": "create",
-      "status": "completed"
+      "status": "succeeded"
     }
   ]
 }
 ```
+
+Turn Detail 仅在调用方拥有 Project 访问权时返回 `promptText/finalAnswer/errorText`。Activity 和
+Task Detail 默认只返回摘要及 Event 白名单快照，不把 Turn 正文复制进列表响应。
 
 ### 9.3 写操作响应
 
@@ -673,6 +799,22 @@ ProjectItems CLI/MCP/REST 的成功响应增加来源回执：
     "sessionId": "S10",
     "turnId": "T100",
     "eventId": "E1"
+  }
+}
+```
+
+失败响应保持同样的来源形状，并增加机器可读错误：
+
+```json
+{
+  "error": {
+    "code": "completion_evidence_required",
+    "message": "Task completion requires verification evidence."
+  },
+  "origin": {
+    "sessionId": "S10",
+    "turnId": "T100",
+    "eventId": "E5"
   }
 }
 ```
@@ -717,7 +859,7 @@ ProjectItems CLI/MCP/REST 的成功响应增加来源回执：
 [查看全部变更]
 ```
 
-回执来自 ProjectItemEvent，不从最终自然语言回答中解析。
+回执来自 ProjectEvent，不从最终自然语言回答中解析。
 
 ---
 
@@ -798,7 +940,7 @@ Completion Audit
 
 - 底层仍需执行完成门校验；
 - 缺少证据时更新失败；
-- ProjectItemEvent 记录失败；
+- ProjectEvent 记录失败；
 - Turn 回执显示“未完成：缺少验收证据”；
 - Agent 的自然语言不能绕过系统规则。
 
@@ -812,12 +954,12 @@ Completion Audit
 - 明确 queued/running/cancelled；
 - 明确 Session ID 如何传给 CLI/MCP；
 - 明确不保存私有思维链；
-- 决定后端重启时 running Turn 的恢复策略。
+- 冻结后端重启、隐私、Event 注册表和测试矩阵。
 
 ### Phase 1：持久化
 
 - 新增 `agent_turns`；
-- 新增 `project_item_events`；
+- 新增 `project_events`；
 - 新增 `replies.turn_id`；
 - Store、migration 和查询测试。
 
@@ -837,23 +979,28 @@ Completion Audit
 - 项目变更与 Event 原子提交；
 - CLI 输出 origin 回执。
 
-### Phase 4：读取 API 与 UI
+### Phase 4：Activity 读模型与 API
 
-- Session/ProjectItem/Project 的 Turn 查询；
+- Turn/correlation/event 聚合；
+- Project/ProjectItem Activity 查询；
+- cursor、筛选、摘要和统计。
+
+### Phase 5：前端
+
 - ChatUI 显式 ID + 旧数据回退；
 - Task Detail Turn 投影；
 - Project Activity；
 - 本轮项目操作回执。
 
-### Phase 5：TaskRun 和完成审计
+### Phase 6：TaskRun 和完成审计
 
 - `task_runs.origin_turn_id`；
 - 完成裁定引用证据；
 - Turn 回执区分“Agent 声称完成”和“系统验收完成”。
 
-### Phase 6：可选显式关联
+### Phase 7：后续候选
 
-确认真实需求后再决定：
+不属于 #281 的 MVP：
 
 - `turns attach-item`；
 - `turns detach-item`；
@@ -904,48 +1051,45 @@ Completion Audit
 
 ---
 
-## 15. 待讨论问题
+## 15. 已冻结 ADR 决策
 
 ### Q1：是否需要 `turns attach-item`
 
-当前建议：**非 MVP**。先依赖写操作自动产生 Event；只有“讨论但未修改”的关系确实影响用户体验时再增加。
+**决策：非 MVP。**先依赖写操作自动产生 Event；“讨论但未修改”的关系不进入第一版
+Project Activity 或 Task Detail。
 
 ### Q2：是否允许把 project-wide Session 转成 task-scoped Session
 
-这会改变上下文、UI 徽章和 MCP 权限边界，需要独立设计。不能因为某一轮创建了 Task 就自动转换。
+**决策：MVP 禁止自动转换。**这会改变上下文、UI 徽章和 MCP 权限边界，需要独立需求。
+不能因为某一轮创建了 Task 就自动转换。
 
 ### Q3：Turn 的 prompt 是否保存全文
 
-候选：
-
-- 保存全文；
-- 只引用用户 Reply；
-- 保存可检索摘要，全文仍在 Session history。
-
-需要结合隐私、搜索和 Session history 的可靠性决定。
+**决策：保存用户可见 prompt 原文。**保存的是客户端提交的 `text`，不是合并后的系统提示。
+不复制附件二进制、role/system context、私有思维链或工具原始日志。Task-scoped Session
+可以同时写 `replies.turn_id`；project-wide Session 不依赖 Task Reply 才能恢复 prompt。
 
 ### Q4：本轮过程保存到哪里
 
-当前建议：
+**决策：**
 
 - `agent_turns` 保存生命周期和最终回答；
-- `project_item_events` 保存领域变更；
+- `project_events` 保存领域变更；
 - 完整可见过程继续由 Session transcript 承载；
 - 不把工具日志复制到每张 Task。
 
-需要确认 Session transcript 的长期持久化和清理策略。
+Session transcript 的长期清理策略不属于本 Epic；Turn/Activity 在 transcript 不可用时仍须依靠
+prompt、final answer 和 Events 完成审计。
 
 ### Q5：后端重启后的 active Turn
 
-需要决定：
-
-- ACP runtime 可恢复时继续 running；
-- 无法恢复时标记 failed；
-- 超过阈值后由修复任务收口。
+**决策：不自动重放。**仅当前 backend 和 Bridge/runtime 都存活的临时 WS 断线可保持
+running。runtime 丢失或 backend 重启时 running→failed、queued→cancelled，并记录稳定
+`error_code`。用户重连后显式创建新 Turn。
 
 ### Q6：是否支持整轮 Undo
 
-非 MVP。Undo 必须包含：
+**决策：非 MVP。**Undo 必须包含：
 
 - Item version/updated_at 冲突检测；
 - 逆向操作；
@@ -963,12 +1107,43 @@ Completion Audit
 |------|------|
 | 底层名称 | `AgentTurn` |
 | 普通 Session 是否必须绑定 Task | 否 |
-| 非 Task Session 创建 3 个 Tasks 如何追踪 | 一个 Turn + 三个 ProjectItemEvents |
+| 非 Task Session 创建 3 个 Tasks 如何追踪 | 一个 Turn + 三个 ProjectEvents |
 | 是否自动把 Session 绑定到其中一张 Task | 否 |
 | 是否要求 Agent 额外调用 CLI bind | 否 |
 | CLI/MCP 如何归因 | 静态 Session ID，后端解析当前 Turn |
 | 是否需要显式 attach-item | 后续可选，仅用于 referenced/人工修复 |
 | 是否保存私有思维链 | 否 |
+| prompt 如何保存 | 保存用户可见原文；排除系统提示、附件二进制和私有思维链 |
+| runtime 丢失/后端重启 | 不重放；running→failed，queued→cancelled |
+| 宿主内没有 running Turn | 409 拒绝写入，不降级为无归因事件 |
+| 部分成功如何表达 | Turn 可 completed；Event 混合结果使 Activity=`partial` |
 | Turn 是否替代 TaskRun | 否 |
 | Turn 最终回答是否是完成证据 | 否 |
 | 旧 Chat 历史如何兼容 | 无 ID 时继续按用户消息边界推断 |
+
+---
+
+## 17. Phase 0 冻结测试计划
+
+后续任务必须按下表落测试；只有覆盖对应行，不能用单一 happy-path 测试宣称整阶段完成。
+
+| 层 | 目标文件 | 必测场景 | 最少用例 |
+|----|----------|----------|----------|
+| Migration/Store | `backend/internal/meta/turns_test.go` | 新库建表、v25 升级、旧 Reply 兼容、单 Session 唯一 running、client request 幂等、终态拒绝迁移 | 8 |
+| Migration/Store | `backend/internal/meta/project_events_test.go` | 成功原子写、回滚无半条数据、Event 不可修改、turn/correlation sequence、target/project cursor | 8 |
+| Bridge | `backend/internal/agent/acpx_turn_test.go` | 三次 prompt 三个 ID、FIFO、done/error/当前取消/排队取消、临时断线、runtime 丢失、启动恢复 | 10 |
+| CLI/MCP | `backend/internal/projectitems/attribution_test.go` | session header、无 active Turn 409、宿主外 null Turn、伪造 header、跨 Project、origin 回执、部分失败 | 8 |
+| Activity/API | `backend/internal/agent/activity_test.go` | Turn 聚合、correlation 聚合、单 Event、target 过滤、source/status 过滤、cursor 实时插入、权限 | 8 |
+| ChatUI | `frontend/src/components/chat/turns.test.ts` | 显式 turnId、legacy fallback、running 展开、历史折叠、failed/cancelled、事实回执 | 6 |
+| PM UI | `frontend/src/components/drawer/TaskList/activity.test.ts` | Project Activity 聚合展示、Task Detail 只投影当前 Item、project-wide Session 跳转、分页去重 | 5 |
+| 完成审计 | `backend/internal/agent/turn_audit_test.go` | 最终回答不能完成 Task、originTurnId、Evidence/Verdict/ClosedBy、关键执行事件进入 Activity | 5 |
+| E2E | 后端集成测试 + 前端构建 | 普通 project-wide Session 一轮创建 3 Tasks，三处追溯一致；重启和权限回归 | 3 |
+
+阶段门：
+
+1. #283 必须先通过两组 Migration/Store 测试；
+2. #284 必须通过 Bridge 状态机与恢复测试；
+3. #285 必须通过 CLI/MCP 安全、原子性和来源回执测试；
+4. #286 必须通过聚合、筛选和 cursor 测试；
+5. #287 必须通过前端单测及 `frontend/yarn build`；
+6. #288 必须通过完成审计、E2E、全部相关 Go 测试和 `git diff --check`。

@@ -191,6 +191,13 @@ func TestFunctionRegistryAndRunner(t *testing.T) {
 	if task.Result == "" {
 		t.Error("result should not be empty after function run")
 	}
+	if task.ClosedBy == nil || task.ClosedBy.TaskRunID == "" {
+		t.Fatalf("function completion audit missing: %+v", task.ClosedBy)
+	}
+	runs, err := store.TaskRuns().ListByTask(id)
+	if err != nil || len(runs) != 1 || len(runs[0].Evidence) != 1 {
+		t.Fatalf("function TaskRuns=%+v err=%v", runs, err)
+	}
 }
 
 func TestFunctionRunnerUnknownType(t *testing.T) {

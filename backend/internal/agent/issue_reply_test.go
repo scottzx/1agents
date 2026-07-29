@@ -23,7 +23,7 @@ func TestWriteUserReplyAppendsToTimeline(t *testing.T) {
 	writeUserReply(&ActiveBridge{SessionID: "x", TaskID: ""}, h.tasksStore, "ignored")
 
 	// A real prompt is recorded as a user reply under the session branch.
-	writeUserReply(bridge, h.tasksStore, "可以，看下是啥情况")
+	writeUserReply(bridge, h.tasksStore, "可以，看下是啥情况", "turn-1")
 
 	got, ok, err := h.tasksStore.GetTask(task.ID)
 	if err != nil || !ok {
@@ -41,6 +41,9 @@ func TestWriteUserReplyAppendsToTimeline(t *testing.T) {
 	}
 	if rp.SessionRef != "sess-1" {
 		t.Errorf("SessionRef = %q, want sess-1 (so it threads under the branch)", rp.SessionRef)
+	}
+	if rp.TurnID != "turn-1" {
+		t.Errorf("TurnID = %q, want turn-1", rp.TurnID)
 	}
 	if rp.Mode != ModeFollowUp {
 		t.Errorf("Mode = %q, want follow_up", rp.Mode)

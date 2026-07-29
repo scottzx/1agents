@@ -161,8 +161,8 @@ type ChatSessionRecord struct {
 	// JSONL filename) — set on first session_ready from the bridge-server
 	// and reused as resumeSessionId on subsequent opens. Independent of
 	// CcSessionID, which only identifies the cc-connect / IM side.
-	AcpSessionID string    `json:"acp_session_id,omitempty"`
-	SessionKey   string    `json:"session_key"`
+	AcpSessionID string `json:"acp_session_id,omitempty"`
+	SessionKey   string `json:"session_key"`
 	// Cwd is the absolute agent working directory when it differs from the
 	// workspace project path. Used by oneshot (单次对话) sessions that live
 	// under /tmp/1agents-chat/<random>. Empty = resolve path from WorkspaceID.
@@ -342,6 +342,30 @@ type ReviewVerdict struct {
 	CreatedAt  time.Time         `json:"createdAt"`
 }
 
+// CompletionEvidence is a privacy-safe proof reference retained on a TaskRun.
+// It stores the fact and compact summary, never raw logs, environment values,
+// credentials, or full command output.
+type CompletionEvidence struct {
+	ID        string    `json:"id"`
+	Kind      string    `json:"kind"`
+	Summary   string    `json:"summary"`
+	SessionID string    `json:"sessionId,omitempty"`
+	TurnID    string    `json:"turnId,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// ClosedBy is the durable completion audit pointer exposed on a completed Task.
+// The referenced TaskRun owns Evidence and the optional verifier Verdict.
+type ClosedBy struct {
+	Kind        string    `json:"kind"`
+	TaskRunID   string    `json:"taskRunId"`
+	TurnID      string    `json:"turnId,omitempty"`
+	SessionID   string    `json:"sessionId,omitempty"`
+	EvidenceIDs []string  `json:"evidenceIds"`
+	Verdict     string    `json:"verdict"`
+	ClosedAt    time.Time `json:"closedAt"`
+}
+
 // Priority drives scheduler ordering when several tasks are ready at once
 // (Linear/Jira style; urgent runs first).
 type Priority string
@@ -463,6 +487,7 @@ type Reply struct {
 	AgentType    string    `json:"agentType,omitempty"`
 	Text         string    `json:"text"`
 	SessionRef   string    `json:"sessionRef,omitempty"`   // SessionMetadata.ID
+	TurnID       string    `json:"turnId,omitempty"`       // AgentTurn.ID; empty for legacy replies
 	AcpSessionID string    `json:"acpSessionId,omitempty"` // raw agent UUID
 	InReplyTo    string    `json:"inReplyTo,omitempty"`    // target reply.id for follow-ups
 	Mode         ReplyMode `json:"mode"`
@@ -596,6 +621,9 @@ type ProjectItem struct {
 	ReviewCount int `json:"reviewCount,omitempty"`
 	// Review holds the latest verdict (per-criterion results + overall pass).
 	Review *ReviewVerdict `json:"review,omitempty"`
+	// ClosedBy points to the TaskRun + compact evidence that actually crossed
+	// the completion gate. An assistant final answer alone never populates it.
+	ClosedBy *ClosedBy `json:"closedBy,omitempty"`
 
 	// ── adversarial multi-verifier fields (schema v14, #131) ──
 	// VerifierCount is how many independent verifiers judge each verification

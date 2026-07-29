@@ -80,3 +80,17 @@ test('keeps legacy chat items untouched when no persisted turns exist', () => {
     const items = [user('u1', 'legacy'), answer('a1')];
     assert.equal(projectChatTurns(items, [], []), items);
 });
+
+test('surfaces failed and cancelled terminal states even without an assistant answer', () => {
+    const failed = {
+        ...turn('turn-failed', 'run', '2026-01-01T00:00:00Z'),
+        status: 'failed' as const,
+        errorText: '权限不足',
+    };
+    const projected = projectChatTurns([user('u1', 'run')], [failed], []);
+    const receipt = projected.find(item => item.kind === 'turn_receipt');
+
+    assert.ok(receipt && receipt.kind === 'turn_receipt');
+    assert.equal(receipt.status, 'failed');
+    assert.equal(receipt.content, '权限不足');
+});

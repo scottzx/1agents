@@ -150,3 +150,39 @@ func NewSkillsAPIProxy(skillsPort int) http.Handler {
 	return proxy
 }
 
+// NewCoffeeProxy transparently forwards the embedded payment page and its API
+// to the loopback-only Node.js service. The original origin is forwarded so
+// the service can build an exact same-origin return_url.
+func NewCoffeeProxy(coffeeAddr string) http.Handler {
+	targetURL := &url.URL{
+		Scheme: "http",
+		Host:   coffeeAddr,
+	}
+
+	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	originalDirector := proxy.Director
+	proxy.Director = func(req *http.Request) {
+		originalHost := req.Host
+		originalProto := req.Header.Get("X-Forwarded-Proto")
+		if originalProto == "" {
+			originalProto = "http"
+			if req.TLS != nil {
+				originalProto = "https"
+			}
+		}
+
+		originalDirector(req)
+		req.Header.Set("X-Forwarded-Host", originalHost)
+		req.Header.Set("X-Forwarded-Proto", originalProto)
+		req.Host = targetURL.Host
+	}
+
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		log.Printf("[gateway] alipay-coffee proxy error for %s: %v", r.URL.Path, err)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`{"error":"payment_service_unavailable","message":"支付服务暂时不可用"}`))
+	}
+
+	return proxy
+}

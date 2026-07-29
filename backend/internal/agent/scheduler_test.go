@@ -219,6 +219,15 @@ func TestSchedulerContainerParentAutoCompletes(t *testing.T) {
 	if got := statusOf(t, store, ref.Path, "parent"); got != TaskStatusCompleted {
 		t.Fatalf("container parent = %s, want completed", got)
 	}
+	parent, found, err := store.GetTask("parent")
+	if err != nil || !found || parent.ClosedBy == nil || parent.ClosedBy.TaskRunID == "" {
+		t.Fatalf("container completion missing audit: parent=%+v found=%v err=%v", parent, found, err)
+	}
+	runs, err := store.TaskRuns().ListByTask("parent")
+	if err != nil || len(runs) != 1 || len(runs[0].Evidence) != 1 ||
+		runs[0].Evidence[0].Kind != "children_terminal" {
+		t.Fatalf("container TaskRun=%+v err=%v", runs, err)
+	}
 }
 
 func TestSchedulerPriorityOrder(t *testing.T) {

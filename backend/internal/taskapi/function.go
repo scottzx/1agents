@@ -119,7 +119,33 @@ func RunFunction(task meta.Task, workspacePath string, store *meta.TaskStore, ap
 func writeTerminal(task meta.Task, workspacePath string, store *meta.TaskStore, api *API,
 	status meta.TaskStatus, resultJSON string, costTokens int64) {
 	now := time.Now().UTC()
+	var run meta.TaskRun
+	var closedBy *meta.ClosedBy
 	if store != nil {
+		var auditErr error
+		run, auditErr = store.TaskRuns().Create(workspacePath, meta.TaskRun{
+			TaskID: task.ID, Kind: meta.TaskRunExecution,
+		})
+		if auditErr == nil {
+			runStatus := meta.TaskRunCompleted
+			evidenceKind := "function_result"
+			errorText := ""
+			if status == meta.TaskStatusFailed {
+				runStatus = meta.TaskRunFailed
+				evidenceKind = "function_error"
+				errorText = resultJSON
+			} else {
+				closedBy = &meta.ClosedBy{Kind: "function_evidence", Verdict: "passed"}
+			}
+			run, auditErr = store.TaskRuns().Finish(run.ID, runStatus, []meta.CompletionEvidence{{
+				Kind: evidenceKind, Summary: "Function runner produced a structured result.",
+			}}, nil, closedBy, errorText)
+		}
+		if auditErr != nil && status == meta.TaskStatusCompleted {
+			status = meta.TaskStatusFailed
+			resultJSON = fmt.Sprintf(`{"error":"completion audit failed: %s"}`, auditErr)
+			closedBy = nil
+		}
 		_ = store.Mutate(workspacePath, func(cfg *meta.TasksConfig) bool {
 			for i := range cfg.Tasks {
 				if cfg.Tasks[i].ID == task.ID {
@@ -128,6 +154,14 @@ func writeTerminal(task meta.Task, workspacePath string, store *meta.TaskStore, 
 					cfg.Tasks[i].CostTokens = costTokens
 					cfg.Tasks[i].UpdatedAt = now
 					cfg.Tasks[i].CompletedAt = &now
+					cfg.Tasks[i].ClosedBy = closedBy
+					if status == meta.TaskStatusCompleted {
+						cfg.Tasks[i].Replies = append(cfg.Tasks[i].Replies, meta.Reply{
+							Author: meta.Author{Kind: "system", Name: "completion-gate"},
+							Text:   fmt.Sprintf("完成审计：TaskRun `%s`，Function Evidence 已记录。", run.ID),
+							Mode:   meta.ModePureComment, CreatedAt: now,
+						})
+					}
 					return true
 				}
 			}

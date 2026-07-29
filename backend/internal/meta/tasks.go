@@ -70,6 +70,23 @@ func (s *TaskStore) Mutate(workspacePath string, fn func(cfg *TasksConfig) (chan
 	return nil
 }
 
+// MutateWithEvents is the audited variant of Mutate. The project mutation and
+// immutable ProjectEvents share one SQLite transaction: either all commit or
+// none do.
+func (s *TaskStore) MutateWithEvents(workspacePath string, events []ProjectEvent, fn func(cfg *TasksConfig) (changed bool)) ([]ProjectEvent, error) {
+	m := s.wsMutex(workspacePath)
+	m.Lock()
+	defer m.Unlock()
+	cfg, err := s.Load(workspacePath)
+	if err != nil {
+		return nil, err
+	}
+	if !fn(cfg) {
+		return nil, nil
+	}
+	return s.saveWithEvents(workspacePath, cfg, events)
+}
+
 // taskCols is the canonical task column list shared by Load and GetTask
 // (scanTask must stay in sync).
 const taskCols = `id, title, description, issue_state, status, schedule_type,
@@ -78,7 +95,7 @@ const taskCols = `id, title, description, issue_state, status, schedule_type,
 	priority, assignee, labels, created_by, parent_id, milestone,
 	acceptance_criteria, recurrence, max_retries, retry_count, timeout_minutes,
 	sprint, type, number, links,
-	verifier, review_max_attempts, review_count, review, source, user_confirm,
+	verifier, review_max_attempts, review_count, review, closed_by, source, user_confirm,
 	github_repo, github_kind, github_number, github_node_id, github_url,
 	github_state, github_assignees, last_synced_at,
 	verifier_count, verify_pass_threshold, review_pool,
@@ -87,7 +104,7 @@ const taskCols = `id, title, description, issue_state, status, schedule_type,
 func scanTask(r rowScanner) (Task, error) {
 	var t Task
 	var scheduledAt, plannedStart, plannedEnd, startedAt, completedAt, lastSyncedAt sql.NullString
-	var createdAt, updatedAt, labels, recurrence, links, review, githubAssignees, reviewPool string
+	var createdAt, updatedAt, labels, recurrence, links, review, closedBy, githubAssignees, reviewPool string
 	var executor, taskTarget, checklist string
 	if err := r.Scan(&t.ID, &t.Title, &t.Description, &t.IssueState, &t.Status,
 		&t.ScheduleType, &scheduledAt, &plannedStart, &plannedEnd, &startedAt,
@@ -95,7 +112,7 @@ func scanTask(r rowScanner) (Task, error) {
 		&t.Priority, &t.Assignee, &labels, &t.CreatedBy, &t.ParentID, &t.Milestone,
 		&t.AcceptanceCriteria, &recurrence, &t.MaxRetries, &t.RetryCount,
 		&t.TimeoutMinutes, &t.Sprint, &t.Type, &t.Number, &links,
-		&t.Verifier, &t.ReviewMaxAttempts, &t.ReviewCount, &review, &t.Source,
+		&t.Verifier, &t.ReviewMaxAttempts, &t.ReviewCount, &review, &closedBy, &t.Source,
 		&t.UserConfirm,
 		&t.GithubRepo, &t.GithubKind, &t.GithubNumber, &t.GithubNodeId, &t.GithubUrl,
 		&t.GithubState, &githubAssignees, &lastSyncedAt,
@@ -118,6 +135,7 @@ func scanTask(r rowScanner) (Task, error) {
 	t.Recurrence = jsonToRecurrence(recurrence)
 	t.Links = jsonToLinks(links)
 	t.Review = jsonToReview(review)
+	t.ClosedBy = jsonToClosedBy(closedBy)
 	t.ReviewPool = jsonToReviewPool(reviewPool)
 	t.GithubAssignees = jsonToStrings(githubAssignees)
 	t.DependsOn = []string{}
@@ -236,6 +254,28 @@ func jsonToReview(s string) *ReviewVerdict {
 	return &v
 }
 
+func closedByToJSON(v *ClosedBy) string {
+	if v == nil {
+		return ""
+	}
+	data, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func jsonToClosedBy(s string) *ClosedBy {
+	if s == "" {
+		return nil
+	}
+	var v ClosedBy
+	if err := json.Unmarshal([]byte(s), &v); err != nil {
+		return nil
+	}
+	return &v
+}
+
 func reviewPoolToJSON(v []ReviewVerdict) string {
 	if len(v) == 0 {
 		return ""
@@ -328,7 +368,7 @@ func (s *TaskStore) Load(workspacePath string) (*TasksConfig, error) {
 	replyIDsBySession := make(map[string]map[string][]string) // taskID -> sessionRef -> replyIDs
 	replyRows, err := s.db.sql.Query(`
 		SELECT r.task_id, r.id, r.author_kind, r.author_name, r.agent_type,
-		       r.text, r.session_ref, r.acp_session_id, r.in_reply_to, r.mode, r.created_at
+		       r.text, r.session_ref, r.turn_id, r.acp_session_id, r.in_reply_to, r.mode, r.created_at
 		FROM replies r
 		JOIN project_items t ON t.id = r.task_id
 		WHERE t.project_id = ?
@@ -339,13 +379,15 @@ func (s *TaskStore) Load(workspacePath string) (*TasksConfig, error) {
 	for replyRows.Next() {
 		var taskID string
 		var rp Reply
+		var turnID sql.NullString
 		var createdAt string
 		if err := replyRows.Scan(&taskID, &rp.ID, &rp.Author.Kind, &rp.Author.Name, &rp.AgentType,
-			&rp.Text, &rp.SessionRef, &rp.AcpSessionID, &rp.InReplyTo, &rp.Mode,
+			&rp.Text, &rp.SessionRef, &turnID, &rp.AcpSessionID, &rp.InReplyTo, &rp.Mode,
 			&createdAt); err != nil {
 			replyRows.Close()
 			return nil, err
 		}
+		rp.TurnID = turnID.String
 		rp.CreatedAt = strToTime(createdAt)
 		if t, ok := taskMap[taskID]; ok {
 			t.Replies = append(t.Replies, rp)
@@ -420,20 +462,22 @@ func (s *TaskStore) loadTaskChildren(t *Task) error {
 	replyIDsBySession := map[string][]string{}
 	replyRows, err := s.db.sql.Query(`
 		SELECT id, author_kind, author_name, agent_type, text, session_ref,
-		       acp_session_id, in_reply_to, mode, created_at
+		       turn_id, acp_session_id, in_reply_to, mode, created_at
 		FROM replies WHERE task_id = ? ORDER BY seq, created_at`, t.ID)
 	if err != nil {
 		return err
 	}
 	for replyRows.Next() {
 		var rp Reply
+		var turnID sql.NullString
 		var createdAt string
 		if err := replyRows.Scan(&rp.ID, &rp.Author.Kind, &rp.Author.Name, &rp.AgentType,
-			&rp.Text, &rp.SessionRef, &rp.AcpSessionID, &rp.InReplyTo, &rp.Mode,
+			&rp.Text, &rp.SessionRef, &turnID, &rp.AcpSessionID, &rp.InReplyTo, &rp.Mode,
 			&createdAt); err != nil {
 			replyRows.Close()
 			return err
 		}
+		rp.TurnID = turnID.String
 		rp.CreatedAt = strToTime(createdAt)
 		t.Replies = append(t.Replies, rp)
 		if rp.SessionRef != "" {
@@ -471,15 +515,20 @@ func (s *TaskStore) loadTaskChildren(t *Task) error {
 // Save persists cfg as the complete task set for the workspace: tasks
 // missing from cfg are deleted (legacy whole-file replace semantics).
 func (s *TaskStore) Save(workspacePath string, cfg *TasksConfig) error {
+	_, err := s.saveWithEvents(workspacePath, cfg, nil)
+	return err
+}
+
+func (s *TaskStore) saveWithEvents(workspacePath string, cfg *TasksConfig, events []ProjectEvent) ([]ProjectEvent, error) {
 	tx, err := s.db.sql.Begin()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer tx.Rollback()
 
 	projectID, err := ensureProjectByPathTx(tx, workspacePath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	keep := map[string]bool{}
@@ -490,36 +539,56 @@ func (s *TaskStore) Save(workspacePath string, cfg *TasksConfig) error {
 		}
 		keep[t.ID] = true
 		if err := upsertTaskTx(tx, projectID, t); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	// Drop tasks (and their children) that were removed from the config.
 	rows, err := tx.Query(`SELECT id FROM project_items WHERE project_id = ?`, projectID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var stale []string
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
 			rows.Close()
-			return err
+			return nil, err
 		}
 		if !keep[id] {
 			stale = append(stale, id)
 		}
 	}
 	if err := rows.Close(); err != nil {
-		return err
+		return nil, err
 	}
 	for _, id := range stale {
 		if err := deleteTaskTx(tx, id); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
-	return tx.Commit()
+	storedEvents := make([]ProjectEvent, 0, len(events))
+	for _, event := range events {
+		if event.ProjectID != projectID {
+			return nil, ErrProjectMismatch
+		}
+		stored, err := appendProjectEventTx(tx, event, false)
+		if err != nil {
+			return nil, err
+		}
+		storedEvents = append(storedEvents, stored)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return storedEvents, nil
+}
+
+// ProjectIDForPath resolves the canonical project identity used by mutation
+// attribution. An empty result means the workspace has not been persisted yet.
+func (s *TaskStore) ProjectIDForPath(workspacePath string) (string, error) {
+	return s.db.projectIDByPath(workspacePath)
 }
 
 func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
@@ -552,12 +621,12 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 			priority, assignee, labels, created_by, parent_id, milestone,
 			acceptance_criteria, recurrence, max_retries, retry_count, timeout_minutes,
 			sprint, type, number, links,
-			verifier, review_max_attempts, review_count, review, source, user_confirm,
+			verifier, review_max_attempts, review_count, review, closed_by, source, user_confirm,
 			github_repo, github_kind, github_number, github_node_id, github_url,
 			github_state, github_assignees, last_synced_at,
 			verifier_count, verify_pass_threshold, review_pool,
 			executor, business_ref, task_target, result, cost_tokens, checklist)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			project_id = excluded.project_id,
 			title = excluded.title,
@@ -591,6 +660,7 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 			review_max_attempts = excluded.review_max_attempts,
 			review_count = excluded.review_count,
 			review = excluded.review,
+			closed_by = excluded.closed_by,
 			source = excluded.source,
 			user_confirm = excluded.user_confirm,
 			github_repo = excluded.github_repo,
@@ -618,7 +688,7 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 		t.Milestone, t.AcceptanceCriteria, recurrenceToJSON(t.Recurrence),
 		t.MaxRetries, t.RetryCount, t.TimeoutMinutes, t.Sprint, t.Type,
 		t.Number, linksToJSON(t.Links),
-		t.Verifier, t.ReviewMaxAttempts, t.ReviewCount, reviewToJSON(t.Review), t.Source, t.UserConfirm,
+		t.Verifier, t.ReviewMaxAttempts, t.ReviewCount, reviewToJSON(t.Review), closedByToJSON(t.ClosedBy), t.Source, t.UserConfirm,
 		t.GithubRepo, t.GithubKind, t.GithubNumber, t.GithubNodeId, t.GithubUrl,
 		t.GithubState, stringsToJSON(t.GithubAssignees), timePtrToVal(t.LastSyncedAt),
 		t.VerifierCount, t.VerifyPassThreshold, reviewPoolToJSON(t.ReviewPool),
@@ -652,10 +722,10 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 		}
 		if _, err := tx.Exec(`
 			INSERT INTO replies (id, task_id, seq, author_kind, author_name, agent_type,
-				text, session_ref, acp_session_id, in_reply_to, mode, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				text, session_ref, turn_id, acp_session_id, in_reply_to, mode, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			rp.ID, t.ID, i, rp.Author.Kind, rp.Author.Name, rp.AgentType,
-			rp.Text, rp.SessionRef, rp.AcpSessionID, rp.InReplyTo, rp.Mode,
+			rp.Text, rp.SessionRef, nullableString(rp.TurnID), rp.AcpSessionID, rp.InReplyTo, rp.Mode,
 			timeToStr(rp.CreatedAt)); err != nil {
 			return err
 		}
@@ -766,10 +836,10 @@ func (s *TaskStore) AppendReply(taskID string, rp Reply) (Reply, error) {
 
 	if _, err := tx.Exec(`
 		INSERT INTO replies (id, task_id, seq, author_kind, author_name, agent_type,
-			text, session_ref, acp_session_id, in_reply_to, mode, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			text, session_ref, turn_id, acp_session_id, in_reply_to, mode, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		rp.ID, taskID, seq, rp.Author.Kind, rp.Author.Name, rp.AgentType,
-		rp.Text, rp.SessionRef, rp.AcpSessionID, rp.InReplyTo, rp.Mode,
+		rp.Text, rp.SessionRef, nullableString(rp.TurnID), rp.AcpSessionID, rp.InReplyTo, rp.Mode,
 		timeToStr(rp.CreatedAt)); err != nil {
 		return Reply{}, err
 	}
@@ -784,6 +854,12 @@ func (s *TaskStore) AppendReply(taskID string, rp Reply) (Reply, error) {
 // once the WebSocket bridge knows the session id.
 func (s *TaskStore) SetReplySession(replyID, sessionID string) error {
 	return s.execOne(`UPDATE replies SET session_ref = ? WHERE id = ?`, sessionID, replyID)
+}
+
+// SetReplyTurn backfills the Turn that owns a reply once the chat bridge has
+// persisted the prompt as an AgentTurn.
+func (s *TaskStore) SetReplyTurn(replyID, turnID string) error {
+	return s.execOne(`UPDATE replies SET turn_id = ? WHERE id = ?`, turnID, replyID)
 }
 
 // UpdateDescription replaces a task's Markdown description.

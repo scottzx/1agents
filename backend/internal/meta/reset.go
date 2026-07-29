@@ -11,6 +11,9 @@ package meta
 // truncate on reset. Schema-versioning state (PRAGMA user_version) is metadata,
 // not a table, so it survives untouched.
 var dataTables = []string{
+	"project_events",
+	"task_runs",
+	"agent_turns",
 	"projects",
 	"project_items",
 	"task_deps",

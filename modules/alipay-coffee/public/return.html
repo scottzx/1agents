@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>正在确认支付结果</title>
+    <link rel="stylesheet" href="/coffee/style.css" />
+  </head>
+  <body>
+    <main class="return-page">
+      <div class="return-mark" aria-hidden="true">☕</div>
+      <p class="coffee-eyebrow">ALIPAY RESULT</p>
+      <h1 id="return-title">正在确认支付结果</h1>
+      <p id="return-message">请稍候，我们正在通过服务端向支付宝查询这笔订单。</p>
+      <button id="return-query" class="secondary-button" type="button">重新查询</button>
+      <p class="coffee-footnote">本页不会直接使用浏览器回跳参数判断付款成功。</p>
+    </main>
+    <script src="/coffee/return.js" defer></script>
+  </body>
+</html>

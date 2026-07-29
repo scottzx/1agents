@@ -3,6 +3,8 @@ package agent
 import (
 	"testing"
 	"time"
+
+	"github.com/scottzx/1Agents/backend/internal/meta"
 )
 
 // reviewTask seeds one running, verification-configured task and returns the
@@ -86,6 +88,16 @@ func TestApplyReviewVerdictPassCompletes(t *testing.T) {
 	}
 	if got.CompletedAt == nil {
 		t.Error("CompletedAt should be set on pass")
+	}
+	if got.ClosedBy == nil || got.ClosedBy.TaskRunID == "" || got.ClosedBy.Verdict != "passed" {
+		t.Fatalf("completed task missing audit provenance: %+v", got.ClosedBy)
+	}
+	runs, err := store.TaskRuns().ListByTask(id)
+	if err != nil {
+		t.Fatalf("ListByTask: %v", err)
+	}
+	if len(runs) != 1 || runs[0].Kind != meta.TaskRunVerification || len(runs[0].Evidence) != 1 {
+		t.Fatalf("verification TaskRun=%+v", runs)
 	}
 	// The verdict must land on the timeline.
 	if len(got.Replies) == 0 {

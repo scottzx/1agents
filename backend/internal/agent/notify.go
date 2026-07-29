@@ -141,6 +141,17 @@ func ApplyIMDecision(store *TasksStore, wsPath, taskID string, decision IMDecisi
 	if mutErr != nil {
 		return "", "", false, mutErr
 	}
+	if ok && newStatus == string(TaskStatusCompleted) {
+		task, auditErr := recordDerivedCompletion(
+			store, wsPath, taskID,
+			"manual_decision", "im_human_decision",
+			"A user approved the pending review from an authenticated IM action.",
+		)
+		if auditErr != nil {
+			return title, string(TaskStatusFailed), false, auditErr
+		}
+		newStatus = string(task.Status)
+	}
 	if ok {
 		log.Printf("[notify] IM decision %s applied to task %s → %s", decision, taskID, newStatus)
 	}

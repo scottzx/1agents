@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>请作者喝杯咖啡</title>
+    <link rel="stylesheet" href="/coffee/style.css" />
+  </head>
+  <body>
+    <main class="coffee-page">
+      <section class="coffee-hero" aria-labelledby="coffee-title">
+        <div class="coffee-mark" aria-hidden="true">☕</div>
+        <div>
+          <p class="coffee-eyebrow">SUPPORT 1AGENTS</p>
+          <h1 id="coffee-title">请作者喝杯咖啡</h1>
+          <p class="coffee-copy">如果 1Agents 帮到了你，可以通过支付宝请作者喝杯咖啡。</p>
+        </div>
+      </section>
+
+      <section class="coffee-card" aria-labelledby="amount-title">
+        <div class="coffee-card-heading">
+          <div>
+            <h2 id="amount-title">选择一杯咖啡</h2>
+            <p>支付会打开支付宝收银台，本页面不会接触你的支付宝密码。</p>
+          </div>
+          <span id="environment-badge" class="environment-badge">检查中</span>
+        </div>
+
+        <div id="amounts" class="amount-grid" role="radiogroup" aria-label="咖啡金额"></div>
+
+        <button id="pay-button" class="pay-button" type="button" disabled>
+          <span>支付宝支付</span>
+          <span id="pay-amount">¥6.00</span>
+        </button>
+
+        <div id="status" class="status-panel" role="status" aria-live="polite">
+          <span class="status-dot"></span>
+          <span id="status-text">正在检查支付服务…</span>
+        </div>
+
+        <div id="order-actions" class="order-actions" hidden>
+          <button id="query-button" class="secondary-button" type="button">查询支付结果</button>
+          <span id="order-number" class="order-number"></span>
+        </div>
+      </section>
+
+      <p class="coffee-footnote">
+        支付结果以支付宝异步通知或服务端交易查询为准，浏览器回跳本身不代表付款成功。
+      </p>
+      <div id="payment-form-container" hidden></div>
+    </main>
+    <script src="/coffee/app.js" defer></script>
+  </body>
+</html>

@@ -183,13 +183,7 @@ export function MessageBubble({ item, isLast, active, isLatestAssistant, onCance
                 />
             );
         case 'turn':
-            return (
-                <HistoricalTurnBubble
-                    items={item.items}
-                    outcomeId={item.outcomeId}
-                    turnStatus={item.turnStatus}
-                />
-            );
+            return <HistoricalTurnBubble items={item.items} outcomeId={item.outcomeId} turnStatus={item.turnStatus} />;
         case 'turn_receipt':
             return <TurnReceiptBubble content={item.content} status={item.status} />;
         case 'error':

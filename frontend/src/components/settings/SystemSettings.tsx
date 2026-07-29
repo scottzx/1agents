@@ -10,6 +10,7 @@ import { SubscriptionPanel } from './SubscriptionPanel';
 import { RelayDevicePanel } from './RelayDevicePanel';
 import { LocalMachinePanel, isLocalMachineMode } from './LocalMachinePanel';
 import { DevicesPanel } from './DevicesPanel';
+import { CoffeePanel } from './CoffeePanel';
 import { APP_VERSION, isNewer } from '../../version';
 import { fetchManifest } from '../../ota/checker';
 import type { RootManifest } from '../../ota/checker';
@@ -1454,6 +1455,8 @@ export function SystemSettings(props: SystemSettingsProps) {
                 return <DevicesPanel language={language} />;
             case 'updates':
                 return renderUpdates();
+            case 'coffee':
+                return <CoffeePanel language={language} theme={theme} />;
             case 'about':
                 return renderAbout();
             default:

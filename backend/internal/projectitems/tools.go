@@ -109,7 +109,7 @@ var toolDefs = []map[string]any{
 						"required": []string{"target"},
 					},
 				},
-				"dueAt":               map[string]any{"type": "string", "description": "Optional due/trigger time, RFC3339 (e.g. '2026-06-25T15:00:00+08:00'). For a personal task (assignee='user') this is the calendar deadline/reminder time. Omit for an undated item."},
+				"dueAt": map[string]any{"type": "string", "description": "Optional due/trigger time, RFC3339 (e.g. '2026-06-25T15:00:00+08:00'). For a personal task (assignee='user') this is the calendar deadline/reminder time. Omit for an undated item."},
 				"recurrence": map[string]any{
 					"type":        "object",
 					"description": "Optional repeat rule for a personal (assignee='user') task. Omit for a one-off.",
@@ -331,7 +331,7 @@ var verifierScopedTools = map[string]bool{
 	"list_project_items":     true,
 	"get_project_item":       true,
 	"get_project_item_graph": true,
-	"submit_review":  true,
+	"submit_review":          true,
 }
 
 // scopedTools returns the allowed tool set for the current task-locked role:
@@ -422,6 +422,9 @@ type task struct {
 	AcceptanceCriteria string   `json:"acceptanceCriteria"`
 	DependsOn          []string `json:"dependsOn"`
 	IssueState         string   `json:"issueState"`
+	SessionID          string   `json:"sessionId"`
+	TurnID             string   `json:"turnId"`
+	EventID            string   `json:"eventId"`
 }
 
 func (s *server) onToolCall(params json.RawMessage) map[string]any {
@@ -646,6 +649,9 @@ func (s *server) toolCreateTask(args json.RawMessage) map[string]any {
 		"title":     created.Title,
 		"status":    created.Status,
 		"dependsOn": created.DependsOn,
+		"sessionId": created.SessionID,
+		"turnId":    created.TurnID,
+		"eventId":   created.EventID,
 	})
 }
 
@@ -672,11 +678,14 @@ func (s *server) toolCreateDiscussion(args json.RawMessage) map[string]any {
 		return toolText(string(resp))
 	}
 	return toolJSON(map[string]any{
-		"ok":     true,
-		"id":     created.ID,
-		"number": created.Number,
-		"title":  created.Title,
-		"type":   created.Type,
+		"ok":        true,
+		"id":        created.ID,
+		"number":    created.Number,
+		"title":     created.Title,
+		"type":      created.Type,
+		"sessionId": created.SessionID,
+		"turnId":    created.TurnID,
+		"eventId":   created.EventID,
 	})
 }
 

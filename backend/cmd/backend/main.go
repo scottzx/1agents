@@ -129,6 +129,12 @@ func main() {
 		"Path to the python executable to run 1skills")
 	flag.StringVar(&cfg.SkillsSourceDir, "skills-dir", cfg.SkillsSourceDir,
 		"Path to 1skills Python source tree (e.g. @1agents/skills package root)")
+	flag.StringVar(&cfg.CoffeeAddr, "coffee-addr", cfg.CoffeeAddr,
+		"Internal Alipay coffee service listen address (must stay on 127.0.0.1)")
+	flag.StringVar(&cfg.CoffeeNodeBinaryPath, "coffee-node", cfg.CoffeeNodeBinaryPath,
+		"Node.js executable used by the Alipay coffee service")
+	flag.StringVar(&cfg.CoffeeSourceDir, "coffee-dir", cfg.CoffeeSourceDir,
+		"Path to the @1agents/alipay-coffee package root")
 	flag.StringVar(&cfg.WorkDir, "workdir", cfg.WorkDir,
 		"Root directory exposed by the file-system API")
 	flag.StringVar(&cfg.StaticDir, "static", cfg.StaticDir,
@@ -200,6 +206,7 @@ func main() {
 		cfg.TtydBinaryPath = filepath.Join(resourcesDir, "resources", "bin", "ttyd")
 		// Resolve static files dir inside resources/dist
 		cfg.StaticDir = filepath.Join(resourcesDir, "resources", "dist")
+		cfg.CoffeeSourceDir = filepath.Join(resourcesDir, "resources", "alipay-coffee")
 
 		// Retrieve the login shell path to inherit host environment variables (like brew, git, etc.)
 		userPath := getLoginShellPath()
@@ -308,6 +315,23 @@ func main() {
 	skillsSup := supervisor.NewSkills(cfg)
 	skillsSup.Start(ctx)
 
+	coffeeHost, coffeePortStr, err := net.SplitHostPort(cfg.CoffeeAddr)
+	if err != nil {
+		coffeeHost = "127.0.0.1"
+		coffeePortStr = "38087"
+	}
+	var coffeeBasePort int
+	fmt.Sscanf(coffeePortStr, "%d", &coffeeBasePort)
+	coffeeFreePort, err := findAvailablePort(coffeeHost, coffeeBasePort)
+	if err != nil {
+		log.Printf("[main] WARNING: Failed to find free port starting from %d for payment service: %v. Using default.", coffeeBasePort, err)
+	} else if coffeeFreePort != coffeeBasePort {
+		log.Printf("[main] Port %d is busy. Automatically selected free port %d for payment service.", coffeeBasePort, coffeeFreePort)
+		cfg.CoffeeAddr = net.JoinHostPort(coffeeHost, fmt.Sprintf("%d", coffeeFreePort))
+	}
+	coffeeSup := supervisor.NewCoffee(cfg)
+	coffeeSup.Start(ctx)
+
 	acpxSup := supervisor.NewAcpx(cfg)
 	acpxSup.Start(ctx)
 
@@ -349,6 +373,7 @@ func main() {
 		fmt.Printf("   🔌 CC-Connect Bridge Port : :%d (Dynamic)\n", ccconnect.BridgePort)
 		fmt.Printf("   ⚙️  CC-Connect Mgmt Port   : :%d (Dynamic)\n", ccconnect.ManagementPort)
 		fmt.Printf("   🛠️  1skills Microservice   : %s\n", cfg.SkillsAddr)
+		fmt.Printf("   ☕ Alipay Coffee Service   : %s\n", cfg.CoffeeAddr)
 		fmt.Println("==================================================================")
 
 		var err error

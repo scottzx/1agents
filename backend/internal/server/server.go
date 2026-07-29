@@ -161,7 +161,13 @@ func NewRouter(cfg *config.Config) http.Handler {
 			ccconnect.SetTasksStore(tasksStore)
 
 			acpxPort := acpxBridgePort()
-			acpxClient := agent.NewAcpxClient(acpxPort)
+			var turnStore *meta.AgentTurnStore
+			if db, dbErr := meta.OpenDefault(); dbErr != nil {
+				log.Printf("[server] Turn store init failed: %v", dbErr)
+			} else {
+				turnStore = meta.NewAgentTurnStore(db)
+			}
+			acpxClient := agent.NewAcpxClient(acpxPort, turnStore)
 
 			scheduler := agent.NewScheduler(tasksStore, func() ([]agent.WorkspaceRef, error) {
 				wsHandler := workspace.NewHandler()
@@ -211,6 +217,8 @@ func NewRouter(cfg *config.Config) http.Handler {
 			mux.HandleFunc("/api/agent/catalog", agentHandler.HandleAgentCatalog)              // GET (?refresh=1)
 			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)             // GET, POST
 			mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem)            // GET, DELETE /{id}
+			mux.HandleFunc("/api/agent/turns", agentHandler.HandleTurns)                       // GET cursor-paged Turn history
+			mux.HandleFunc("/api/agent/activity", agentHandler.HandleProjectActivity)          // GET aggregated Project activity
 			mux.HandleFunc("/api/agent/project-items", agentHandler.HandleTasksRoot)           // GET, POST
 			mux.HandleFunc("/api/agent/project-items/resolve", agentHandler.HandleTaskResolve) // GET ?project=&number= (more specific than the subtree below)
 			mux.HandleFunc("/api/agent/project-items/", agentHandler.HandleTasksItem)          // DELETE /{id}
@@ -641,6 +649,12 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.Handle("/api/settings/", skillsAPIProxy)
 	mux.Handle("/api/health", skillsAPIProxy)
 
+	// ── Alipay coffee payment module ────────────────────────────────────────
+	// Both the embedded page and API stay same-origin behind the main gateway.
+	coffeeProxy := gateway.NewCoffeeProxy(cfg.CoffeeAddr)
+	mux.Handle("/coffee/", coffeeProxy)
+	mux.Handle("/api/coffee/", coffeeProxy)
+
 	// ── Tunnel API (on-demand multi-port tunnel control) ─────────────────────
 	tunnelAuth := func(r *http.Request) bool {
 		authHeader := r.Header.Get("Authorization")
@@ -840,6 +854,14 @@ func NewRouter(cfg *config.Config) http.Handler {
 //     file, all non-localhost requests must present it. Localhost always bypasses.
 func authMiddleware(next http.Handler, cfg *config.Config) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Alipay servers cannot present a 1Agents access/tunnel token. This one
+		// endpoint is public by design and authenticates the sender through the
+		// Alipay SDK signature plus app/order/amount/seller checks downstream.
+		if r.Method == http.MethodPost && r.URL.Path == "/api/coffee/notify" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		// ── Layer 0: internal loopback bearer ───────────────────────────────
 		// Loopback helper subprocesses (e.g. the `1agents project-items` MCP server
 		// the AI Project Manager session spawns) present the process-scoped
@@ -847,7 +869,9 @@ func authMiddleware(next http.Handler, cfg *config.Config) http.Handler {
 		// be reached over the tunnel, then skip both auth layers below.
 		if isLocalhost(r) {
 			if authHeader := r.Header.Get("Authorization"); strings.HasPrefix(authHeader, "Bearer ") {
-				if strings.TrimPrefix(authHeader, "Bearer ") == localtoken.Token {
+				bearer := strings.TrimPrefix(authHeader, "Bearer ")
+				sessionID := r.Header.Get("X-OneAgents-Session-ID")
+				if bearer == localtoken.Token || localtoken.ValidateSessionToken(sessionID, bearer) {
 					next.ServeHTTP(w, r)
 					return
 				}
@@ -1980,4 +2004,3 @@ func handleProjectLocalConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
-

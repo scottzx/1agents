@@ -234,10 +234,11 @@ func triggerTime(t *Task) *time.Time {
 
 func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 	now := time.Now().UTC()
+	var derivedCompletions []string
 	// Mutate serializes the whole Load→evaluate→Save cycle against the
 	// headless runner's finish() and the chat-ws handlers, so a 5s tick can
 	// never overwrite a just-completed status with a stale snapshot.
-	_ = s.tasksStore.Mutate(ref.Path, func(cfg *TasksConfig) bool {
+	mutateErr := s.tasksStore.Mutate(ref.Path, func(cfg *TasksConfig) bool {
 		modified := false
 
 		taskMap := make(map[string]*Task)
@@ -270,6 +271,7 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 				t.Status = TaskStatusCompleted
 				t.CompletedAt = &now
 				t.UpdatedAt = now
+				derivedCompletions = append(derivedCompletions, t.ID)
 				modified = true
 				log.Printf("[scheduler] Container task %s completed (all subtasks done)", t.ID)
 			}
@@ -637,6 +639,19 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 
 		return modified
 	})
+	if mutateErr != nil {
+		log.Printf("[scheduler] tick workspace %s: %v", ref.Path, mutateErr)
+		return
+	}
+	for _, taskID := range derivedCompletions {
+		if _, err := recordDerivedCompletion(
+			s.tasksStore, ref.Path, taskID,
+			"child_aggregation", "children_terminal",
+			"All child tasks reached completed state.",
+		); err != nil {
+			log.Printf("[scheduler] audit derived completion for task %s: %v", taskID, err)
+		}
+	}
 }
 
 // emit runs the orchestration engine for one lifecycle event against the live

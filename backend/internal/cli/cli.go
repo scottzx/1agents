@@ -620,6 +620,7 @@ func taskUpdate(db *meta.DB, store *meta.TaskStore, args []string) int {
 	if target == nil {
 		return fail("task %s not found in workspace config", id)
 	}
+	wasCompleted := target.Status == meta.TaskStatusCompleted
 
 	if *title != "" {
 		target.Title = *title
@@ -699,6 +700,47 @@ func taskUpdate(db *meta.DB, store *meta.TaskStore, args []string) int {
 
 	if err := store.Save(task.WorkspacePath, cfg); err != nil {
 		return fail("save: %v", err)
+	}
+	if target.Type == meta.ItemTypeTask && target.Status == meta.TaskStatusCompleted && !wasCompleted {
+		run, auditErr := store.TaskRuns().Create(task.WorkspacePath, meta.TaskRun{
+			TaskID: target.ID,
+			Kind:   meta.TaskRunExecution,
+		})
+		if auditErr == nil {
+			run, auditErr = store.TaskRuns().Finish(run.ID, meta.TaskRunCompleted, []meta.CompletionEvidence{{
+				Kind: "cli_override", Summary: "An operator completed the task through the offline CLI.",
+			}}, nil, &meta.ClosedBy{Kind: "manual_decision", Verdict: "accepted"}, "")
+		}
+		if auditErr != nil {
+			_ = store.Mutate(task.WorkspacePath, func(cfg *meta.TasksConfig) bool {
+				for i := range cfg.Tasks {
+					if cfg.Tasks[i].ID == target.ID {
+						cfg.Tasks[i].Status = meta.TaskStatusFailed
+						cfg.Tasks[i].CompletedAt = nil
+						cfg.Tasks[i].ClosedBy = nil
+						cfg.Tasks[i].Summary = "completion audit failed: " + auditErr.Error()
+						return true
+					}
+				}
+				return false
+			})
+			return fail("completion audit: %v", auditErr)
+		}
+		_ = store.Mutate(task.WorkspacePath, func(cfg *meta.TasksConfig) bool {
+			for i := range cfg.Tasks {
+				if cfg.Tasks[i].ID != target.ID {
+					continue
+				}
+				cfg.Tasks[i].ClosedBy = run.ClosedBy
+				cfg.Tasks[i].Replies = append(cfg.Tasks[i].Replies, meta.Reply{
+					Author: meta.Author{Kind: "system", Name: "completion-gate"},
+					Text:   fmt.Sprintf("完成审计：TaskRun `%s`，cli_override Evidence 已记录。", run.ID),
+					Mode:   meta.ModePureComment, CreatedAt: time.Now().UTC(),
+				})
+				return true
+			}
+			return false
+		})
 	}
 	fmt.Printf("task %s updated\n", id)
 	return 0

@@ -2,6 +2,7 @@ package meta
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -129,7 +130,7 @@ func getMilestoneTx(tx *sql.Tx, projectID, id string) (Milestone, error) {
 
 // CreateMilestone inserts a new milestone at the end of the project's roadmap.
 // Returns ErrMilestoneExists on a duplicate name.
-func (s *TaskStore) CreateMilestone(workspacePath, name, description string, targetDate *time.Time, predecessorID string) (Milestone, error) {
+func (s *TaskStore) CreateMilestone(workspacePath, name, description string, targetDate *time.Time, predecessorID string, events ...ProjectEvent) (Milestone, error) {
 	m := s.wsMutex(workspacePath)
 	m.Lock()
 	defer m.Unlock()
@@ -179,6 +180,16 @@ func (s *TaskStore) CreateMilestone(workspacePath, name, description string, tar
 		ms.Position, ms.PredecessorID, timeToStr(ms.CreatedAt), timeToStr(ms.UpdatedAt)); err != nil {
 		return Milestone{}, err
 	}
+	for i := range events {
+		events[i].ProjectID = projectID
+		if events[i].TargetID == "" {
+			events[i].TargetID = ms.ID
+		}
+		events[i].After, _ = json.Marshal(milestoneEventSnapshot(ms))
+		if _, err := appendProjectEventTx(tx, events[i], false); err != nil {
+			return Milestone{}, err
+		}
+	}
 	return ms, tx.Commit()
 }
 
@@ -194,7 +205,7 @@ type MilestonePatch struct {
 // UpdateMilestone applies a partial edit. Renaming cascades to every task's
 // milestone label so the name stays a valid join key. Returns ErrMilestoneExists
 // if the new name collides.
-func (s *TaskStore) UpdateMilestone(workspacePath, id string, patch MilestonePatch) (Milestone, error) {
+func (s *TaskStore) UpdateMilestone(workspacePath, id string, patch MilestonePatch, events ...ProjectEvent) (Milestone, error) {
 	m := s.wsMutex(workspacePath)
 	m.Lock()
 	defer m.Unlock()
@@ -213,6 +224,7 @@ func (s *TaskStore) UpdateMilestone(workspacePath, id string, patch MilestonePat
 	if err != nil {
 		return Milestone{}, err
 	}
+	before := cur
 
 	if patch.Name != nil && *patch.Name != cur.Name {
 		var dup int
@@ -254,6 +266,15 @@ func (s *TaskStore) UpdateMilestone(workspacePath, id string, patch MilestonePat
 		timeToStr(cur.UpdatedAt), id); err != nil {
 		return Milestone{}, err
 	}
+	for i := range events {
+		events[i].ProjectID = projectID
+		events[i].TargetID = id
+		events[i].Before, _ = json.Marshal(milestoneEventSnapshot(before))
+		events[i].After, _ = json.Marshal(milestoneEventSnapshot(cur))
+		if _, err := appendProjectEventTx(tx, events[i], false); err != nil {
+			return Milestone{}, err
+		}
+	}
 	return cur, tx.Commit()
 }
 
@@ -288,7 +309,7 @@ func (s *TaskStore) ReorderMilestones(workspacePath string, orderedIDs []string)
 
 // DeleteMilestone removes a milestone and unassigns its tasks (their milestone
 // label is cleared, so they fall back into 未分组 rather than being deleted).
-func (s *TaskStore) DeleteMilestone(workspacePath, id string) error {
+func (s *TaskStore) DeleteMilestone(workspacePath, id string, events ...ProjectEvent) error {
 	m := s.wsMutex(workspacePath)
 	m.Lock()
 	defer m.Unlock()
@@ -322,7 +343,26 @@ func (s *TaskStore) DeleteMilestone(workspacePath, id string) error {
 	if _, err := tx.Exec(`DELETE FROM milestones WHERE id = ?`, id); err != nil {
 		return err
 	}
+	for i := range events {
+		events[i].ProjectID = projectID
+		events[i].TargetID = id
+		events[i].Before, _ = json.Marshal(milestoneEventSnapshot(cur))
+		events[i].After = json.RawMessage(`{}`)
+		if _, err := appendProjectEventTx(tx, events[i], false); err != nil {
+			return err
+		}
+	}
 	return tx.Commit()
+}
+
+func milestoneEventSnapshot(ms Milestone) map[string]any {
+	return map[string]any{
+		"id":            ms.ID,
+		"name":          ms.Name,
+		"targetDate":    ms.TargetDate,
+		"position":      ms.Position,
+		"predecessorId": ms.PredecessorID,
+	}
 }
 
 // EnsureMilestone lazily creates a metadata row for a milestone name that a

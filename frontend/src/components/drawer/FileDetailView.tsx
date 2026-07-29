@@ -339,7 +339,10 @@ export class FileDetailView extends Component<FileDetailViewProps> {
         }
 
         return (
-            <div class="fb-code-view" style={{ ['--fb-gutter-w' as string]: `${Math.max(2, String(lines.length).length)}ch` }}>
+            <div
+                class="fb-code-view"
+                style={{ ['--fb-gutter-w' as string]: `${Math.max(2, String(lines.length).length)}ch` }}
+            >
                 {lines.map((text, i) => {
                     const ln = i + 1;
                     const hl = targetLine !== undefined && ln >= targetLine && (end === undefined || ln <= end);

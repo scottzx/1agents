@@ -138,7 +138,15 @@ export type HistoryItem =
           createdAt?: string;
       };
 
-export type ChatItem =
+export type ChatTurnStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+export interface ChatTurnMetadata {
+    /** Persisted Agent Turn identity. Absent for legacy transcripts. */
+    turnId?: string;
+    turnStatus?: ChatTurnStatus;
+}
+
+export type ChatItem = (
     | { id: string; kind: 'user'; content: string; createdAt: number; queueStatus?: 'queued'; queueRequestId?: string }
     | { id: string; kind: 'assistant_text'; content: string; createdAt: number; streaming: boolean }
     | { id: string; kind: 'thinking'; content: string; createdAt: number }
@@ -195,7 +203,17 @@ export type ChatItem =
           resolved?: ExitPlanOutcome;
           comments?: string;
       }
-    | { id: string; kind: 'error'; content: string; createdAt: number };
+    | { id: string; kind: 'error'; content: string; createdAt: number }
+    | {
+          id: string;
+          kind: 'turn_receipt';
+          content: string;
+          count: number;
+          status: 'succeeded' | 'rejected' | 'failed' | 'cancelled';
+          createdAt: number;
+      }
+) &
+    ChatTurnMetadata;
 
 export type ConnectionState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'closed' | 'error';
 

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/scottzx/1Agents/backend/internal/meta"
 )
 
 // TaskRunner executes tasks headlessly: when the scheduler fires (trigger
@@ -67,12 +68,21 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 		r.scheduler.Tick()
 	}()
 
+	sessionID := newID()
+	taskRun, runErr := r.tasksStore.TaskRuns().Create(workspacePath, meta.TaskRun{
+		TaskID: task.ID, SessionID: sessionID, Kind: meta.TaskRunExecution,
+	})
+	if runErr != nil {
+		log.Printf("[runner] create TaskRun for task %s: %v", task.ID, runErr)
+	}
+	taskRunID := taskRun.ID
+
 	// Card content is YAML-frontmatter Markdown: execute against the prose body,
 	// and treat acceptance from the frontmatter (or the legacy column) as the
 	// self-check gate.
 	instruction := buildTaskInstruction(task, workspaceID, workspacePath)
 	if instruction == "" {
-		r.finish(workspacePath, task.ID, "", TaskStatusFailed, "task has no description/title to execute")
+		r.finish(workspacePath, task.ID, sessionID, taskRunID, TaskStatusFailed, "task has no description/title to execute")
 		return
 	}
 
@@ -89,7 +99,6 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 	// the task badge) and the transcript is reachable afterwards. Role "auto"
 	// marks headless runner provenance; the session list includes them so
 	// project execution is trackable without drilling into the task timeline.
-	sessionID := newID()
 	rec := ChatSessionRecord{
 		ID:          sessionID,
 		WorkspaceID: workspaceID,
@@ -110,7 +119,7 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 	serverURL := fmt.Sprintf("ws://127.0.0.1:%d", r.serverPort)
 	conn, _, err := websocket.DefaultDialer.Dial(serverURL, nil)
 	if err != nil {
-		r.finish(workspacePath, task.ID, sessionID, TaskStatusFailed, "bridge unavailable: "+err.Error())
+		r.finish(workspacePath, task.ID, sessionID, taskRunID, TaskStatusFailed, "bridge unavailable: "+err.Error())
 		return
 	}
 	defer conn.Close()
@@ -124,7 +133,7 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 		PermissionMode: "approve-all",
 	}
 	if err := conn.WriteJSON(ensure); err != nil {
-		r.finish(workspacePath, task.ID, sessionID, TaskStatusFailed, "ensure_session failed: "+err.Error())
+		r.finish(workspacePath, task.ID, sessionID, taskRunID, TaskStatusFailed, "ensure_session failed: "+err.Error())
 		return
 	}
 
@@ -144,7 +153,7 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 		_ = conn.SetReadDeadline(time.Now().Add(idleTimeout))
 		var msg WsMessage
 		if err := conn.ReadJSON(&msg); err != nil {
-			r.finish(workspacePath, task.ID, sessionID, TaskStatusFailed, "bridge read failed: "+err.Error())
+			r.finish(workspacePath, task.ID, sessionID, taskRunID, TaskStatusFailed, "bridge read failed: "+err.Error())
 			return
 		}
 
@@ -160,7 +169,7 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 					SessionID: sessionID,
 					Text:      instruction,
 				}); err != nil {
-					r.finish(workspacePath, task.ID, sessionID, TaskStatusFailed, "prompt failed: "+err.Error())
+					r.finish(workspacePath, task.ID, sessionID, taskRunID, TaskStatusFailed, "prompt failed: "+err.Error())
 					return
 				}
 			}
@@ -183,7 +192,7 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 			if needsReview(&task) {
 				terminal = TaskStatusPendingReview
 			}
-			r.finish(workspacePath, task.ID, sessionID, terminal, summary)
+			r.finish(workspacePath, task.ID, sessionID, taskRunID, terminal, summary)
 			// Politely close the agent session so the runtime doesn't keep
 			// an idle process around for a finished scheduled task.
 			_ = conn.WriteJSON(WsMessage{Action: "close_session", SessionID: sessionID})
@@ -203,7 +212,7 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 			handedOff = true
 			return
 		case "error":
-			r.finish(workspacePath, task.ID, sessionID, TaskStatusFailed, "agent error: "+msg.Message)
+			r.finish(workspacePath, task.ID, sessionID, taskRunID, TaskStatusFailed, "agent error: "+msg.Message)
 			return
 		}
 	}
@@ -347,7 +356,13 @@ func (r *TaskRunner) Verify(workspacePath, workspaceID string, task Task) {
 
 	// Defensive: a task should only reach Verify when configured for it.
 	if !needsReview(&task) {
-		r.finish(workspacePath, task.ID, "", TaskStatusCompleted, "无需核验,直接完成")
+		run, err := r.tasksStore.TaskRuns().Create(workspacePath, meta.TaskRun{
+			TaskID: task.ID, Kind: meta.TaskRunVerification,
+		})
+		if err != nil {
+			log.Printf("[runner] create defensive verification TaskRun for task %s: %v", task.ID, err)
+		}
+		r.finish(workspacePath, task.ID, "", run.ID, TaskStatusCompleted, "无需核验,直接完成")
 		return
 	}
 
@@ -424,11 +439,18 @@ func (r *TaskRunner) runVerifierPass(workspacePath, workspaceID string, task Tas
 		log.Printf("[runner] index verify session for task %s: %v", task.ID, err)
 	}
 	r.attachSessionMetadata(workspacePath, task.ID, sessionID, verifier)
+	verifyRun, verifyRunErr := r.tasksStore.TaskRuns().Create(workspacePath, meta.TaskRun{
+		TaskID: task.ID, SessionID: sessionID, Kind: meta.TaskRunVerification,
+	})
+	if verifyRunErr != nil {
+		log.Printf("[runner] create verification TaskRun for task %s: %v", task.ID, verifyRunErr)
+	}
 
 	serverURL := fmt.Sprintf("ws://127.0.0.1:%d", r.serverPort)
 	conn, _, err := websocket.DefaultDialer.Dial(serverURL, nil)
 	if err != nil {
 		r.rejectNoVerdict(workspacePath, task.ID, verifier, poolBefore, "bridge unavailable: "+err.Error())
+		r.finishVerificationRun(workspacePath, task.ID, sessionID, verifyRun.ID, "bridge unavailable: "+err.Error())
 		return
 	}
 	defer conn.Close()
@@ -444,6 +466,7 @@ func (r *TaskRunner) runVerifierPass(workspacePath, workspaceID string, task Tas
 	}
 	if err := conn.WriteJSON(ensure); err != nil {
 		r.rejectNoVerdict(workspacePath, task.ID, verifier, poolBefore, "ensure_session failed: "+err.Error())
+		r.finishVerificationRun(workspacePath, task.ID, sessionID, verifyRun.ID, "ensure_session failed: "+err.Error())
 		return
 	}
 
@@ -457,6 +480,7 @@ func (r *TaskRunner) runVerifierPass(workspacePath, workspaceID string, task Tas
 		var msg WsMessage
 		if err := conn.ReadJSON(&msg); err != nil {
 			r.rejectNoVerdict(workspacePath, task.ID, verifier, poolBefore, "bridge read failed: "+err.Error())
+			r.finishVerificationRun(workspacePath, task.ID, sessionID, verifyRun.ID, "bridge read failed: "+err.Error())
 			return
 		}
 		switch msg.Event {
@@ -468,6 +492,7 @@ func (r *TaskRunner) runVerifierPass(workspacePath, workspaceID string, task Tas
 				promptSent = true
 				if err := conn.WriteJSON(WsMessage{Action: "prompt", SessionID: sessionID, Text: instruction}); err != nil {
 					r.rejectNoVerdict(workspacePath, task.ID, verifier, poolBefore, "prompt failed: "+err.Error())
+					r.finishVerificationRun(workspacePath, task.ID, sessionID, verifyRun.ID, "prompt failed: "+err.Error())
 					return
 				}
 			}
@@ -477,13 +502,66 @@ func (r *TaskRunner) runVerifierPass(workspacePath, workspaceID string, task Tas
 			// verdict — record a synthetic rejection so the panel advances.
 			r.markVerifySessionIdle(workspacePath, task.ID, sessionID)
 			r.rejectNoVerdict(workspacePath, task.ID, verifier, poolBefore, "核验者未提交裁决")
+			r.finishVerificationRun(workspacePath, task.ID, sessionID, verifyRun.ID, "")
 			_ = conn.WriteJSON(WsMessage{Action: "close_session", SessionID: sessionID})
 			return
 		case "error":
 			r.rejectNoVerdict(workspacePath, task.ID, verifier, poolBefore, "verifier agent error: "+msg.Message)
+			r.finishVerificationRun(workspacePath, task.ID, sessionID, verifyRun.ID, "verifier agent error: "+msg.Message)
 			return
 		}
 	}
+}
+
+func (r *TaskRunner) finishVerificationRun(workspacePath, taskID, sessionID, taskRunID, runtimeError string) {
+	if taskRunID == "" {
+		return
+	}
+	if existing, ok, err := r.tasksStore.TaskRuns().Get(taskRunID); err == nil && ok && existing.Status != meta.TaskRunRunning {
+		return
+	}
+	task, ok, err := r.tasksStore.GetTask(taskID)
+	if err != nil || !ok {
+		log.Printf("[runner] load task %s for verification audit: %v", taskID, err)
+		return
+	}
+	runStatus := meta.TaskRunCompleted
+	evidenceSummary := "Verifier submitted a structured verdict."
+	if runtimeError != "" && task.Review == nil {
+		runStatus = meta.TaskRunFailed
+		evidenceSummary = runtimeError
+	}
+	var closedBy *meta.ClosedBy
+	if task.Status == TaskStatusCompleted && task.Review != nil && task.Review.Pass {
+		closedBy = &meta.ClosedBy{Kind: "verification", Verdict: "passed"}
+	}
+	run, err := r.tasksStore.TaskRuns().Finish(taskRunID, runStatus, []meta.CompletionEvidence{{
+		Kind: "verifier_verdict", Summary: evidenceSummary, SessionID: sessionID,
+	}}, task.Review, closedBy, runtimeError)
+	if err != nil {
+		log.Printf("[runner] finish verification TaskRun %s: %v", taskRunID, err)
+		return
+	}
+	if run.ClosedBy == nil {
+		return
+	}
+	now := time.Now().UTC()
+	_ = r.tasksStore.Mutate(workspacePath, func(cfg *TasksConfig) bool {
+		for i := range cfg.Tasks {
+			if cfg.Tasks[i].ID != taskID {
+				continue
+			}
+			cfg.Tasks[i].ClosedBy = run.ClosedBy
+			cfg.Tasks[i].Replies = append(cfg.Tasks[i].Replies, Reply{
+				Author: Author{Kind: "system", Name: "completion-gate"},
+				Text:   fmt.Sprintf("完成审计：TaskRun `%s`，Evidence 与核验 Verdict 已记录。", taskRunID),
+				Mode:   ModePureComment, CreatedAt: now,
+			})
+			cfg.Tasks[i].UpdatedAt = now
+			return true
+		}
+		return false
+	})
 }
 
 // rejectNoVerdict records a synthetic rejecting verdict when a verification pass
@@ -548,8 +626,46 @@ func (r *TaskRunner) attachSessionMetadata(workspacePath, taskID, sessionID, age
 }
 
 // finish persists the terminal state of an automated run.
-func (r *TaskRunner) finish(workspacePath, taskID, sessionID string, status TaskStatus, summary string) {
+func (r *TaskRunner) finish(workspacePath, taskID, sessionID, taskRunID string, status TaskStatus, summary string) {
 	now := time.Now().UTC()
+	var closedBy *meta.ClosedBy
+	runStatus := meta.TaskRunCompleted
+	evidenceKind := "runtime_terminal"
+	if status == TaskStatusFailed {
+		runStatus = meta.TaskRunFailed
+		evidenceKind = "runtime_error"
+	}
+	if status == TaskStatusCancelled {
+		runStatus = meta.TaskRunCancelled
+		evidenceKind = "runtime_cancelled"
+	}
+	if status == TaskStatusCompleted {
+		if taskRunID == "" {
+			status = TaskStatusFailed
+			runStatus = meta.TaskRunFailed
+			summary = "completion audit unavailable: TaskRun was not created"
+			evidenceKind = "audit_error"
+		} else {
+			closedBy = &meta.ClosedBy{Kind: "runtime_evidence", Verdict: "passed"}
+		}
+	}
+	if taskRunID != "" {
+		if _, err := r.tasksStore.TaskRuns().Finish(taskRunID, runStatus, []meta.CompletionEvidence{{
+			Kind: evidenceKind, Summary: summary, SessionID: sessionID,
+		}}, nil, closedBy, func() string {
+			if runStatus == meta.TaskRunFailed {
+				return summary
+			}
+			return ""
+		}()); err != nil {
+			log.Printf("[runner] finish TaskRun %s: %v", taskRunID, err)
+			if status == TaskStatusCompleted {
+				status = TaskStatusFailed
+				summary = "completion audit failed: " + err.Error()
+				closedBy = nil
+			}
+		}
+	}
 	var title string
 	var number int
 	err := r.tasksStore.Mutate(workspacePath, func(cfg *TasksConfig) bool {
@@ -563,6 +679,12 @@ func (r *TaskRunner) finish(workspacePath, taskID, sessionID string, status Task
 			task.UpdatedAt = now
 			if status == TaskStatusCompleted {
 				task.CompletedAt = &now
+				task.ClosedBy = closedBy
+				task.Replies = append(task.Replies, Reply{
+					Author: Author{Kind: "system", Name: "completion-gate"},
+					Text:   fmt.Sprintf("完成审计：TaskRun `%s`，Evidence 已记录，Verdict=passed。", taskRunID),
+					Mode:   ModePureComment, CreatedAt: now,
+				})
 			}
 			title, number = task.Title, task.Number
 			for j := range task.Sessions {

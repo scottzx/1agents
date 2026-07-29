@@ -23,6 +23,8 @@
 //	                          update_project_item is withheld and submit_review is added,
 //	                          so a reviewer can only judge, never edit (#50).
 //	ONEAGENTS_INTERNAL_TOKEN  loopback bearer accepted by authMiddleware
+//	ONEAGENTS_SESSION_ID      host-created chat Session used for Turn attribution
+//	ONEAGENTS_SESSION_TOKEN   signature binding requests to that Session
 package projectitems
 
 import (
@@ -51,9 +53,12 @@ func Run() error {
 
 	s := &server{
 		api: &apiClient{
-			baseURL: baseURL,
-			token:   token,
-			http:    &http.Client{Timeout: 30 * time.Second},
+			baseURL:      baseURL,
+			token:        token,
+			sessionID:    os.Getenv("ONEAGENTS_SESSION_ID"),
+			sessionToken: os.Getenv("ONEAGENTS_SESSION_TOKEN"),
+			origin:       "mcp",
+			http:         &http.Client{Timeout: 30 * time.Second},
 		},
 		workspaceID: workspaceID,
 		taskID:      os.Getenv("ONEAGENTS_TASK_ID"),
@@ -205,9 +210,12 @@ func toolErr(msg string) map[string]any {
 // ── HTTP client ─────────────────────────────────────────────────────────────
 
 type apiClient struct {
-	baseURL string
-	token   string
-	http    *http.Client
+	baseURL      string
+	token        string
+	sessionID    string
+	sessionToken string
+	origin       string
+	http         *http.Client
 }
 
 func (c *apiClient) do(method, path string, query url.Values, body any) (int, []byte, error) {
@@ -232,6 +240,13 @@ func (c *apiClient) do(method, path string, query url.Values, body any) (int, []
 	}
 	if c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	if c.sessionID != "" {
+		req.Header.Set("X-OneAgents-Session-ID", c.sessionID)
+		req.Header.Set("X-OneAgents-Session-Token", c.sessionToken)
+	}
+	if c.origin != "" {
+		req.Header.Set("X-OneAgents-Origin", c.origin)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {

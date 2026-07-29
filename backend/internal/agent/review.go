@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/scottzx/1Agents/backend/internal/meta"
 )
 
 // defaultReviewMaxAttempts caps the execute→verify retry loop when a task does
@@ -282,6 +284,60 @@ func applyReviewVerdict(store *TasksStore, wsPath, taskID string, criteria []Cri
 	}
 	if stateErr != nil {
 		return nil, stateErr
+	}
+	if result != nil && result.Status == TaskStatusCompleted && result.Review != nil && result.Review.Pass {
+		runs := store.TaskRuns()
+		run, ok, auditErr := runs.RunningByTask(taskID, meta.TaskRunVerification)
+		if auditErr == nil && !ok {
+			run, auditErr = runs.Create(wsPath, meta.TaskRun{
+				TaskID: taskID,
+				Kind:   meta.TaskRunVerification,
+			})
+		}
+		if auditErr == nil {
+			run, auditErr = runs.Finish(run.ID, meta.TaskRunCompleted, []meta.CompletionEvidence{{
+				Kind:    "verifier_verdict",
+				Summary: "Verifier submitted a passing structured verdict.",
+			}}, result.Review, &meta.ClosedBy{Kind: "verification", Verdict: "passed"}, "")
+		}
+		if auditErr != nil {
+			_ = store.Mutate(wsPath, func(cfg *TasksConfig) bool {
+				for i := range cfg.Tasks {
+					if cfg.Tasks[i].ID != taskID {
+						continue
+					}
+					cfg.Tasks[i].Status = TaskStatusFailed
+					cfg.Tasks[i].CompletedAt = nil
+					cfg.Tasks[i].ClosedBy = nil
+					cfg.Tasks[i].Summary = "completion audit failed: " + auditErr.Error()
+					cfg.Tasks[i].UpdatedAt = time.Now().UTC()
+					return true
+				}
+				return false
+			})
+			return nil, fmt.Errorf("completion audit failed: %w", auditErr)
+		}
+		auditAt := time.Now().UTC()
+		if err := store.Mutate(wsPath, func(cfg *TasksConfig) bool {
+			for i := range cfg.Tasks {
+				if cfg.Tasks[i].ID != taskID {
+					continue
+				}
+				cfg.Tasks[i].ClosedBy = run.ClosedBy
+				cfg.Tasks[i].Replies = append(cfg.Tasks[i].Replies, Reply{
+					Author: Author{Kind: "system", Name: "completion-gate"},
+					Text:   fmt.Sprintf("完成审计：TaskRun `%s`，Evidence 与核验 Verdict 已记录。", run.ID),
+					Mode:   ModePureComment, CreatedAt: auditAt,
+				})
+				cfg.Tasks[i].UpdatedAt = auditAt
+				cp := cfg.Tasks[i]
+				result = &cp
+				return true
+			}
+			return false
+		}); err != nil {
+			return nil, err
+		}
 	}
 	return result, nil
 }

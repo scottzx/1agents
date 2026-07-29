@@ -486,7 +486,15 @@ func emitCreated(status int, resp []byte, err error) int {
 	}
 	var created task
 	if json.Unmarshal(resp, &created) == nil && created.ID != "" {
-		fmt.Printf("created #%d %s: %s\n", created.Number, created.ID, created.Title)
+		fmt.Printf("created #%d %s: %s", created.Number, created.ID, created.Title)
+		if created.EventID != "" {
+			fmt.Printf(" [event=%s", created.EventID)
+			if created.TurnID != "" {
+				fmt.Printf(" turn=%s", created.TurnID)
+			}
+			fmt.Print("]")
+		}
+		fmt.Println()
 		return 0
 	}
 	fmt.Println(string(resp))
@@ -500,7 +508,20 @@ func emitUpdated(id string, status int, resp []byte, err error) int {
 	if status != 200 {
 		return cliFail("update failed (%d): %s", status, strings.TrimSpace(string(resp)))
 	}
-	fmt.Printf("updated %s\n", id)
+	var mutation struct {
+		EventID string `json:"eventId"`
+		TurnID  string `json:"turnId"`
+	}
+	_ = json.Unmarshal(resp, &mutation)
+	fmt.Printf("updated %s", id)
+	if mutation.EventID != "" {
+		fmt.Printf(" [event=%s", mutation.EventID)
+		if mutation.TurnID != "" {
+			fmt.Printf(" turn=%s", mutation.TurnID)
+		}
+		fmt.Print("]")
+	}
+	fmt.Println()
 	return 0
 }
 

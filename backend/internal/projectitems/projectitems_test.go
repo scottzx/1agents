@@ -155,24 +155,39 @@ func TestNotificationProducesNoResponse(t *testing.T) {
 func TestCreateTaskMapsToPost(t *testing.T) {
 	var gotBody map[string]any
 	var gotAuth string
+	var gotSessionID, gotSessionToken, gotOrigin string
 	s, buf, _ := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost && r.URL.Path == "/api/agent/project-items" {
 			gotAuth = r.Header.Get("Authorization")
+			gotSessionID = r.Header.Get("X-OneAgents-Session-ID")
+			gotSessionToken = r.Header.Get("X-OneAgents-Session-Token")
+			gotOrigin = r.Header.Get("X-OneAgents-Origin")
 			body, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(body, &gotBody)
-			w.Write([]byte(`{"id":"t9","number":9,"title":"New","status":"pending","dependsOn":["t1"]}`))
+			w.Write([]byte(`{"id":"t9","number":9,"title":"New","status":"pending","dependsOn":["t1"],"sessionId":"session-1","turnId":"turn-1","eventId":"event-1"}`))
 			return
 		}
 		http.Error(w, "unexpected", 400)
 	})
+	s.api.sessionID = "session-1"
+	s.api.sessionToken = "signed"
+	s.api.origin = "mcp"
 
 	env := call(t, s, buf, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"create_project_item","arguments":{"title":"New","dependsOn":["t1"],"type":"requirement"}}}`)
 	text, isErr := resultText(t, env)
 	if isErr {
 		t.Fatalf("unexpected tool error: %s", text)
 	}
+	for _, want := range []string{`"sessionId": "session-1"`, `"turnId": "turn-1"`, `"eventId": "event-1"`} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("MCP create response missing %s: %s", want, text)
+		}
+	}
 	if gotAuth != "Bearer tok" {
 		t.Fatalf("auth header = %q", gotAuth)
+	}
+	if gotSessionID != "session-1" || gotSessionToken != "signed" || gotOrigin != "mcp" {
+		t.Fatalf("attribution headers: session=%q token=%q origin=%q", gotSessionID, gotSessionToken, gotOrigin)
 	}
 	if gotBody["workspace_id"] != "ws1" {
 		t.Fatalf("workspace_id not locked: %v", gotBody["workspace_id"])

@@ -108,3 +108,4 @@ cache/
 .tmp/
 # Local project permission allowlist (per-workspace runtime state)
 .1agents/allow-rules.json
+/.alipay-sandbox.json

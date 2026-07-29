@@ -49,11 +49,9 @@ export function groupHistoricalTurns(items: GroupedChatItem[]): GroupedChatItem[
         // process header.
         if (!outcomeId) {
             for (let index = turnItems.length - 1; index >= 0; index--) {
-                if (
-                    turnItems[index].kind === 'error' ||
-                    (turnItems[index].kind === 'turn_receipt' && turnItems[index].status !== 'succeeded')
-                ) {
-                    outcomeId = turnItems[index].id;
+                const item = turnItems[index];
+                if (item.kind === 'error' || (item.kind === 'turn_receipt' && item.status !== 'succeeded')) {
+                    outcomeId = item.id;
                     break;
                 }
             }

@@ -70,7 +70,6 @@ func TestAppendAgentReplyWritesTimeline(t *testing.T) {
 		t.Fatalf("add session: %v", err)
 	}
 
-	
 	bridge := &ActiveBridge{
 		SessionID:     "sess-x",
 		WorkspacePath: ws,
@@ -79,7 +78,7 @@ func TestAppendAgentReplyWritesTimeline(t *testing.T) {
 		ReplyID:       "user-reply-1",
 	}
 	bridge.appendTurnText("调研完成，结论如下")
-	writeAgentReply(bridge, h.tasksStore, store)
+	writeAgentReply(bridge, h.tasksStore, store, "turn-1")
 
 	task, ok, err := h.tasksStore.GetTask("task-1")
 	if err != nil || !ok {
@@ -90,7 +89,8 @@ func TestAppendAgentReplyWritesTimeline(t *testing.T) {
 	}
 	rp := task.Replies[0]
 	if rp.Author.Kind != "agent" || rp.Text != "调研完成，结论如下" ||
-		rp.SessionRef != "sess-x" || rp.AcpSessionID != "uuid-x" || rp.InReplyTo != "user-reply-1" {
+		rp.SessionRef != "sess-x" || rp.TurnID != "turn-1" ||
+		rp.AcpSessionID != "uuid-x" || rp.InReplyTo != "user-reply-1" {
 		t.Fatalf("wrong agent reply: %+v", rp)
 	}
 

@@ -59,6 +59,16 @@ type Config struct {
 	// When empty, the supervisor discovers the tree automatically.
 	SkillsSourceDir string
 
+	// CoffeeAddr is the loopback address for the Alipay coffee payment service.
+	CoffeeAddr string
+
+	// CoffeeNodeBinaryPath is the Node.js executable used by the payment service.
+	CoffeeNodeBinaryPath string
+
+	// CoffeeSourceDir is the @1agents/alipay-coffee package root.
+	// When empty, the supervisor discovers the module automatically.
+	CoffeeSourceDir string
+
 	// OTA configures the over-the-air self-update behaviour.
 	// When Enabled is false the /api/system/update endpoint still accepts
 	// requests but reports "disabled".
@@ -81,6 +91,8 @@ func Default() *Config {
 		TtydBinaryPath:   "./ttyd",
 		SkillsAddr:       "127.0.0.1:38085",
 		SkillsBinaryPath: "python3",
+		CoffeeAddr:       "127.0.0.1:38087",
+		CoffeeNodeBinaryPath: "node",
 		WorkDir:          "~",
 		StaticDir:        "./frontend/dist",
 		RestartDelay:     3 * time.Second,
@@ -97,4 +109,3 @@ func Default() *Config {
 
 	return cfg
 }
-

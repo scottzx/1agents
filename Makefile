@@ -26,8 +26,9 @@ FRONTEND_SRCS := $(shell find frontend/src frontend/packages modules/1acp -type 
 TTYD_SRCS     := $(shell find modules/ttyd/src -type f 2>/dev/null)
 CONNECT_SRCS  := $(shell find modules/cc-connect -type f 2>/dev/null)
 SWITCH_SRCS   := $(shell find modules/cc-switch-cli/src-tauri/src -type f 2>/dev/null)
+COFFEE_SRCS   := $(shell find modules/alipay-coffee/src modules/alipay-coffee/public -type f 2>/dev/null) modules/alipay-coffee/package.json modules/alipay-coffee/package-lock.json
 
-.PHONY: all frontend ttyd cc-connect cc-connect-noweb cc-switch happy backend agent package release-notes clean help install-hooks submodules submodule-cc-connect submodule-cc-switch submodule-happy-cli
+.PHONY: all frontend ttyd cc-connect cc-connect-noweb cc-switch happy coffee backend agent package release-notes clean help install-hooks submodules submodule-cc-connect submodule-cc-switch submodule-happy-cli
 
 help:
 	@echo "Unified Build and Packaging System for Remote Agents"
@@ -42,13 +43,14 @@ help:
 	@echo "  make cc-connect-noweb  - Compile cc-connect Go daemon (WITHOUT rebuilding web assets)"
 	@echo "  make cc-switch         - Compile cc-switch Rust CLI sidecar"
 	@echo "  make happy             - Build the happy-cli Node submodule + build/happy launcher"
+	@echo "  make coffee            - Stage the Alipay coffee payment Node.js service"
 	@echo "  make backend           - Compile 1agents Go server (backend) with version ldflags"
 	@echo "  make package           - Create a target-distinguished deployable archive in dist/"
 	@echo "  make release-notes     - Generate a self-contained release feature-intro HTML page (FROM/TO/OUT overridable)"
 	@echo "  make clean             - Clean all intermediate and build outputs across components"
 	@echo "  make install-hooks     - Install git hooks (auto-push submodules + create PRs on git push)"
 
-all: frontend ttyd cc-connect cc-switch happy backend
+all: frontend ttyd cc-connect cc-switch happy coffee backend
 
 # --- Git submodules ---------------------------------------------------------
 submodules:
@@ -130,6 +132,12 @@ build/happy:
 	@echo "=== Building happy bundle (modules/happy-cli -> build/happy-cli + build/adapter)..."
 	./scripts/build-happy-bundle.sh
 
+coffee: build/alipay-coffee/package.json
+
+build/alipay-coffee/package.json: $(COFFEE_SRCS)
+	@echo "=== Building Alipay coffee payment bundle..."
+	./scripts/build-alipay-coffee-bundle.sh
+
 backend: build/1agents
 
 build/1agents: $(BACKEND_SRCS)
@@ -154,6 +162,7 @@ package: all
 	cp build/happy dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/
 	cp -r build/happy-cli dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/happy-cli
 	cp -r build/adapter dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/adapter
+	cp -r build/alipay-coffee dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/alipay-coffee
 	cp -r frontend/dist dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/dist
 	cd dist && tar -czf 1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME).tar.gz 1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)
 	@echo "=== Created package: dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME).tar.gz"

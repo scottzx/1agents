@@ -154,6 +154,15 @@ export interface ProjectItem {
     startedAt?: string;
     completedAt?: string;
     summary?: string;
+    closedBy?: {
+        kind: string;
+        taskRunId: string;
+        turnId?: string;
+        sessionId?: string;
+        evidenceIds: string[];
+        verdict: string;
+        closedAt: string;
+    };
     replies?: Reply[];
     sessions: SessionMetadata[];
     // Client-only annotations, set when tasks are aggregated across projects for

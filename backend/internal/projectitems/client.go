@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -29,8 +30,20 @@ type Client struct {
 // NewClient builds a Client with its own HTTP transport. token may be empty
 // (loopback requests bypass auth unless a tunnel is active).
 func NewClient(baseURL, workspaceID, token string) *Client {
+	sessionID := os.Getenv("ONEAGENTS_SESSION_ID")
+	sessionToken := os.Getenv("ONEAGENTS_SESSION_TOKEN")
+	if token == "" && sessionID != "" {
+		token = sessionToken
+	}
 	return &Client{
-		api:         &apiClient{baseURL: baseURL, token: token, http: &http.Client{Timeout: 30 * time.Second}},
+		api: &apiClient{
+			baseURL:      baseURL,
+			token:        token,
+			sessionID:    sessionID,
+			sessionToken: sessionToken,
+			origin:       "cli",
+			http:         &http.Client{Timeout: 30 * time.Second},
+		},
 		workspaceID: workspaceID,
 	}
 }

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/scottzx/1Agents/backend/internal/localtoken"
+	"github.com/scottzx/1Agents/backend/internal/meta"
 )
 
 var upgrader = websocket.Upgrader{
@@ -41,6 +43,7 @@ var nativeSystemPromptAgents = map[string]bool{
 
 type ActiveBridge struct {
 	SessionID     string
+	ProjectID     string
 	WorkspacePath string
 	mu            sync.Mutex
 	ClientConn    *websocket.Conn
@@ -75,11 +78,21 @@ type ActiveBridge struct {
 	// tasksStore lets the client-read loop record each user prompt back to
 	// the task timeline (symmetric to writeAgentReply), so the conversation
 	// is captured server-side regardless of which UI sent the prompt.
-	tasksStore *TasksStore
+	tasksStore   *TasksStore
+	turnStore    *meta.AgentTurnStore
+	activeTurn   *TurnContext
+	pendingTurns []*TurnContext
 	// turnText accumulates the assistant's streamed output text for the
 	// current turn; reset on each tool call so that at `done` it holds the
 	// final assistant message (text after the last tool call).
 	turnText []string
+}
+
+// TurnContext binds one persisted Turn to the exact prompt frame forwarded to
+// the ACP runtime. Only activeTurn is ever sent; pendingTurns remains FIFO.
+type TurnContext struct {
+	Turn meta.AgentTurn
+	Raw  []byte
 }
 
 // touch records that the session saw activity just now, resetting its idle clock.
@@ -127,12 +140,27 @@ type AcpxClient struct {
 	serverPort int
 	mu         sync.Mutex
 	bridges    map[string]*ActiveBridge
+	turnStore  *meta.AgentTurnStore
 }
 
-func NewAcpxClient(serverPort int) *AcpxClient {
+func NewAcpxClient(serverPort int, stores ...*meta.AgentTurnStore) *AcpxClient {
 	c := &AcpxClient{
 		serverPort: serverPort,
 		bridges:    make(map[string]*ActiveBridge),
+	}
+	if len(stores) > 0 {
+		c.turnStore = stores[0]
+	}
+	if c.turnStore != nil {
+		failed, cancelled, err := c.turnStore.RecoverInterrupted(
+			"backend_restarted",
+			"Backend restarted before the Turn reached a terminal state.",
+		)
+		if err != nil {
+			log.Printf("[acpx_client] Recover interrupted Turns failed: %v", err)
+		} else if failed > 0 || cancelled > 0 {
+			log.Printf("[acpx_client] Recovered interrupted Turns: failed=%d cancelled=%d", failed, cancelled)
+		}
 	}
 	go c.reapLoop()
 	return c
@@ -189,26 +217,27 @@ func (c *AcpxClient) reapBridge(bridge *ActiveBridge) {
 }
 
 type WsMessage struct {
-	Action          string          `json:"action,omitempty"`
-	Event           string          `json:"event,omitempty"`
-	SessionID       string          `json:"sessionId,omitempty"`
-	WorkspacePath   string          `json:"workspacePath,omitempty"`
-	AgentType       string          `json:"agentType,omitempty"`
-	CCSessionID     string          `json:"ccSessionId,omitempty"`
-	AcpSessionID    string          `json:"acpSessionId,omitempty"`
-	SystemContext   string          `json:"systemContext,omitempty"`
-	Text            string          `json:"text,omitempty"`
-	RequestId       string          `json:"requestId,omitempty"`
-	Behavior        string          `json:"behavior,omitempty"`
-	ToolName        string          `json:"toolName,omitempty"`
-	ToolCallID      string          `json:"toolCallId,omitempty"`
-	IsError         bool            `json:"isError,omitempty"`
-	Arguments       json.RawMessage `json:"arguments,omitempty"`
-	Summary         string          `json:"summary,omitempty"`
+	Action        string          `json:"action,omitempty"`
+	Event         string          `json:"event,omitempty"`
+	SessionID     string          `json:"sessionId,omitempty"`
+	WorkspacePath string          `json:"workspacePath,omitempty"`
+	AgentType     string          `json:"agentType,omitempty"`
+	CCSessionID   string          `json:"ccSessionId,omitempty"`
+	AcpSessionID  string          `json:"acpSessionId,omitempty"`
+	SystemContext string          `json:"systemContext,omitempty"`
+	Text          string          `json:"text,omitempty"`
+	RequestId     string          `json:"requestId,omitempty"`
+	TurnID        string          `json:"turnId,omitempty"`
+	Behavior      string          `json:"behavior,omitempty"`
+	ToolName      string          `json:"toolName,omitempty"`
+	ToolCallID    string          `json:"toolCallId,omitempty"`
+	IsError       bool            `json:"isError,omitempty"`
+	Arguments     json.RawMessage `json:"arguments,omitempty"`
+	Summary       string          `json:"summary,omitempty"`
 	// Stopped marks a `done` event that ended because the user hit "停止"
 	// (cancel_turn), not a natural finish. The turn's partial reply is still
 	// recorded, but handleTaskSessionDone must NOT flip the task to Completed.
-	Stopped bool `json:"stopped,omitempty"`
+	Stopped         bool            `json:"stopped,omitempty"`
 	Items           json.RawMessage `json:"items,omitempty"`
 	Messages        json.RawMessage `json:"messages,omitempty"`
 	Code            string          `json:"code,omitempty"`
@@ -223,6 +252,10 @@ type WsMessage struct {
 	// inject the project-locked task-tool server. The Go side only declares
 	// the field so it survives the ReadJSON → WriteJSON round trip.
 	McpServers json.RawMessage `json:"mcpServers,omitempty"`
+	// Env is host-owned process environment for the ACP agent. It carries the
+	// signed 1agents Session identity used by shell-invoked project-items CLI
+	// calls; callers cannot supply it through the browser WebSocket.
+	Env map[string]string `json:"env,omitempty"`
 	// PermissionMode is the per-session policy ("approve-reads" /
 	// "approve-all" / "deny-all"). Two paths use it:
 	//   1. set on the initial ensure_session message so the bridge-server
@@ -235,7 +268,7 @@ type WsMessage struct {
 	PermissionMode string `json:"permissionMode,omitempty"`
 }
 
-func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePath, taskId, sessionId, agentType, systemContext string, mcpServers json.RawMessage, scheduler *Scheduler, tasksStore *TasksStore, chatStore *Store, acpSessionID, replyID string) {
+func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, projectID, workspacePath, taskId, sessionId, agentType, systemContext string, mcpServers json.RawMessage, scheduler *Scheduler, tasksStore *TasksStore, chatStore *Store, acpSessionID, replyID string) {
 	clientConn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("[acpx_client] upgrade failed: %v", err)
@@ -249,6 +282,12 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 	if !nativeSystemPromptAgents[agentType] {
 		metaSystemContext = ""
 	}
+	sessionToken := localtoken.SessionToken(sessionId)
+	sessionEnv := map[string]string{
+		"ONEAGENTS_SESSION_ID":    sessionId,
+		"ONEAGENTS_SESSION_TOKEN": sessionToken,
+	}
+	mcpServers = injectSessionAttribution(mcpServers, sessionId, sessionToken)
 
 	c.mu.Lock()
 	if c.bridges == nil {
@@ -300,6 +339,7 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 			ResumeSessionID: acpSessionID,
 			SystemContext:   metaSystemContext,
 			McpServers:      mcpServers,
+			Env:             sessionEnv,
 			PermissionMode:  reconnectMode,
 		}
 		ensureStart := time.Now()
@@ -340,6 +380,7 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 
 	bridge = &ActiveBridge{
 		SessionID:      sessionId,
+		ProjectID:      projectID,
 		WorkspacePath:  workspacePath,
 		ClientConn:     clientConn,
 		ServerConn:     serverConn,
@@ -348,6 +389,7 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 		AgentType:      agentType,
 		ReplyID:        replyID,
 		tasksStore:     tasksStore,
+		turnStore:      c.turnStore,
 		LastActivityAt: time.Now(),
 	}
 	// Fresh session on an agent that can't take a system prompt over ACP:
@@ -381,6 +423,7 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 		ResumeSessionID: acpSessionID,
 		SystemContext:   metaSystemContext,
 		McpServers:      mcpServers,
+		Env:             sessionEnv,
 		PermissionMode:  initialMode,
 	}
 	ensureStart := time.Now()
@@ -407,6 +450,10 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 
 func (c *AcpxClient) readFromServerLoop(bridge *ActiveBridge, scheduler *Scheduler, tasksStore *TasksStore, chatStore *Store, taskId string) {
 	defer func() {
+		// A server-side connection loss is different from a frontend WebSocket
+		// disconnect: the ACP runtime can no longer own active work, so fail it
+		// and cancel anything that was still queued.
+		c.failOutstandingTurns(bridge, tasksStore, chatStore)
 		bridge.mu.Lock()
 		bridge.IsDone = true
 		close(bridge.MsgChan)
@@ -439,7 +486,8 @@ func (c *AcpxClient) readFromServerLoop(bridge *ActiveBridge, scheduler *Schedul
 			log.Printf("[acpx_client] Peek unmarshal failed for session %s (forwarding raw): %v", bridge.SessionID, err)
 		}
 
-		// Intercept and update status
+		var nextTurn *TurnContext
+
 		// Intercept and update status
 		if msg.Event == "session_ready" && msg.AgentSessionID != "" {
 			if chatStore != nil {
@@ -485,22 +533,22 @@ func (c *AcpxClient) readFromServerLoop(bridge *ActiveBridge, scheduler *Schedul
 									archivedAt = rec.ArchivedAt.Format(time.RFC3339)
 								}
 							}
-							
+
 							filtered = append(filtered, map[string]any{
-								"id":              s.ID,
-								"workspaceId":     getWorkspaceId(chatStore, bridge.SessionID),
-								"taskId":          taskIdVal,
-								"name":            s.Name,
-								"agentType":       getAgentTypeFromCommand(s.AgentCommand),
-								"ccProject":       ccProject,
-								"ccSessionId":     ccSessionId,
-								"acpSessionId":    s.AcpSessionId,
-								"sessionKey":      s.ID,
-								"status":          s.Status,
-								"createdAt":       s.CreatedAt,
-								"role":            role,
-								"permissionMode":  permissionMode,
-								"archivedAt":      archivedAt,
+								"id":             s.ID,
+								"workspaceId":    getWorkspaceId(chatStore, bridge.SessionID),
+								"taskId":         taskIdVal,
+								"name":           s.Name,
+								"agentType":      getAgentTypeFromCommand(s.AgentCommand),
+								"ccProject":      ccProject,
+								"ccSessionId":    ccSessionId,
+								"acpSessionId":   s.AcpSessionId,
+								"sessionKey":     s.ID,
+								"status":         s.Status,
+								"createdAt":      s.CreatedAt,
+								"role":           role,
+								"permissionMode": permissionMode,
+								"archivedAt":     archivedAt,
 							})
 						}
 					}
@@ -519,7 +567,7 @@ func (c *AcpxClient) readFromServerLoop(bridge *ActiveBridge, scheduler *Schedul
 			if chatStore != nil {
 				var forkPayload struct {
 					ParentSessionId string `json:"parentSessionId"`
-					Session struct {
+					Session         struct {
 						ID           string `json:"id"`
 						AcpSessionId string `json:"acpSessionId"`
 						Cwd          string `json:"cwd"`
@@ -539,7 +587,7 @@ func (c *AcpxClient) readFromServerLoop(bridge *ActiveBridge, scheduler *Schedul
 						newRec.CreatedAt = time.Now().UTC()
 						newRec.LastEventAt = time.Now().UTC()
 						newRec.ArchivedAt = time.Time{}
-						
+
 						if err := chatStore.Add(newRec); err != nil {
 							log.Printf("[acpx_client] Failed to insert forked session to meta.db: %v", err)
 						} else {
@@ -597,14 +645,31 @@ func (c *AcpxClient) readFromServerLoop(bridge *ActiveBridge, scheduler *Schedul
 			bridge.resetTurnText()
 		} else if msg.Event == "done" {
 			log.Printf("[acpx_client] Turn done for session %s (stopped=%v). Intercepted summary: %s", bridge.SessionID, msg.Stopped, msg.Summary)
-			writeAgentReply(bridge, tasksStore, chatStore)
+			turnID := activeBridgeTurnID(bridge)
+			var explicit bool
+			var finishErr error
+			raw, nextTurn, explicit, finishErr = c.finishActiveTurn(bridge, msg, raw, tasksStore, chatStore)
+			if finishErr != nil {
+				log.Printf("[acpx_client] Finish Turn for session %s failed: %v", bridge.SessionID, finishErr)
+				break
+			}
+			if !explicit {
+				writeAgentReply(bridge, tasksStore, chatStore)
+			}
 			// A user "停止" ends the turn without completing the task: record
 			// the partial reply and free the lock, but leave task status as-is.
-			c.handleTaskSessionDone(bridge.WorkspacePath, taskId, bridge.SessionID, msg.Summary, msg.Stopped, tasksStore)
+			c.handleTaskSessionDone(bridge.WorkspacePath, taskId, bridge.SessionID, turnID, msg.Summary, msg.Stopped, tasksStore)
 			scheduler.Lock.Release(bridge.WorkspacePath)
 		} else if msg.Event == "error" {
 			log.Printf("[acpx_client] Intercepted turn error for session %s: %s", bridge.SessionID, msg.Message)
-			c.handleTaskSessionError(bridge.WorkspacePath, taskId, bridge.SessionID, msg.Message, tasksStore)
+			turnID := activeBridgeTurnID(bridge)
+			var finishErr error
+			raw, nextTurn, _, finishErr = c.finishActiveTurn(bridge, msg, raw, tasksStore, chatStore)
+			if finishErr != nil {
+				log.Printf("[acpx_client] Fail Turn for session %s failed: %v", bridge.SessionID, finishErr)
+				break
+			}
+			c.handleTaskSessionError(bridge.WorkspacePath, taskId, bridge.SessionID, turnID, msg.Message, tasksStore)
 			scheduler.Lock.Release(bridge.WorkspacePath)
 		}
 
@@ -618,6 +683,13 @@ func (c *AcpxClient) readFromServerLoop(bridge *ActiveBridge, scheduler *Schedul
 			}
 		}
 		bridge.mu.Unlock()
+
+		if nextTurn != nil {
+			if err := c.startTurn(bridge, nextTurn); err != nil {
+				log.Printf("[acpx_client] Start queued Turn %s failed: %v", nextTurn.Turn.ID, err)
+				break
+			}
+		}
 	}
 }
 
@@ -661,19 +733,11 @@ func (c *AcpxClient) readFromClientLoop(bridge *ActiveBridge, clientConn *websoc
 			log.Printf("[acpx_client] Peek unmarshal of client message failed for session %s (forwarding raw): %v", bridge.SessionID, err)
 		}
 
-		// A new prompt starts a new turn: clear any leftover text so the
-		// write-back only captures this turn's assistant output, and record
-		// the user's prompt to the task timeline (issue-model §8, user side).
+		// First prompt of a fresh session on a non-native agent: prepend the
+		// role/system context so the agent receives it as one combined message
+		// (no separate priming turn). The persisted prompt remains the user's
+		// original text, without this system preamble.
 		if msg.Action == "prompt" {
-			bridge.resetTurnText()
-			// Record the user's own text to the timeline BEFORE any merge, so
-			// the role/system preamble never pollutes the user's reply.
-			writeUserReply(bridge, bridge.tasksStore, msg.Text)
-			// First prompt of a fresh session on a non-native agent: prepend the
-			// role/system context so the agent receives it as one combined
-			// message (no separate priming turn). Consumed once. The rewrite
-			// goes through map[string]any (not WsMessage) so any fields the
-			// struct doesn't declare survive the re-marshal.
 			bridge.mu.Lock()
 			pending := bridge.pendingSystemContext
 			bridge.pendingSystemContext = ""
@@ -681,22 +745,45 @@ func (c *AcpxClient) readFromClientLoop(bridge *ActiveBridge, clientConn *websoc
 			if pending != "" {
 				raw = mergeSystemContextIntoPrompt(raw, pending)
 			}
+			handled, queueErr := c.queuePrompt(bridge, msg, raw)
+			if queueErr != nil {
+				log.Printf("[acpx_client] Queue prompt for session %s failed: %v", bridge.SessionID, queueErr)
+				bridge.mu.Lock()
+				if bridge.ServerConn != nil {
+					_ = bridge.ServerConn.Close()
+				}
+				bridge.mu.Unlock()
+				break
+			}
+			if handled {
+				continue
+			}
+
+			// Legacy compatibility for callers that do not provide a TurnStore.
+			bridge.resetTurnText()
+			writeUserReply(bridge, bridge.tasksStore, msg.Text)
+		}
+
+		if (msg.Action == "cancel_turn" || msg.Action == "cancel_queued_turn") && msg.TurnID != "" {
+			handled, cancelErr := c.cancelPendingTurn(bridge, msg.TurnID)
+			if cancelErr != nil {
+				log.Printf("[acpx_client] Cancel queued Turn %s failed: %v", msg.TurnID, cancelErr)
+			}
+			if handled {
+				continue
+			}
 		}
 
 		bridge.mu.Lock()
-		serverConn := bridge.ServerConn
 		isDone := bridge.IsDone
 		bridge.mu.Unlock()
-
 		if isDone {
 			break
 		}
 
-		if serverConn != nil {
-			if err := serverConn.WriteMessage(websocket.TextMessage, raw); err != nil {
-				log.Printf("[acpx_client] Forward client message to server failed for session %s: %v", bridge.SessionID, err)
-				break
-			}
+		if err := c.writeServerRaw(bridge, raw); err != nil {
+			log.Printf("[acpx_client] Forward client message to server failed for session %s: %v", bridge.SessionID, err)
+			break
 		}
 	}
 }
@@ -722,7 +809,7 @@ func mergeSystemContextIntoPrompt(raw []byte, pending string) []byte {
 // writeUserReply records a user prompt to the task timeline (issue-model §8,
 // user side; mirror of writeAgentReply). SessionRef groups it under the
 // session's branch. No-op for sessions outside a task or empty prompts.
-func writeUserReply(bridge *ActiveBridge, tasksStore *TasksStore, text string) {
+func writeUserReply(bridge *ActiveBridge, tasksStore *TasksStore, text string, turnIDs ...string) {
 	bridge.mu.Lock()
 	taskID := bridge.TaskID
 	sessionID := bridge.SessionID
@@ -732,10 +819,15 @@ func writeUserReply(bridge *ActiveBridge, tasksStore *TasksStore, text string) {
 		return
 	}
 
+	var turnID string
+	if len(turnIDs) > 0 {
+		turnID = turnIDs[0]
+	}
 	if _, err := tasksStore.AppendReply(taskID, Reply{
 		Author:     Author{Kind: "user", Name: "user"},
 		Text:       text,
 		SessionRef: sessionID,
+		TurnID:     turnID,
 		Mode:       ModeFollowUp,
 	}); err != nil {
 		log.Printf("[acpx_client] AppendReply(user) for task %s failed: %v", taskID, err)
@@ -748,9 +840,16 @@ func writeUserReply(bridge *ActiveBridge, tasksStore *TasksStore, text string) {
 // task timeline (issue-model §8: server-side interception, one reply per
 // turn). Shared by the browser-bridged path and the headless TaskRunner.
 // No-op for sessions outside a task or empty turns.
-func writeAgentReply(bridge *ActiveBridge, tasksStore *TasksStore, chatStore *Store) {
+func writeAgentReply(bridge *ActiveBridge, tasksStore *TasksStore, chatStore *Store, turnIDs ...string) {
 	text := bridge.takeTurnText()
+	var turnID string
+	if len(turnIDs) > 0 {
+		turnID = turnIDs[0]
+	}
+	writeAgentReplyText(bridge, tasksStore, chatStore, turnID, text)
+}
 
+func writeAgentReplyText(bridge *ActiveBridge, tasksStore *TasksStore, chatStore *Store, turnID, text string) {
 	bridge.mu.Lock()
 	taskID := bridge.TaskID
 	agentType := bridge.AgentType
@@ -773,6 +872,7 @@ func writeAgentReply(bridge *ActiveBridge, tasksStore *TasksStore, chatStore *St
 		AgentType:    agentType,
 		Text:         text,
 		SessionRef:   bridge.SessionID,
+		TurnID:       turnID,
 		AcpSessionID: acpSessionID,
 		InReplyTo:    replyID,
 		Mode:         ModePureComment,
@@ -791,8 +891,62 @@ func (c *AcpxClient) cleanupBridge(sessionId string) {
 	}
 }
 
-func (c *AcpxClient) handleTaskSessionDone(workspacePath, taskId, sessionId, summary string, stopped bool, tasksStore *TasksStore) {
+func activeBridgeTurnID(bridge *ActiveBridge) string {
+	bridge.mu.Lock()
+	defer bridge.mu.Unlock()
+	if bridge.activeTurn == nil {
+		return ""
+	}
+	return bridge.activeTurn.Turn.ID
+}
+
+func (c *AcpxClient) handleTaskSessionDone(workspacePath, taskId, sessionId, turnID, summary string, stopped bool, tasksStore *TasksStore) {
 	now := time.Now().UTC()
+	existing, ok, err := tasksStore.GetTask(taskId)
+	if err != nil || !ok {
+		return
+	}
+	if existing.Type == ItemTypeDiscussion {
+		stopped = true
+	}
+	runs := tasksStore.TaskRuns()
+	run, hasRun, runErr := runs.RunningBySession(sessionId)
+	if runErr == nil && !hasRun && existing.Type != ItemTypeDiscussion {
+		run, runErr = runs.Create(workspacePath, meta.TaskRun{
+			TaskID: taskId, SessionID: sessionId, OriginTurnID: turnID, Kind: meta.TaskRunExecution,
+		})
+		hasRun = runErr == nil
+	}
+	terminal := TaskStatusCompleted
+	runStatus := meta.TaskRunCompleted
+	var closedBy *meta.ClosedBy
+	if stopped {
+		terminal = existing.Status
+		runStatus = meta.TaskRunCancelled
+	} else if needsReview(&existing) {
+		terminal = TaskStatusPendingReview
+	} else if !hasRun {
+		terminal = TaskStatusFailed
+		runStatus = meta.TaskRunFailed
+		summary = "completion audit unavailable: TaskRun was not created"
+	} else {
+		closedBy = &meta.ClosedBy{Kind: "runtime_evidence", Verdict: "passed"}
+	}
+	if hasRun {
+		finished, finishErr := runs.Finish(run.ID, runStatus, []meta.CompletionEvidence{{
+			Kind: "runtime_terminal", Summary: summary, SessionID: sessionId, TurnID: turnID,
+		}}, nil, closedBy, "")
+		if finishErr != nil {
+			log.Printf("[acpx_client] finish TaskRun %s: %v", run.ID, finishErr)
+			if terminal == TaskStatusCompleted {
+				terminal = TaskStatusFailed
+				summary = "completion audit failed: " + finishErr.Error()
+				closedBy = nil
+			}
+		} else {
+			closedBy = finished.ClosedBy
+		}
+	}
 	_ = tasksStore.Mutate(workspacePath, func(cfg *TasksConfig) bool {
 		for i := range cfg.Tasks {
 			task := &cfg.Tasks[i]
@@ -803,8 +957,16 @@ func (c *AcpxClient) handleTaskSessionDone(workspacePath, taskId, sessionId, sum
 				// Either way the agent's reply was already recorded by
 				// writeAgentReply; here we only mark the session idle below.
 				if task.Type != ItemTypeDiscussion && !stopped {
-					task.Status = TaskStatusCompleted
-					task.CompletedAt = &now
+					task.Status = terminal
+					if terminal == TaskStatusCompleted {
+						task.CompletedAt = &now
+						task.ClosedBy = closedBy
+						task.Replies = append(task.Replies, Reply{
+							Author: Author{Kind: "system", Name: "completion-gate"},
+							Text:   fmt.Sprintf("完成审计：TaskRun `%s`，Evidence 已记录，Verdict=passed。", run.ID),
+							Mode:   ModePureComment, CreatedAt: now,
+						})
+					}
 					task.Summary = summary
 				}
 				task.UpdatedAt = now
@@ -839,8 +1001,22 @@ func (c *AcpxClient) handleTaskSessionDone(workspacePath, taskId, sessionId, sum
 	})
 }
 
-func (c *AcpxClient) handleTaskSessionError(workspacePath, taskId, sessionId, errMsg string, tasksStore *TasksStore) {
+func (c *AcpxClient) handleTaskSessionError(workspacePath, taskId, sessionId, turnID, errMsg string, tasksStore *TasksStore) {
 	now := time.Now().UTC()
+	if existing, ok, _ := tasksStore.GetTask(taskId); ok && existing.Type != ItemTypeDiscussion {
+		runs := tasksStore.TaskRuns()
+		run, hasRun, _ := runs.RunningBySession(sessionId)
+		if !hasRun {
+			run, _ = runs.Create(workspacePath, meta.TaskRun{
+				TaskID: taskId, SessionID: sessionId, OriginTurnID: turnID, Kind: meta.TaskRunExecution,
+			})
+		}
+		if run.ID != "" {
+			_, _ = runs.Finish(run.ID, meta.TaskRunFailed, []meta.CompletionEvidence{{
+				Kind: "runtime_error", Summary: errMsg, SessionID: sessionId, TurnID: turnID,
+			}}, nil, nil, errMsg)
+		}
+	}
 	_ = tasksStore.Mutate(workspacePath, func(cfg *TasksConfig) bool {
 		for i := range cfg.Tasks {
 			task := &cfg.Tasks[i]
@@ -891,4 +1067,3 @@ func getAgentTypeFromCommand(cmd string) string {
 	}
 	return "claudecode"
 }
-

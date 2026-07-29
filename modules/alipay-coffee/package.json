@@ -1,0 +1,17 @@
+{
+  "name": "@1agents/alipay-coffee",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "alipay-sdk": "^4.14.0",
+    "express": "^5.2.1"
+  }
+}
