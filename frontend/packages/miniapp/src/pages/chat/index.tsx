@@ -585,6 +585,7 @@ function GroupedToolCallItem({
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         const typeKeyMap: Record<string, string> = {
           GrepSearch: 'file_matches',
+          ReadFile: 'FileContent',
         };
         let targetVal: unknown = undefined;
         if (typeof parsed.type === 'string' && parsed.type in typeKeyMap) {

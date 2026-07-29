@@ -35,9 +35,10 @@ export function formatToolOutput(raw: string): string {
             const parsed = JSON.parse(s);
             if (parsed !== null && typeof parsed === 'object') {
                 if (!Array.isArray(parsed)) {
-                    // 1. Specific "type" rules (e.g. type === 'GrepSearch' -> file_matches)
+                    // 1. Specific "type" rules (e.g. type === 'GrepSearch' -> file_matches, type === 'ReadFile' -> FileContent)
                     const typeKeyMap: Record<string, string> = {
                         GrepSearch: 'file_matches',
+                        ReadFile: 'FileContent',
                     };
                     if (typeof parsed.type === 'string' && parsed.type in typeKeyMap) {
                         const targetKey = typeKeyMap[parsed.type];

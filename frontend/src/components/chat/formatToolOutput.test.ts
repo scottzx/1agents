@@ -110,3 +110,24 @@ test('formatToolOutput: falls back to output_for_prompt if type is GrepSearch bu
     const result = formatToolOutput(raw);
     assert.equal(result, 'fallback prompt output');
 });
+
+test('formatToolOutput: prioritizes FileContent when type is ReadFile', () => {
+    const raw = JSON.stringify({
+        type: 'ReadFile',
+        FileContent: 'console.log("hello world");\n',
+        output_for_prompt: 'ignored prompt output',
+    });
+    const result = formatToolOutput(raw);
+    assert.equal(result, 'console.log("hello world");\n');
+});
+
+test('formatToolOutput: formats FileContent as JSON if FileContent is a JSON object or string', () => {
+    const raw = JSON.stringify({
+        type: 'ReadFile',
+        FileContent: { key: 'value' },
+        output_for_prompt: 'ignored',
+    });
+    const result = formatToolOutput(raw);
+    const expected = JSON.stringify({ key: 'value' }, null, 2);
+    assert.equal(result, expected);
+});
