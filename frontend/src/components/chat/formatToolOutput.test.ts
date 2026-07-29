@@ -111,23 +111,26 @@ test('formatToolOutput: falls back to output_for_prompt if type is GrepSearch bu
     assert.equal(result, 'fallback prompt output');
 });
 
-test('formatToolOutput: prioritizes FileContent when type is ReadFile', () => {
+test('formatToolOutput: prioritizes FileContent over content and content_concise for ReadFile payload', () => {
     const raw = JSON.stringify({
         type: 'ReadFile',
         FileContent: 'console.log("hello world");\n',
-        output_for_prompt: 'ignored prompt output',
+        content: '390→ console.log("hello world");\n',
+        content_concise: '390→ concise',
+        raw_output: 'raw output',
     });
     const result = formatToolOutput(raw);
     assert.equal(result, 'console.log("hello world");\n');
 });
 
-test('formatToolOutput: formats FileContent as JSON if FileContent is a JSON object or string', () => {
+test('formatToolOutput: falls back to content then content_concise when FileContent is missing', () => {
     const raw = JSON.stringify({
         type: 'ReadFile',
-        FileContent: { key: 'value' },
-        output_for_prompt: 'ignored',
+        content: '390→ selectedFsEntry',
+        content_concise: '390→ selectedFsEntry concise',
+        absolute_path: '/path/to/file.tsx',
+        raw_output: 'selectedFsEntry raw',
     });
     const result = formatToolOutput(raw);
-    const expected = JSON.stringify({ key: 'value' }, null, 2);
-    assert.equal(result, expected);
+    assert.equal(result, '390→ selectedFsEntry');
 });

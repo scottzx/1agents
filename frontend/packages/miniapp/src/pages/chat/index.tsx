@@ -583,19 +583,29 @@ function GroupedToolCallItem({
     try {
       const parsed = JSON.parse(call.output);
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        const typeKeyMap: Record<string, string> = {
-          GrepSearch: 'file_matches',
-          ReadFile: 'FileContent',
+        const typeKeyMap: Record<string, string[]> = {
+          GrepSearch: ['file_matches'],
+          ReadFile: ['FileContent', 'content', 'content_concise', 'raw_output'],
         };
         let targetVal: unknown = undefined;
         if (typeof parsed.type === 'string' && parsed.type in typeKeyMap) {
-          const typeKey = typeKeyMap[parsed.type];
-          if (typeKey in parsed && parsed[typeKey] !== undefined && parsed[typeKey] !== null) {
-            targetVal = parsed[typeKey];
+          const candidateKeys = typeKeyMap[parsed.type];
+          for (const key of candidateKeys) {
+            if (key in parsed && parsed[key] !== undefined && parsed[key] !== null) {
+              targetVal = parsed[key];
+              break;
+            }
           }
         }
         if (targetVal === undefined) {
-          targetVal = parsed.output_for_prompt ?? parsed.formatted_output ?? parsed.output;
+          targetVal =
+            parsed.output_for_prompt ??
+            parsed.formatted_output ??
+            parsed.FileContent ??
+            parsed.content ??
+            parsed.content_concise ??
+            parsed.raw_output ??
+            parsed.output;
         }
         if (targetVal !== undefined && targetVal !== null) {
           if (typeof targetVal === 'object') {

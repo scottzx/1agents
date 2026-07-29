@@ -35,20 +35,30 @@ export function formatToolOutput(raw: string): string {
             const parsed = JSON.parse(s);
             if (parsed !== null && typeof parsed === 'object') {
                 if (!Array.isArray(parsed)) {
-                    // 1. Specific "type" rules (e.g. type === 'GrepSearch' -> file_matches, type === 'ReadFile' -> FileContent)
-                    const typeKeyMap: Record<string, string> = {
-                        GrepSearch: 'file_matches',
-                        ReadFile: 'FileContent',
+                    // 1. Specific "type" rules
+                    const typeKeyMap: Record<string, string[]> = {
+                        GrepSearch: ['file_matches'],
+                        ReadFile: ['FileContent', 'content', 'content_concise', 'raw_output'],
                     };
                     if (typeof parsed.type === 'string' && parsed.type in typeKeyMap) {
-                        const targetKey = typeKeyMap[parsed.type];
-                        if (targetKey in parsed && parsed[targetKey] !== undefined && parsed[targetKey] !== null) {
-                            return tryFormatValue(parsed[targetKey]);
+                        const candidateKeys = typeKeyMap[parsed.type];
+                        for (const key of candidateKeys) {
+                            if (key in parsed && parsed[key] !== undefined && parsed[key] !== null) {
+                                return tryFormatValue(parsed[key]);
+                            }
                         }
                     }
 
-                    // 2. Priority fallback keys: output_for_prompt -> formatted_output -> output
-                    const keys = ['output_for_prompt', 'formatted_output', 'output'];
+                    // 2. Priority fallback keys: output_for_prompt -> formatted_output -> FileContent -> content -> content_concise -> raw_output -> output
+                    const keys = [
+                        'output_for_prompt',
+                        'formatted_output',
+                        'FileContent',
+                        'content',
+                        'content_concise',
+                        'raw_output',
+                        'output',
+                    ];
                     for (const key of keys) {
                         if (key in parsed && parsed[key] !== undefined && parsed[key] !== null) {
                             return tryFormatValue(parsed[key]);
