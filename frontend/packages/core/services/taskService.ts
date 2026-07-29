@@ -119,14 +119,15 @@ export const projectItemService = {
         return (await res.json()) || [];
     },
 
-    async createMilestone(workspaceId: string, fields: Record<string, unknown>): Promise<void> {
-        await ok(
+    async createMilestone(workspaceId: string, fields: Record<string, unknown>): Promise<Milestone> {
+        const res = await ok(
             await apiFetch('/agent/milestones', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ workspace_id: workspaceId, ...fields }),
             })
         );
+        return res.json();
     },
 
     async patchMilestone(id: string, workspaceId: string, patch: Record<string, unknown>): Promise<void> {

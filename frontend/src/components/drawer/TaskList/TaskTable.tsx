@@ -1,13 +1,16 @@
 import { h, Fragment } from 'preact';
 import { useSignal } from '@preact/signals';
+import { useMemo } from 'preact/hooks';
 
 import { t } from '../../../i18n';
+import type { FeatureCatalog } from '@1agents/core/types/featureCatalog';
 import * as ui from '../../../stores/uiStore';
 import { TaskDeleteConfirmModal } from '../../modal/TaskDeleteConfirmModal';
 import { PRIORITY_RANK } from './constants';
 import { GridCell } from './TaskGridCell';
 import { DataGrid, type GridColumn } from './DataGrid';
 import { getAllColumns, compareTasks, groupValue, isSortable, getGroupOptions } from './gridConfig';
+import { deliveryModulePathsByItem } from './featureCatalogModel';
 import type { ProjectItem } from './types';
 
 interface TaskTableProps {
@@ -21,6 +24,7 @@ interface TaskTableProps {
     onSelectTask: (taskId: string) => void;
     onDeleteTask: (taskId: string) => void;
     onPatchTask: (taskId: string, patch: Record<string, unknown>) => Promise<void>;
+    featureCatalog: FeatureCatalog;
 }
 
 const rank = (task: ProjectItem) => PRIORITY_RANK[task.priority || 'medium'] ?? 2;
@@ -33,9 +37,11 @@ export function TaskTable({
     onSelectTask,
     onDeleteTask,
     onPatchTask,
+    featureCatalog,
 }: TaskTableProps) {
     const lang = ui.language.value;
     const pendingDelete = useSignal<ProjectItem | null>(null);
+    const featurePathsByTask = useMemo(() => deliveryModulePathsByItem(featureCatalog), [featureCatalog]);
     const cols = getAllColumns(lang);
     const colDefs = new Map(cols.map(c => [c.key, c]));
     const taskColumns: GridColumn[] = cols.map(c => ({
@@ -63,7 +69,14 @@ export function TaskTable({
                 emptyFiltered={t('task.table.emptyFiltered', lang)}
                 compare={compareTasks}
                 defaultCompare={(a, b) => rank(a) - rank(b) || a.createdAt.localeCompare(b.createdAt)}
-                groupValue={(task, key) => groupValue(task, key as Parameters<typeof groupValue>[1], lang)}
+                groupValue={(task, key) =>
+                    groupValue(
+                        task,
+                        key as Parameters<typeof groupValue>[1],
+                        lang,
+                        featurePathsByTask.get(task.id) ?? []
+                    )
+                }
                 hierarchy={{
                     parentId: task => task.parentId,
                     label: t('task.table.hierarchyLabel', lang),

@@ -20,7 +20,7 @@ import { signal, effect } from '@preact/signals';
  * are non-fatal (private mode / quota).
  */
 
-export type TaskListView = 'overview' | 'discussion' | 'requirements' | 'tasks' | 'milestone';
+export type TaskListView = 'overview' | 'discussion' | 'requirements' | 'features' | 'tasks' | 'milestone';
 export type TaskSubView = 'list' | 'board' | 'calendar';
 export type SortDir = 'asc' | 'desc';
 

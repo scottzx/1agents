@@ -5,6 +5,7 @@ import { Modal } from '../../modal';
 import { MilestoneForm } from './MilestoneForm';
 import { TaskPreviewDrawer } from './TaskPreviewDrawer';
 import { PRIORITY_LABELS, STATUS_LABELS } from './constants';
+import { splitMilestones } from './milestoneModel';
 import type { ProjectItem, Milestone } from './types';
 
 interface MilestoneViewProps {
@@ -15,8 +16,8 @@ interface MilestoneViewProps {
     onDeleteMilestone: (id: string) => Promise<void>;
 }
 
-// UNGROUPED is a synthetic node holding tasks with no milestone. Rendered as a
-// detached root at the tail of the tree; carries no entity (no CRUD).
+// UNGROUPED is a synthetic node holding tasks with no milestone. It stays
+// outside both the SemVer tree and the legacy history section.
 const UNGROUPED = '__ungrouped__';
 const COLLAPSED = '__collapsed__';
 
@@ -29,7 +30,6 @@ interface Node {
     total: number;
     pct: number;
     complete: boolean;
-    children: Node[];
 }
 
 function fmtDate(s?: string): string {
@@ -81,27 +81,20 @@ export function MilestoneView({
             total,
             pct: total ? Math.round((done / total) * 100) : 0,
             complete: total > 0 && done >= total,
-            children: [],
         };
     };
 
-    // Build the forest from predecessorId. Siblings (and roots) are ordered by
-    // milestone position.
-    const ordered = [...milestones].sort((a, b) => a.position - b.position);
-    const nodeMap = new Map<string, Node>();
-    ordered.forEach(m => nodeMap.set(m.id, mkNode(m)));
-    const roots: Node[] = [];
-    for (const m of ordered) {
-        const node = nodeMap.get(m.id)!;
-        const parent = m.predecessorId ? nodeMap.get(m.predecessorId) : undefined;
-        if (parent && parent !== node) parent.children.push(node);
-        else roots.push(node);
-    }
+    const { versions, legacy } = splitMilestones(milestones);
+    const versionNodes = versions.map(mkNode);
+    const legacyNodes = legacy.map(mkNode);
+    const allNodes = [...versionNodes, ...legacyNodes];
+    const nodeMap = new Map(allNodes.map(node => [node.id, node]));
     const ungrouped = byName.get(UNGROUPED) || [];
+    let ungroupedNode: Node | undefined;
     if (ungrouped.length) {
         const progress = ungrouped.filter(it => !isTask || it.status !== 'cancelled');
         const done = progress.filter(isDone).length;
-        roots.push({
+        ungroupedNode = {
             id: UNGROUPED,
             name: '未分组',
             milestone: null,
@@ -110,16 +103,13 @@ export function MilestoneView({
             total: progress.length,
             pct: Math.round((done / ungrouped.length) * 100),
             complete: done >= ungrouped.length,
-            children: [],
-        });
+        };
     }
 
-    // "当前" = first non-complete milestone in position order (未分组 excluded).
-    const currentId = ordered.find(m => !nodeMap.get(m.id)!.complete)?.id ?? null;
-
-    const allNodes = [...nodeMap.values()];
-    const findNode = (id: string | null) =>
-        allNodes.find(n => n.id === id) || (id === UNGROUPED ? roots.find(r => r.id === UNGROUPED) : undefined);
+    // The newest incomplete version is the current recent plan. Legacy and
+    // ungrouped milestones never receive the current-version marker.
+    const currentId = versionNodes.find(node => !node.complete)?.id ?? null;
+    const findNode = (id: string | null) => nodeMap.get(id || '') || (id === UNGROUPED ? ungroupedNode : undefined);
 
     const effectiveId = expandedId.value === COLLAPSED ? null : expandedId.value;
     const expanded = effectiveId ? findNode(effectiveId) : undefined;
@@ -129,62 +119,77 @@ export function MilestoneView({
         return <div class="task-loading">还没有里程碑。用右上角「+ 新建里程碑」开始规划路线图。</div>;
     }
 
-    function renderCard(n: Node) {
+    const predecessorName = (m: Milestone | null) =>
+        m?.predecessorId ? nodeMap.get(m.predecessorId)?.name : undefined;
+    const successors = (m: Milestone | null) =>
+        m ? allNodes.filter(node => node.milestone?.predecessorId === m.id) : [];
+
+    function renderCard(n: Node, compact = false) {
         const isCurrent = n.id === currentId;
         const state = n.id === UNGROUPED ? 'ungrouped' : isCurrent ? 'current' : n.complete ? 'past' : 'future';
         const isExpanded = expanded?.id === n.id;
         const overdue = !!n.milestone?.targetDate && !n.complete && fmtDate(n.milestone.targetDate) < today;
+        const predecessor = predecessorName(n.milestone);
         return (
-            <div
-                class={`ms-card state-${state}${isExpanded ? ' expanded' : ''}${n.children.length ? ' has-children' : ''}`}
+            <button
+                type="button"
+                class={`ms-card state-${state}${isExpanded ? ' expanded' : ''}${compact ? ' compact' : ''}`}
                 onClick={() => (expandedId.value = isExpanded ? COLLAPSED : n.id)}
             >
                 {isCurrent && <span class="ms-card-flag">当前</span>}
                 <div class="ms-card-head">
                     <span class="ms-card-dot">{isCurrent && <span class="pulse-indicator" />}</span>
-                    <span class="ms-card-name">{n.name}</span>
+                    <span class="ms-card-name">{n.milestone?.version || n.name}</span>
+                    <span class="ms-card-progress-state">{n.complete ? '已完成' : `${n.pct}%`}</span>
                 </div>
+                {n.milestone?.description && <div class="ms-card-description">{n.milestone.description}</div>}
                 <div class="ms-card-bar">
                     <div class="ms-card-fill" style={{ width: `${n.pct}%` }} />
                 </div>
                 <div class="ms-card-meta">
-                    <span class="ms-card-count">{`${n.done}/${n.total}`}</span>
-                    {n.milestone?.targetDate && (
+                    <span class="ms-card-count">{`进度 ${n.done} / ${n.total}`}</span>
+                    {n.milestone && (
                         <span class={`ms-card-date${overdue ? ' overdue' : ''}`}>
-                            🎯 {fmtDate(n.milestone.targetDate)}
+                            {`目标日期 ${fmtDate(n.milestone.targetDate) || '—'}`}
                         </span>
                     )}
                 </div>
-            </div>
+                {!compact && predecessor && <span class="ms-card-predecessor">{`前序 ${predecessor}`}</span>}
+            </button>
         );
     }
-
-    // Recursive branch render (left→right). visited guards against cycles.
-    function renderBranch(n: Node, visited: Set<string>) {
-        const safeChildren = n.children.filter(c => !visited.has(c.id));
-        const next = new Set(visited).add(n.id);
-        return (
-            <div class="ms-branch" key={n.id}>
-                {renderCard(n)}
-                {safeChildren.length > 0 && (
-                    <div class="ms-children">
-                        {safeChildren.map(c => (
-                            <div class="ms-subtree" key={c.id}>
-                                {renderBranch(c, next)}
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
-        );
-    }
-
-    const predecessorName = (m: Milestone | null) =>
-        m?.predecessorId ? milestones.find(x => x.id === m.predecessorId)?.name : undefined;
 
     return (
         <div class="milestone-view">
-            <div class="ms-tree">{roots.map(r => renderBranch(r, new Set()))}</div>
+            {versionNodes.length > 0 ? (
+                <div class="ms-tree" aria-label="语义化版本树">
+                    {versionNodes.map((node, index) => {
+                        const next = versionNodes[index + 1];
+                        const linked = !!next && node.milestone?.predecessorId === next.id;
+                        return (
+                            <div key={node.id} class={`ms-version-row${linked ? ' linked' : ''}${next ? '' : ' last'}`}>
+                                {renderCard(node)}
+                            </div>
+                        );
+                    })}
+                </div>
+            ) : (
+                <div class="ms-version-empty">还没有语义化版本。用右上角「+ 新建里程碑」创建第一个版本。</div>
+            )}
+
+            {legacyNodes.length > 0 && (
+                <details class="ms-legacy">
+                    <summary>{`历史里程碑（${legacyNodes.length}）`}</summary>
+                    <div class="ms-legacy-list">{legacyNodes.map(node => renderCard(node, true))}</div>
+                </details>
+            )}
+
+            {ungroupedNode && (
+                <section class="ms-ungrouped">
+                    <h3>未分组任务</h3>
+                    {renderCard(ungroupedNode, true)}
+                </section>
+            )}
 
             {expanded && (
                 <Fragment>
@@ -198,7 +203,7 @@ export function MilestoneView({
                                         <Fragment>
                                             {prev && <span class="milestone-ctx prev">◀ {prev}</span>}
                                             <span class="milestone-ctx cur">{expanded.name}</span>
-                                            {expanded.children.map(c => (
+                                            {successors(expanded.milestone).map(c => (
                                                 <span key={c.id} class="milestone-ctx next">
                                                     {c.name} ▶
                                                 </span>

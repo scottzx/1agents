@@ -26,6 +26,7 @@ type Handler struct {
 	turnStore     *meta.AgentTurnStore
 	activityStore *meta.ProjectActivityStore
 	taskRunStore  *meta.TaskRunStore
+	featureStore  *meta.FeatureCatalogStore
 	acpxClient    *AcpxClient
 	scheduler     *Scheduler
 	catalog       *CatalogStore
@@ -41,12 +42,14 @@ func NewHandler(store *Store, tasksStore *TasksStore, acpxClient *AcpxClient, sc
 	var turnStore *meta.AgentTurnStore
 	var activityStore *meta.ProjectActivityStore
 	var taskRunStore *meta.TaskRunStore
+	var featureStore *meta.FeatureCatalogStore
 	if acpxClient != nil {
 		turnStore = acpxClient.turnStore
 	}
 	if db, err := meta.OpenDefault(); err == nil {
 		activityStore = meta.NewProjectActivityStore(db)
 		taskRunStore = meta.NewTaskRunStore(db)
+		featureStore = meta.NewFeatureCatalogStore(db)
 		if turnStore == nil {
 			turnStore = meta.NewAgentTurnStore(db)
 		}
@@ -57,6 +60,7 @@ func NewHandler(store *Store, tasksStore *TasksStore, acpxClient *AcpxClient, sc
 		turnStore:     turnStore,
 		activityStore: activityStore,
 		taskRunStore:  taskRunStore,
+		featureStore:  featureStore,
 		acpxClient:    acpxClient,
 		scheduler:     scheduler,
 		catalog:       catalog,
@@ -406,6 +410,7 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			Labels              []string        `json:"labels"`
 			ParentID            string          `json:"parentId"`
 			Milestone           string          `json:"milestone"`
+			FeatureID           string          `json:"featureId"`
 			Sprint              string          `json:"sprint"`
 			Type                string          `json:"type"`
 			Source              string          `json:"source"`
@@ -481,6 +486,21 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 		}
 		if projectID == "" {
 			projectID = body.WorkspaceID
+		}
+		if body.FeatureID != "" {
+			if h.featureStore == nil {
+				http.Error(w, "feature catalog store is unavailable", http.StatusInternalServerError)
+				return
+			}
+			if body.Type != "" && ItemType(body.Type) != ItemTypeTask {
+				http.Error(w, "only tasks can be created from a feature point", http.StatusBadRequest)
+				return
+			}
+			body.Milestone, err = h.featureStore.TaskMilestone(projectID, body.FeatureID)
+			if err != nil {
+				writeFeatureCatalogError(w, err)
+				return
+			}
 		}
 		mutationCtx, err := h.resolveMutationContext(r, projectID)
 		if err != nil {
@@ -584,6 +604,26 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 		// Save assigns the short number (#N) on the stored row, so re-fetch
 		// rather than returning the pre-save copy.
 		saved, _, _ := h.tasksStore.GetTask(newTask.ID)
+		if body.FeatureID != "" {
+			linkEvent := mutationEvent(
+				mutationCtx,
+				"feature_link",
+				body.FeatureID+":"+saved.ID+":delivery",
+				"link",
+				nil,
+				nil,
+			)
+			if _, _, err := h.featureStore.LinkItem(
+				projectID,
+				body.FeatureID,
+				saved.ID,
+				meta.FeatureItemDelivery,
+				linkEvent,
+			); err != nil {
+				writeFeatureCatalogError(w, err)
+				return
+			}
+		}
 		writeMutationJSON(w, saved, storedEvents[0])
 
 	default:
@@ -1310,17 +1350,22 @@ func (h *Handler) HandleMilestonesRoot(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		var body struct {
 			WorkspaceID   string     `json:"workspace_id"`
-			Name          string     `json:"name"`
+			Bump          string     `json:"bump"`
 			Description   string     `json:"description"`
 			TargetDate    *time.Time `json:"targetDate"`
-			PredecessorID string     `json:"predecessorId"`
+			Name          *string    `json:"name"`
+			PredecessorID *string    `json:"predecessorId"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if body.WorkspaceID == "" || strings.TrimSpace(body.Name) == "" {
-			http.Error(w, "workspace_id and name are required", http.StatusBadRequest)
+		if body.WorkspaceID == "" || strings.TrimSpace(body.Bump) == "" {
+			http.Error(w, "workspace_id and bump are required", http.StatusBadRequest)
+			return
+		}
+		if body.Name != nil || body.PredecessorID != nil {
+			http.Error(w, "name and predecessorId are no longer accepted; use bump", http.StatusBadRequest)
 			return
 		}
 		wsPath, err := h.resolveWorkspacePath(body.WorkspaceID)
@@ -1339,20 +1384,22 @@ func (h *Handler) HandleMilestonesRoot(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		event := mutationEvent(mutationCtx, "milestone", "", "create", map[string]any{}, nil)
-		ms, err := h.tasksStore.CreateMilestone(
+		ms, err := h.tasksStore.CreateVersionMilestone(
 			wsPath,
-			strings.TrimSpace(body.Name),
+			meta.MilestoneBump(strings.ToLower(strings.TrimSpace(body.Bump))),
 			body.Description,
 			body.TargetDate,
-			body.PredecessorID,
 			event,
 		)
 		if err != nil {
-			if errors.Is(err, ErrMilestoneExists) {
-				http.Error(w, "milestone name already exists", http.StatusConflict)
-				return
+			switch {
+			case errors.Is(err, meta.ErrInvalidMilestoneBump):
+				http.Error(w, "bump must be patch, minor, or major", http.StatusBadRequest)
+			case errors.Is(err, ErrMilestoneExists):
+				http.Error(w, "milestone version already exists", http.StatusConflict)
+			default:
+				writeMutationContextError(w, err)
 			}
-			writeMutationContextError(w, err)
 			return
 		}
 		event.TargetID = ms.ID
@@ -1425,6 +1472,7 @@ func (h *Handler) HandleMilestonesItem(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			WorkspaceID   string      `json:"workspace_id"`
 			Name          *string     `json:"name,omitempty"`
+			Version       *string     `json:"version,omitempty"`
 			Description   *string     `json:"description,omitempty"`
 			TargetDate    **time.Time `json:"targetDate,omitempty"`
 			PredecessorID *string     `json:"predecessorId,omitempty"`
@@ -1456,7 +1504,12 @@ func (h *Handler) HandleMilestonesItem(w http.ResponseWriter, r *http.Request) {
 			writeMutationContextError(w, err)
 			return
 		}
-		patch := MilestonePatch{Description: body.Description, TargetDate: body.TargetDate, PredecessorID: body.PredecessorID}
+		patch := MilestonePatch{
+			Version:       body.Version,
+			Description:   body.Description,
+			TargetDate:    body.TargetDate,
+			PredecessorID: body.PredecessorID,
+		}
 		if body.Name != nil {
 			trimmed := strings.TrimSpace(*body.Name)
 			patch.Name = &trimmed
@@ -1467,6 +1520,10 @@ func (h *Handler) HandleMilestonesItem(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case errors.Is(err, ErrMilestoneExists):
 				http.Error(w, "milestone name already exists", http.StatusConflict)
+			case errors.Is(err, meta.ErrMilestoneVersionImmutable):
+				http.Error(w, "milestone version is immutable", http.StatusBadRequest)
+			case errors.Is(err, meta.ErrMilestoneChainImmutable):
+				http.Error(w, "milestone predecessor is immutable", http.StatusBadRequest)
 			case errors.Is(err, ErrNotFound):
 				http.Error(w, "milestone not found", http.StatusNotFound)
 			default:

@@ -36,6 +36,10 @@ export interface Reply {
 export interface Milestone {
     id: string;
     name: string;
+    /** Canonical SemVer for system-generated milestones; absent for legacy names. */
+    version?: string;
+    /** True when this milestone predates SemVer allocation and keeps a free-form name. */
+    isLegacy?: boolean;
     description?: string;
     targetDate?: string;
     position: number;

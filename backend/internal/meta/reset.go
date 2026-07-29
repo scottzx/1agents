@@ -14,6 +14,8 @@ var dataTables = []string{
 	"project_events",
 	"task_runs",
 	"agent_turns",
+	"feature_item_links",
+	"feature_nodes",
 	"projects",
 	"project_items",
 	"task_deps",

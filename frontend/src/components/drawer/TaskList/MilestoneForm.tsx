@@ -3,11 +3,14 @@ import { useSignal } from '@preact/signals';
 
 import type { Milestone } from './types';
 
+export type MilestoneBump = 'patch' | 'minor' | 'major';
+
 export interface MilestoneFields {
-    name: string;
     description: string;
     targetDate: string | null;
-    predecessorId: string;
+    bump?: MilestoneBump;
+    name?: string;
+    predecessorId?: string;
 }
 
 interface MilestoneFormProps {
@@ -43,6 +46,7 @@ function descendantIds(rootId: string, milestones: Milestone[]): Set<string> {
 export function MilestoneForm({ milestones, initial, onSubmit, onClose }: MilestoneFormProps) {
     const isEdit = !!initial;
     const name = useSignal(initial?.name ?? '');
+    const bump = useSignal<MilestoneBump>('minor');
     const desc = useSignal(initial?.description ?? '');
     const date = useSignal(initial?.targetDate ? initial.targetDate.slice(0, 10) : '');
     const predecessorId = useSignal(initial?.predecessorId ?? '');
@@ -56,19 +60,23 @@ export function MilestoneForm({ milestones, initial, onSubmit, onClose }: Milest
 
     async function submit() {
         const trimmed = name.value.trim();
-        if (!trimmed) {
+        if (initial?.isLegacy && !trimmed) {
             error.value = '名称不能为空';
             return;
         }
         saving.value = true;
         error.value = '';
         try {
-            await onSubmit({
-                name: trimmed,
+            const fields: MilestoneFields = {
                 description: desc.value.trim(),
                 targetDate: dateInputToRFC(date.value),
-                predecessorId: predecessorId.value,
-            });
+            };
+            if (!initial) fields.bump = bump.value;
+            if (initial?.isLegacy) {
+                fields.name = trimmed;
+                fields.predecessorId = predecessorId.value;
+            }
+            await onSubmit(fields);
             onClose();
         } catch (err) {
             error.value = (err as Error).message || '保存失败';
@@ -80,32 +88,72 @@ export function MilestoneForm({ milestones, initial, onSubmit, onClose }: Milest
     return (
         <div class="milestone-form">
             <div class="milestone-form-title">{isEdit ? '编辑里程碑' : '新建里程碑'}</div>
-            <input
-                class="milestone-form-input"
-                placeholder="名称（如：M3 支付接入）"
-                value={name.value}
-                onInput={e => (name.value = (e.target as HTMLInputElement).value)}
-            />
+            {!initial && (
+                <fieldset class="milestone-bump-field">
+                    <legend>版本变更</legend>
+                    <div class="milestone-bump-options">
+                        {(
+                            [
+                                ['patch', 'Patch', '修复与小范围补充'],
+                                ['minor', 'Minor', '向后兼容的新功能'],
+                                ['major', 'Major', '重大或不兼容变更'],
+                            ] as Array<[MilestoneBump, string, string]>
+                        ).map(([value, label, hint]) => (
+                            <label key={value} class={bump.value === value ? 'selected' : ''}>
+                                <input
+                                    type="radio"
+                                    name="milestone-bump"
+                                    value={value}
+                                    checked={bump.value === value}
+                                    onChange={() => (bump.value = value)}
+                                />
+                                <span>
+                                    <strong>{label}</strong>
+                                    <small>{hint}</small>
+                                </span>
+                            </label>
+                        ))}
+                    </div>
+                    <p>版本号和前序版本由服务端自动生成。</p>
+                </fieldset>
+            )}
+            {initial &&
+                (initial.isLegacy ? (
+                    <input
+                        class="milestone-form-input"
+                        aria-label="历史里程碑名称"
+                        value={name.value}
+                        onInput={e => (name.value = (e.target as HTMLInputElement).value)}
+                    />
+                ) : (
+                    <div class="milestone-version-readonly">
+                        <span>版本</span>
+                        <strong>{initial.version || initial.name}</strong>
+                        <small>版本号和前序版本由系统维护，不可修改</small>
+                    </div>
+                ))}
             <textarea
                 class="milestone-form-textarea"
                 placeholder="说明（可选）"
                 value={desc.value}
                 onInput={e => (desc.value = (e.target as HTMLTextAreaElement).value)}
             />
-            <label class="milestone-form-field">
-                前置里程碑
-                <select
-                    value={predecessorId.value}
-                    onChange={e => (predecessorId.value = (e.target as HTMLSelectElement).value)}
-                >
-                    <option value="">（无 · 作为起点）</option>
-                    {candidates.map(m => (
-                        <option key={m.id} value={m.id}>
-                            {m.name}
-                        </option>
-                    ))}
-                </select>
-            </label>
+            {initial?.isLegacy && (
+                <label class="milestone-form-field">
+                    前置里程碑
+                    <select
+                        value={predecessorId.value}
+                        onChange={e => (predecessorId.value = (e.target as HTMLSelectElement).value)}
+                    >
+                        <option value="">（无 · 作为起点）</option>
+                        {candidates.map(m => (
+                            <option key={m.id} value={m.id}>
+                                {m.version || m.name}
+                            </option>
+                        ))}
+                    </select>
+                </label>
+            )}
             <label class="milestone-form-field">
                 目标日期
                 <input

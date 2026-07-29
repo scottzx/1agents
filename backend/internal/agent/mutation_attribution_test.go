@@ -232,7 +232,7 @@ func TestAttributedMilestoneAndDependencyEvents(t *testing.T) {
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/api/agent/milestones",
-		strings.NewReader(`{"workspace_id":"`+wsID+`","name":"M1"}`),
+		strings.NewReader(`{"workspace_id":"`+wsID+`","bump":"minor"}`),
 	)
 	req.Header.Set("X-OneAgents-Session-ID", "session-1")
 	req.Header.Set("X-OneAgents-Session-Token", token)

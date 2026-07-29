@@ -118,7 +118,8 @@ interface DataGridProps<T> {
     compare: (a: T, b: T, key: string) => number;
     /** Default order when no column sort is active. */
     defaultCompare: (a: T, b: T) => number;
-    groupValue: (row: T, key: string) => string;
+    /** One row may belong to several groups (for example a cross-module task). */
+    groupValue: (row: T, key: string) => string | string[];
     /** Full `<tr>` class (receives isChild for hierarchy styling). */
     rowClass: (row: T, isChild: boolean) => string;
     /** Optional parent/child hierarchy (task-only). */
@@ -324,8 +325,11 @@ export function DataGrid<T>({
         const ordered = [...rows].sort(cmp);
         const map = new Map<string, T[]>();
         for (const r of ordered) {
-            const g = groupValue(r, groupBy.value);
-            (map.get(g) || map.set(g, []).get(g)!).push(r);
+            const rawGroups = groupValue(r, groupBy.value);
+            const groups = Array.isArray(rawGroups) ? rawGroups : [rawGroups];
+            for (const g of groups) {
+                (map.get(g) || map.set(g, []).get(g)!).push(r);
+            }
         }
         return Array.from(map.entries());
     };

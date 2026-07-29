@@ -10,6 +10,8 @@
 - 项目解析优先级：`ONEAGENTS_WORKSPACE_ID` 环境变量 → `--project` → 当前目录逐级上找匹配。
 - 隔离：跨项目的 id 在 get/update/close 时会被 `not in project` 拒绝。
 
+PM 写入前先读 `<workspace>/.1agents/project_config.json` 的 `featureCatalogEnabled`。文件/字段缺失或不是 `true` 均表示关闭；关闭时禁止调用功能蓝图写命令。
+
 ## 读
 
 | 命令 | 说明 |
@@ -39,6 +41,7 @@ create --title T [flags] [--json '<CreateArgs>']
 {
   "title": "...", "description": "...", "acceptanceCriteria": "...",
   "type": "task", "priority": "high", "milestone": "v0.1", "assignee": "claudecode",
+  "featureId": "<feature-point-id>",
   "dependsOn": ["<id1>", "<id2>"],
   "links": [{"target": "<需求id>", "rel": "relates"}],
   "verifier": "claudecode", "verifierCount": 2, "verifyPassThreshold": 2,
@@ -48,6 +51,7 @@ create --title T [flags] [--json '<CreateArgs>']
 }
 ```
 - **归口**：`links`（rel=relates）或在 description 写 `#需求编号` 二选一即可，二者等价。
+- **功能交付**：功能蓝图开启时，创建 task 传 `featureId`。服务端会建立 delivery 关联，并用功能点目标版本覆盖 task 的 milestone；仍须用 `links` 或 `#编号` 归口到顶层 requirement / bug。
 - **个人待办 / 提醒**：`--assignee user` + `--json` 里 `dueAt`（截止 / 触发时间）、`recurrence`（重复）。不会派给 agent，落在用户日历上。
 - `dependsOn`：先建被依赖项拿到 id，再挂后续项，表达执行顺序。
 
@@ -84,13 +88,39 @@ close <id>       # = update <id> --issue-state closed
 reopen <id>      # = update <id> --issue-state open
 ```
 
+## 功能蓝图（仅 `featureCatalogEnabled=true`）
+
+| 命令 | 说明 |
+|---|---|
+| `1agents feature-catalog list` | 读取当前项目完整节点树及 source/delivery links；所有蓝图写入前必须执行 |
+| `feature-catalog create --kind module\|feature --title T [--parent ID] [--description D] [--target-milestone ID] [--position N]` | 创建单个节点 |
+| `feature-catalog update <id> [--title T] [--description D] [--target-milestone ID]` | 修改节点标量字段 |
+| `feature-catalog move <id> [--parent ID] [--position N]` | 移动或排序节点 |
+| `feature-catalog link <feature-id> --item ID --relation source\|delivery` | 幂等建立关联；source 只接受 requirement/bug，delivery 只接受 task |
+| `feature-catalog unlink <feature-id> --item ID --relation source\|delivery` | 幂等移除关联 |
+| `feature-catalog batch --json '<operations>'` | 事务化执行 create/update/move/link/unlink；任一操作失败整批回滚 |
+
+batch 的 create 可发布 `clientRef`，后续操作用 `parentRef`、`nodeRef` 或 `featureRef` 引用同批创建的 id。一次提交三级模块、功能点和 source 示例：
+
+```bash
+1agents feature-catalog batch --json '[
+  {"op":"create","clientRef":"l1","kind":"module","title":"用户与权限"},
+  {"op":"create","clientRef":"l2","parentRef":"l1","kind":"module","title":"用户认证"},
+  {"op":"create","clientRef":"l3","parentRef":"l2","kind":"module","title":"登录"},
+  {"op":"create","clientRef":"point","parentRef":"l3","kind":"feature","title":"验证码登录","targetMilestoneId":"<milestone-id>"},
+  {"op":"link","featureRef":"point","itemId":"<requirement-id>","relation":"source"}
+]'
+```
+
+已有树必须先展示拟议差异并获得用户明确确认，禁止无确认整体覆盖、批量重建、删除、重命名或移动。
+
 ## 里程碑
 
 | 命令 | 说明 |
 |---|---|
 | `milestones list` | 列出本项目里程碑及进度 |
-| `milestones create --name N [--description D] [--target-date RFC3339] [--predecessor ID]` | 建阶段。`--predecessor` 置于某阶段之后；共享同一前驱的阶段在路线图上并行 |
-| `milestones update <id> [--name] [--description] [--target-date] [--predecessor]` | 改里程碑（改名会级联到归属它的所有条目） |
+| `milestones create --bump patch\|minor\|major [--description D] [--target-date RFC3339]` | 由服务端事务化生成下一 SemVer 版本并自动串接前一版本 |
+| `milestones update <id> [--description] [--target-date]` | 修改版本里程碑说明或目标日期 |
 
 `--target-date` 用 RFC3339，例如 `2026-08-01T00:00:00Z`。
 

@@ -89,10 +89,11 @@ export function getAllColumns(lang: Lang): ColumnDef[] {
     ];
 }
 
-export type GroupKey = 'none' | 'priority' | 'status' | 'assignee' | 'milestone';
+export type GroupKey = 'none' | 'feature' | 'priority' | 'status' | 'assignee' | 'milestone';
 
 export const GROUP_OPTIONS: Array<[GroupKey, string]> = [
     ['none', '不分组'],
+    ['feature', '功能模块'],
     ['milestone', '里程碑'],
     ['status', '状态'],
     ['assignee', '执行'],
@@ -102,6 +103,7 @@ export const GROUP_OPTIONS: Array<[GroupKey, string]> = [
 export function getGroupOptions(lang: Lang): Array<[GroupKey, string]> {
     return [
         ['none', t('task.group.none', lang)],
+        ['feature', lang === 'zh-CN' ? '功能模块' : 'Feature module'],
         ['milestone', t('task.group.milestone', lang)],
         ['status', t('task.group.status', lang)],
         ['assignee', t('task.group.assignee', lang)],
@@ -110,7 +112,12 @@ export function getGroupOptions(lang: Lang): Array<[GroupKey, string]> {
 }
 
 /** Stable, human-readable group bucket for a task under the active group key. */
-export function groupValue(task: ProjectItem, key: GroupKey, lang?: Lang): string {
+export function groupValue(
+    task: ProjectItem,
+    key: GroupKey,
+    lang?: Lang,
+    featurePaths: string[] = []
+): string | string[] {
     const statusLabels = lang
         ? {
               pending: t('task.status.pending', lang),
@@ -124,6 +131,12 @@ export function groupValue(task: ProjectItem, key: GroupKey, lang?: Lang): strin
         : STATUS_LABELS;
     const priorityLabels = lang ? getPriorityLabels(lang) : PRIORITY_LABELS;
     switch (key) {
+        case 'feature':
+            return featurePaths.length > 0
+                ? featurePaths
+                : lang === 'en-US'
+                  ? 'Not in feature catalog'
+                  : '未归入功能蓝图';
         case 'milestone':
             return task.milestone || (lang ? t('task.group.noMilestone', lang) : '（无里程碑）');
         case 'status':

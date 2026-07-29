@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -12,20 +14,118 @@ import (
 // both the milestones row and every task's denormalized milestone label inside
 // one transaction). Identity is (project_id, name); see the Milestone doc.
 
-// ErrMilestoneExists is returned when creating/renaming would collide with an
-// existing milestone name in the same project.
-var ErrMilestoneExists = fmt.Errorf("meta: milestone name already exists")
+var (
+	// ErrMilestoneExists is returned when creating/renaming would collide with
+	// an existing milestone name in the same project.
+	ErrMilestoneExists = fmt.Errorf("meta: milestone name already exists")
+	// ErrInvalidMilestoneBump is returned when the requested SemVer increment is
+	// not patch, minor, or major.
+	ErrInvalidMilestoneBump = fmt.Errorf("meta: invalid milestone bump")
+	// ErrMilestoneVersionImmutable protects both the canonical version and its
+	// compatibility join key (name) from ordinary edits.
+	ErrMilestoneVersionImmutable = fmt.Errorf("meta: milestone version is immutable")
+	// ErrMilestoneChainImmutable prevents ordinary edits from changing the
+	// automatically allocated version chain.
+	ErrMilestoneChainImmutable = fmt.Errorf("meta: milestone version chain is immutable")
+)
 
-const milestoneCols = `id, name, description, target_date, position, predecessor_id, created_at, updated_at`
+// MilestoneBump is the only supported normal creation input for versioned
+// milestones. Free-form names remain internal to legacy compatibility paths.
+type MilestoneBump string
+
+const (
+	MilestoneBumpPatch MilestoneBump = "patch"
+	MilestoneBumpMinor MilestoneBump = "minor"
+	MilestoneBumpMajor MilestoneBump = "major"
+)
+
+type milestoneSemVer struct {
+	major uint64
+	minor uint64
+	patch uint64
+}
+
+// parseMilestoneSemVer accepts only the persisted x.y.z contract: three
+// unsigned decimal components, without a v prefix, prerelease/build suffix, or
+// leading zeroes. Invalid historical values are ignored by version allocation.
+func parseMilestoneSemVer(raw string) (milestoneSemVer, bool) {
+	parts := strings.Split(raw, ".")
+	if len(parts) != 3 {
+		return milestoneSemVer{}, false
+	}
+	values := [3]uint64{}
+	for i, part := range parts {
+		if part == "" || (len(part) > 1 && part[0] == '0') {
+			return milestoneSemVer{}, false
+		}
+		for _, ch := range part {
+			if ch < '0' || ch > '9' {
+				return milestoneSemVer{}, false
+			}
+		}
+		value, err := strconv.ParseUint(part, 10, 64)
+		if err != nil {
+			return milestoneSemVer{}, false
+		}
+		values[i] = value
+	}
+	return milestoneSemVer{major: values[0], minor: values[1], patch: values[2]}, true
+}
+
+func (v milestoneSemVer) less(other milestoneSemVer) bool {
+	if v.major != other.major {
+		return v.major < other.major
+	}
+	if v.minor != other.minor {
+		return v.minor < other.minor
+	}
+	return v.patch < other.patch
+}
+
+func (v milestoneSemVer) String() string {
+	return strconv.FormatUint(v.major, 10) + "." +
+		strconv.FormatUint(v.minor, 10) + "." +
+		strconv.FormatUint(v.patch, 10)
+}
+
+func (v milestoneSemVer) bump(kind MilestoneBump) (milestoneSemVer, error) {
+	const maxUint64 = ^uint64(0)
+	switch kind {
+	case MilestoneBumpPatch:
+		if v.patch == maxUint64 {
+			return milestoneSemVer{}, fmt.Errorf("%w: patch component overflow", ErrInvalidMilestoneBump)
+		}
+		v.patch++
+	case MilestoneBumpMinor:
+		if v.minor == maxUint64 {
+			return milestoneSemVer{}, fmt.Errorf("%w: minor component overflow", ErrInvalidMilestoneBump)
+		}
+		v.minor++
+		v.patch = 0
+	case MilestoneBumpMajor:
+		if v.major == maxUint64 {
+			return milestoneSemVer{}, fmt.Errorf("%w: major component overflow", ErrInvalidMilestoneBump)
+		}
+		v.major++
+		v.minor = 0
+		v.patch = 0
+	default:
+		return milestoneSemVer{}, fmt.Errorf("%w: %q", ErrInvalidMilestoneBump, kind)
+	}
+	return v, nil
+}
+
+const milestoneCols = `id, name, version, description, target_date, position, predecessor_id, created_at, updated_at`
 
 func scanMilestone(r rowScanner) (Milestone, error) {
 	var m Milestone
 	var targetDate sql.NullString
 	var createdAt, updatedAt string
-	if err := r.Scan(&m.ID, &m.Name, &m.Description, &targetDate, &m.Position,
+	if err := r.Scan(&m.ID, &m.Name, &m.Version, &m.Description, &targetDate, &m.Position,
 		&m.PredecessorID, &createdAt, &updatedAt); err != nil {
 		return Milestone{}, err
 	}
+	m.IsLegacy = m.Version == ""
 	m.TargetDate = valToTimePtr(targetDate)
 	m.CreatedAt = strToTime(createdAt)
 	m.UpdatedAt = strToTime(updatedAt)
@@ -71,11 +171,12 @@ func (s *TaskStore) ListMilestones(workspacePath string) ([]Milestone, error) {
 		var m Milestone
 		var targetDate sql.NullString
 		var createdAt, updatedAt string
-		if err := rows.Scan(&m.ID, &m.Name, &m.Description, &targetDate, &m.Position,
+		if err := rows.Scan(&m.ID, &m.Name, &m.Version, &m.Description, &targetDate, &m.Position,
 			&m.PredecessorID, &createdAt, &updatedAt, &m.Total, &m.Completed); err != nil {
 			return nil, err
 		}
 		m.ProjectID = projectID
+		m.IsLegacy = m.Version == ""
 		m.TargetDate = valToTimePtr(targetDate)
 		m.CreatedAt = strToTime(createdAt)
 		m.UpdatedAt = strToTime(updatedAt)
@@ -128,8 +229,9 @@ func getMilestoneTx(tx *sql.Tx, projectID, id string) (Milestone, error) {
 	return m, err
 }
 
-// CreateMilestone inserts a new milestone at the end of the project's roadmap.
-// Returns ErrMilestoneExists on a duplicate name.
+// CreateMilestone is the legacy free-name compatibility path. Normal API, CLI,
+// and MCP creation must use CreateVersionMilestone instead. It remains for
+// historical imports and tests because tasks still join milestones by name.
 func (s *TaskStore) CreateMilestone(workspacePath, name, description string, targetDate *time.Time, predecessorID string, events ...ProjectEvent) (Milestone, error) {
 	m := s.wsMutex(workspacePath)
 	m.Lock()
@@ -166,6 +268,7 @@ func (s *TaskStore) CreateMilestone(workspacePath, name, description string, tar
 		ID:            newID(),
 		ProjectID:     projectID,
 		Name:          name,
+		IsLegacy:      true,
 		Description:   description,
 		TargetDate:    targetDate,
 		Position:      nextPos,
@@ -193,10 +296,125 @@ func (s *TaskStore) CreateMilestone(workspacePath, name, description string, tar
 	return ms, tx.Commit()
 }
 
+// CreateVersionMilestone atomically allocates the next project SemVer and
+// appends it to the version chain. SQLite is opened with _txlock=immediate, so
+// concurrent writers serialize before this transaction reads the current
+// maximum; the partial unique index on (project_id, version) is the final
+// invariant guard.
+func (s *TaskStore) CreateVersionMilestone(workspacePath string, bump MilestoneBump, description string, targetDate *time.Time, events ...ProjectEvent) (Milestone, error) {
+	// Validate before opening a write transaction so malformed requests never
+	// take the database write lock.
+	if _, err := (milestoneSemVer{}).bump(bump); err != nil {
+		return Milestone{}, err
+	}
+
+	m := s.wsMutex(workspacePath)
+	m.Lock()
+	defer m.Unlock()
+
+	tx, err := s.db.sql.Begin()
+	if err != nil {
+		return Milestone{}, err
+	}
+	defer tx.Rollback()
+
+	projectID, err := ensureProjectByPathTx(tx, workspacePath)
+	if err != nil {
+		return Milestone{}, err
+	}
+
+	rows, err := tx.Query(`
+		SELECT id, version FROM milestones
+		WHERE project_id = ? AND version != ''`, projectID)
+	if err != nil {
+		return Milestone{}, err
+	}
+	var highest milestoneSemVer
+	var predecessorID string
+	hasVersion := false
+	for rows.Next() {
+		var id, rawVersion string
+		if err := rows.Scan(&id, &rawVersion); err != nil {
+			rows.Close()
+			return Milestone{}, err
+		}
+		version, valid := parseMilestoneSemVer(rawVersion)
+		if valid && (!hasVersion || highest.less(version)) {
+			highest = version
+			predecessorID = id
+			hasVersion = true
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return Milestone{}, err
+	}
+
+	next, err := highest.bump(bump)
+	if err != nil {
+		return Milestone{}, err
+	}
+	version := next.String()
+
+	// name remains the compatibility join key, so either a version collision or
+	// a legacy row that already owns this exact name blocks allocation.
+	var occupied int
+	if err := tx.QueryRow(`
+		SELECT COUNT(1) FROM milestones
+		WHERE project_id = ? AND (name = ? OR version = ?)`,
+		projectID, version, version).Scan(&occupied); err != nil {
+		return Milestone{}, err
+	}
+	if occupied > 0 {
+		return Milestone{}, ErrMilestoneExists
+	}
+
+	var nextPos int
+	if err := tx.QueryRow(`SELECT COALESCE(MAX(position), -1) + 1 FROM milestones WHERE project_id = ?`,
+		projectID).Scan(&nextPos); err != nil {
+		return Milestone{}, err
+	}
+
+	now := time.Now().UTC()
+	ms := Milestone{
+		ID:            newID(),
+		ProjectID:     projectID,
+		Name:          version,
+		Version:       version,
+		Description:   description,
+		TargetDate:    targetDate,
+		Position:      nextPos,
+		PredecessorID: predecessorID,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO milestones (
+			id, project_id, name, version, description, target_date,
+			position, predecessor_id, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		ms.ID, projectID, ms.Name, ms.Version, ms.Description,
+		timePtrToVal(ms.TargetDate), ms.Position, ms.PredecessorID,
+		timeToStr(ms.CreatedAt), timeToStr(ms.UpdatedAt)); err != nil {
+		return Milestone{}, err
+	}
+	for i := range events {
+		events[i].ProjectID = projectID
+		if events[i].TargetID == "" {
+			events[i].TargetID = ms.ID
+		}
+		events[i].After, _ = json.Marshal(milestoneEventSnapshot(ms))
+		if _, err := appendProjectEventTx(tx, events[i], false); err != nil {
+			return Milestone{}, err
+		}
+	}
+	return ms, tx.Commit()
+}
+
 // MilestonePatch carries the optional fields of an UpdateMilestone call; a nil
 // pointer leaves that field untouched.
 type MilestonePatch struct {
 	Name          *string
+	Version       *string
 	Description   *string
 	TargetDate    **time.Time // double pointer: outer nil = untouched, *nil = clear
 	PredecessorID *string     // pointer: nil = untouched, "" = clear (make root)
@@ -226,6 +444,17 @@ func (s *TaskStore) UpdateMilestone(workspacePath, id string, patch MilestonePat
 	}
 	before := cur
 
+	if patch.Version != nil {
+		return Milestone{}, ErrMilestoneVersionImmutable
+	}
+	if cur.Version != "" {
+		if patch.Name != nil {
+			return Milestone{}, ErrMilestoneVersionImmutable
+		}
+		if patch.PredecessorID != nil {
+			return Milestone{}, ErrMilestoneChainImmutable
+		}
+	}
 	if patch.Name != nil && *patch.Name != cur.Name {
 		var dup int
 		if err := tx.QueryRow(`SELECT COUNT(1) FROM milestones WHERE project_id = ? AND name = ? AND id != ?`,
@@ -333,6 +562,11 @@ func (s *TaskStore) DeleteMilestone(workspacePath, id string, events ...ProjectE
 		timeToStr(time.Now().UTC()), projectID, cur.Name); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(`UPDATE feature_nodes SET target_milestone_id = '', updated_at = ?
+		WHERE project_id = ? AND target_milestone_id = ?`,
+		timeToStr(time.Now().UTC()), projectID, id); err != nil {
+		return err
+	}
 	// Reparent any children onto the deleted node's predecessor so the tree
 	// stays connected (splice out, rather than orphaning whole branches).
 	if _, err := tx.Exec(`UPDATE milestones SET predecessor_id = ?, updated_at = ?
@@ -359,6 +593,8 @@ func milestoneEventSnapshot(ms Milestone) map[string]any {
 	return map[string]any{
 		"id":            ms.ID,
 		"name":          ms.Name,
+		"version":       ms.Version,
+		"isLegacy":      ms.IsLegacy,
 		"targetDate":    ms.TargetDate,
 		"position":      ms.Position,
 		"predecessorId": ms.PredecessorID,

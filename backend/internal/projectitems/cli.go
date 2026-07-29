@@ -53,7 +53,7 @@ const cliUsage = `usage: 1agents project-items <verb> [flags]   (run inside a pr
   close <id>           (issueState=closed — how a requirement/bug is finished)
   reopen <id>          (issueState=open)
   milestones list
-  milestones create    --name N [--description D] [--target-date RFC3339] [--predecessor ID]
+  milestones create    --bump patch|minor|major [--description D] [--target-date RFC3339]
   milestones update <id> [--name N] [--description D] [--target-date RFC3339] [--predecessor ID]
   pdf                  [--out PATH] [--font TTF] (导出当前项目看板为 PDF 报告)
   mail                 list|check|get|send|deliver|accept|archive|read|unread|targets|import-agentmail
@@ -394,21 +394,28 @@ func cliMilestones(args []string) int {
 	case "create":
 		fs := flag.NewFlagSet("milestones create", flag.ContinueOnError)
 		project := fs.String("project", "", "project id|name|path")
-		name := fs.String("name", "", "milestone name")
+		bump := fs.String("bump", "", "semantic version increment: patch|minor|major")
+		name := fs.String("name", "", "deprecated; use --bump")
 		desc := fs.String("description", "", "description")
 		target := fs.String("target-date", "", "RFC3339 target date")
-		pred := fs.String("predecessor", "", "predecessor milestone id")
 		if err := fs.Parse(args[1:]); err != nil {
 			return 1
 		}
-		if strings.TrimSpace(*name) == "" {
-			return cliFail("--name is required")
+		if strings.TrimSpace(*name) != "" {
+			return cliFail("--name is deprecated and unsupported for normal milestone creation; use --bump")
+		}
+		switch strings.ToLower(strings.TrimSpace(*bump)) {
+		case "patch", "minor", "major":
+		default:
+			return cliFail("--bump must be patch, minor, or major")
 		}
 		c, _, code := cliClient(*project)
 		if code >= 0 {
 			return code
 		}
-		return emitRaw(c.CreateMilestone(CreateMilestoneArgs{Name: *name, Description: *desc, TargetDate: *target, PredecessorID: *pred}))
+		return emitRaw(c.CreateMilestone(CreateMilestoneArgs{
+			Bump: strings.ToLower(strings.TrimSpace(*bump)), Description: *desc, TargetDate: *target,
+		}))
 	case "update":
 		id, rest := splitLeadingID(args[1:])
 		fs := flag.NewFlagSet("milestones update", flag.ContinueOnError)
@@ -678,6 +685,12 @@ func normalizePath(p string) string {
 	abs, err := filepath.Abs(p)
 	if err != nil {
 		abs = filepath.Clean(p)
+	}
+	// macOS commonly reports /private/var/... from Getwd while workspace
+	// records contain the equivalent /var/... path. Resolve existing symlinks
+	// before comparison so cwd locking works across those aliases.
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		abs = resolved
 	}
 	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
 		abs = strings.ToLower(abs)

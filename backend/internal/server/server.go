@@ -213,28 +213,30 @@ func NewRouter(cfg *config.Config) http.Handler {
 			catalogStore := agent.DefaultCatalog()
 
 			agentHandler := agent.NewHandler(agentStore, tasksStore, acpxClient, scheduler, catalogStore, selfBaseURL)
-			mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes)            // GET
-			mux.HandleFunc("/api/agent/catalog", agentHandler.HandleAgentCatalog)              // GET (?refresh=1)
-			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)             // GET, POST
-			mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem)            // GET, DELETE /{id}
-			mux.HandleFunc("/api/agent/turns", agentHandler.HandleTurns)                       // GET cursor-paged Turn history
-			mux.HandleFunc("/api/agent/activity", agentHandler.HandleProjectActivity)          // GET aggregated Project activity
-			mux.HandleFunc("/api/agent/project-items", agentHandler.HandleTasksRoot)           // GET, POST
-			mux.HandleFunc("/api/agent/project-items/resolve", agentHandler.HandleTaskResolve) // GET ?project=&number= (more specific than the subtree below)
-			mux.HandleFunc("/api/agent/project-items/", agentHandler.HandleTasksItem)          // DELETE /{id}
-			mux.HandleFunc("/api/agent/agenda", agentHandler.HandleAgendaRoot)                 // GET (cross-workspace agenda, #192)
-			mux.HandleFunc("/api/agent/milestones", agentHandler.HandleMilestonesRoot)         // GET, POST
-			mux.HandleFunc("/api/agent/milestones/", agentHandler.HandleMilestonesItem)        // PATCH, DELETE /{id}, POST /reorder
-			mux.HandleFunc("/api/agent/discussions", agentHandler.HandleDiscussionsRoot)       // POST — create a discussion thread (#189)
-			mux.HandleFunc("/api/agent/discussions/", agentHandler.HandleDiscussionItem)       // POST /{id}/cards, /{id}/conclude (#189)
-			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)                    // WebSocket upgrade & bridge
-			mux.HandleFunc("/api/agent/dashboard", agentHandler.HandleDashboard)               // GET — cross-project cockpit aggregate (read-only)
+			mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes)              // GET
+			mux.HandleFunc("/api/agent/catalog", agentHandler.HandleAgentCatalog)                // GET (?refresh=1)
+			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)               // GET, POST
+			mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem)              // GET, DELETE /{id}
+			mux.HandleFunc("/api/agent/turns", agentHandler.HandleTurns)                         // GET cursor-paged Turn history
+			mux.HandleFunc("/api/agent/activity", agentHandler.HandleProjectActivity)            // GET aggregated Project activity
+			mux.HandleFunc("/api/agent/project-items", agentHandler.HandleTasksRoot)             // GET, POST
+			mux.HandleFunc("/api/agent/project-items/resolve", agentHandler.HandleTaskResolve)   // GET ?project=&number= (more specific than the subtree below)
+			mux.HandleFunc("/api/agent/project-items/", agentHandler.HandleTasksItem)            // DELETE /{id}
+			mux.HandleFunc("/api/agent/agenda", agentHandler.HandleAgendaRoot)                   // GET (cross-workspace agenda, #192)
+			mux.HandleFunc("/api/agent/milestones", agentHandler.HandleMilestonesRoot)           // GET, POST
+			mux.HandleFunc("/api/agent/milestones/", agentHandler.HandleMilestonesItem)          // PATCH, DELETE /{id}, POST /reorder
+			mux.HandleFunc("/api/agent/feature-catalog", agentHandler.HandleFeatureCatalogRoot)  // GET, POST
+			mux.HandleFunc("/api/agent/feature-catalog/", agentHandler.HandleFeatureCatalogItem) // PATCH, DELETE, item links
+			mux.HandleFunc("/api/agent/discussions", agentHandler.HandleDiscussionsRoot)         // POST — create a discussion thread (#189)
+			mux.HandleFunc("/api/agent/discussions/", agentHandler.HandleDiscussionItem)         // POST /{id}/cards, /{id}/conclude (#189)
+			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)                      // WebSocket upgrade & bridge
+			mux.HandleFunc("/api/agent/dashboard", agentHandler.HandleDashboard)                 // GET — cross-project cockpit aggregate (read-only)
 
 			// Agents 圆桌脑暴 (design.md slice 1–2): room + 6×tmp seats + R1 chat/brief.
 			if rtHandler, rtErr := roundtable.NewHandlerDefaultWithPort(acpxPort); rtErr != nil {
 				log.Printf("[server] roundtable init failed: %v", rtErr)
 			} else {
-				mux.HandleFunc("/api/roundtable/rooms", rtHandler.HandleRoomsRoot)   // POST create
+				mux.HandleFunc("/api/roundtable/rooms", rtHandler.HandleRoomsRoot)  // POST create
 				mux.HandleFunc("/api/roundtable/rooms/", rtHandler.HandleRoomsItem) // GET/POST subroutes
 			}
 
@@ -443,10 +445,10 @@ func NewRouter(cfg *config.Config) http.Handler {
 			if db, dbErr := meta.OpenDefault(); dbErr == nil {
 				inboxStore := meta.NewInboxStore(db)
 				pmoStore := meta.NewPMOStore(tasksStore, inboxStore)
-				mux.HandleFunc("/api/inbox/deliver", meta.InboxDeliverHandler(inboxStore))  // POST deliver
-				mux.HandleFunc("/api/inbox/targets", meta.InboxTargetsHandler(pmoStore))    // GET mail targets
-				mux.HandleFunc("/api/inbox/", meta.InboxItemHandler(inboxStore, pmoStore))  // GET /{id}; POST /{id}/archive|read|unread|accept
-				mux.HandleFunc("/api/pmo/dispatch", meta.PMODispatchHandler(pmoStore))      // GET targets, POST dispatch
+				mux.HandleFunc("/api/inbox/deliver", meta.InboxDeliverHandler(inboxStore)) // POST deliver
+				mux.HandleFunc("/api/inbox/targets", meta.InboxTargetsHandler(pmoStore))   // GET mail targets
+				mux.HandleFunc("/api/inbox/", meta.InboxItemHandler(inboxStore, pmoStore)) // GET /{id}; POST /{id}/archive|read|unread|accept
+				mux.HandleFunc("/api/pmo/dispatch", meta.PMODispatchHandler(pmoStore))     // GET targets, POST dispatch
 			}
 		}
 	}
@@ -550,7 +552,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/git/pull", gitHandler.Pull)                      // POST
 	mux.HandleFunc("/api/git/fetch", gitHandler.Fetch)                    // POST
 	mux.HandleFunc("/api/git/worktrees", gitHandler.Worktrees)            // GET
-	mux.HandleFunc("/api/git/submodules", gitHandler.Submodules)           // GET
+	mux.HandleFunc("/api/git/submodules", gitHandler.Submodules)          // GET
 	mux.HandleFunc("/api/git/graph", gitHandler.Graph)                    // GET ?limit=100
 	mux.HandleFunc("/api/git/commit-files", gitHandler.CommitFiles)       // GET ?hash=<hash>
 	mux.HandleFunc("/api/git/commit-diff", gitHandler.CommitDiff)         // GET ?hash=<hash>&file=<path>
@@ -771,15 +773,15 @@ func NewRouter(cfg *config.Config) http.Handler {
 
 	// ── System management API (version check + OTA update) ──────────────────
 	sysHandler := system.NewHandler()
-	mux.HandleFunc("/api/system/version", sysHandler.Version)                     // GET  — current & latest version, has_update flag
-	mux.HandleFunc("/api/system/update", sysHandler.Update)                       // POST — trigger OTA update (non-blocking, returns 202)
-	mux.HandleFunc("/api/system/update/status", sysHandler.UpdateStatus)          // GET  — real-time update progress log
-	mux.HandleFunc(system.ManifestPath, sysHandler.Manifest)                      // GET  — frontend OTA manifest (proxied from GitHub Releases)
-	mux.HandleFunc("/api/system/happy/status", sysHandler.HappyStatus)            // GET  — happy daemon status + machine credentials
-	mux.HandleFunc("/api/system/happy/daemon/start", sysHandler.HappyDaemonStart) // POST — start happy daemon
-	mux.HandleFunc("/api/system/happy/daemon/stop", sysHandler.HappyDaemonStop)   // POST — stop happy daemon
-	mux.HandleFunc("/api/system/happy/pair/start", sysHandler.HappyPairStart)     // POST — begin account-level pairing, returns pairing code
-	mux.HandleFunc("/api/system/happy/pair/status", sysHandler.HappyPairStatus)   // GET  — pairing progress (pending/authorized/error)
+	mux.HandleFunc("/api/system/version", sysHandler.Version)                         // GET  — current & latest version, has_update flag
+	mux.HandleFunc("/api/system/update", sysHandler.Update)                           // POST — trigger OTA update (non-blocking, returns 202)
+	mux.HandleFunc("/api/system/update/status", sysHandler.UpdateStatus)              // GET  — real-time update progress log
+	mux.HandleFunc(system.ManifestPath, sysHandler.Manifest)                          // GET  — frontend OTA manifest (proxied from GitHub Releases)
+	mux.HandleFunc("/api/system/happy/status", sysHandler.HappyStatus)                // GET  — happy daemon status + machine credentials
+	mux.HandleFunc("/api/system/happy/daemon/start", sysHandler.HappyDaemonStart)     // POST — start happy daemon
+	mux.HandleFunc("/api/system/happy/daemon/stop", sysHandler.HappyDaemonStop)       // POST — stop happy daemon
+	mux.HandleFunc("/api/system/happy/pair/start", sysHandler.HappyPairStart)         // POST — begin account-level pairing, returns pairing code
+	mux.HandleFunc("/api/system/happy/pair/status", sysHandler.HappyPairStatus)       // GET  — pairing progress (pending/authorized/error)
 	mux.HandleFunc("/api/system/happy/ensure-machine", sysHandler.HappyEnsureMachine) // POST — auto-bind machine using local relay-creds
 	// 重置本地数据: wipe App data (meta.db/sync.db tables + knowledge/scratch files +
 	// workspace-backed cc-connect projects), keep relay pairing identity (~/.happy +
@@ -809,7 +811,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 
 	// ── Proxy API ────────────────────────────────────────────────────────────
 	// Query form (legacy): /api/proxy?url=http://localhost:3000/TalkingHeadComposition
-	// Path form (preferred for SPAs like Remotion): 
+	// Path form (preferred for SPAs like Remotion):
 	//   /api/webproxy/{base64url(origin)}/TalkingHeadComposition
 	// so location.pathname's last segment is the composition id even before inject.
 	mux.HandleFunc("/api/proxy", handleProxy)
@@ -1490,11 +1492,15 @@ func injectProxyBootstrap(body []byte, actualURL string) []byte {
 // proxyInjectScript — built-in browser iframe bootstrap.
 //
 // Remotion Studio (see getRoute / CanvasOrLoading):
-//   compositionId = location.pathname last segment  OR  pathname.replace('/','')
+//
+//	compositionId = location.pathname last segment  OR  pathname.replace('/','')
+//
 // So pathname "/api/proxy" → id "api/proxy" → "Composition with ID api/proxy not found."
 //
 // Preferred load shape (NEVER rewrite history to bare "/TalkingHeadComposition"):
-//   /api/webproxy/{b64(origin)}/TalkingHeadComposition
+//
+//	/api/webproxy/{b64(origin)}/TalkingHeadComposition
+//
 // Remotion takes composition id from the LAST path segment, so this works.
 // Bare paths on the 1agents host 404 on reload (static catch-all).
 //

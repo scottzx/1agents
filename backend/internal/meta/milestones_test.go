@@ -1,6 +1,9 @@
 package meta
 
 import (
+	"fmt"
+	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -248,5 +251,228 @@ func TestMilestoneCountsExcludeCancelled(t *testing.T) {
 	}
 	if list[0].Total != 1 || list[0].Completed != 1 {
 		t.Fatalf("M1 counts = %d/%d, want 1/1", list[0].Completed, list[0].Total)
+	}
+}
+
+func TestCreateVersionMilestoneInitialBumps(t *testing.T) {
+	tests := []struct {
+		bump MilestoneBump
+		want string
+	}{
+		{MilestoneBumpMinor, "0.1.0"},
+		{MilestoneBumpPatch, "0.0.1"},
+		{MilestoneBumpMajor, "1.0.0"},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.bump), func(t *testing.T) {
+			s := NewTaskStore(newTestDB(t))
+			got, err := s.CreateVersionMilestone(t.TempDir(), tt.bump, "", nil)
+			if err != nil {
+				t.Fatalf("CreateVersionMilestone(%s): %v", tt.bump, err)
+			}
+			if got.Version != tt.want || got.Name != tt.want {
+				t.Fatalf("version/name = %q/%q, want %q/%q", got.Version, got.Name, tt.want, tt.want)
+			}
+			if got.IsLegacy {
+				t.Fatalf("new version milestone marked legacy: %+v", got)
+			}
+			if got.PredecessorID != "" {
+				t.Fatalf("first version predecessor = %q, want empty", got.PredecessorID)
+			}
+		})
+	}
+}
+
+func TestCreateVersionMilestoneUsesNumericSemVerMaximumAndChains(t *testing.T) {
+	s := NewTaskStore(newTestDB(t))
+	ws := t.TempDir()
+
+	var previous Milestone
+	for minor := 1; minor <= 10; minor++ {
+		got, err := s.CreateVersionMilestone(ws, MilestoneBumpMinor, "", nil)
+		if err != nil {
+			t.Fatalf("create minor %d: %v", minor, err)
+		}
+		want := fmt.Sprintf("0.%d.0", minor)
+		if got.Version != want {
+			t.Fatalf("minor %d version = %q, want %q", minor, got.Version, want)
+		}
+		if minor == 1 {
+			if got.PredecessorID != "" {
+				t.Fatalf("first predecessor = %q, want empty", got.PredecessorID)
+			}
+		} else if got.PredecessorID != previous.ID {
+			t.Fatalf("%s predecessor = %q, want %q (%s)", got.Version, got.PredecessorID, previous.ID, previous.Version)
+		}
+		previous = got
+	}
+
+	patch, err := s.CreateVersionMilestone(ws, MilestoneBumpPatch, "", nil)
+	if err != nil {
+		t.Fatalf("create patch after 0.10.0: %v", err)
+	}
+	if patch.Version != "0.10.1" || patch.PredecessorID != previous.ID {
+		t.Fatalf("patch after 0.10.0 = %+v", patch)
+	}
+	major, err := s.CreateVersionMilestone(ws, MilestoneBumpMajor, "", nil)
+	if err != nil {
+		t.Fatalf("create major: %v", err)
+	}
+	if major.Version != "1.0.0" || major.PredecessorID != patch.ID {
+		t.Fatalf("major after 0.10.1 = %+v", major)
+	}
+}
+
+func TestCreateVersionMilestoneIgnoresLegacyAndInvalidVersions(t *testing.T) {
+	db := newTestDB(t)
+	s := NewTaskStore(db)
+	ws := t.TempDir()
+	legacy, err := s.CreateMilestone(ws, "release-candidate", "", nil, "")
+	if err != nil {
+		t.Fatalf("create legacy: %v", err)
+	}
+	projectID, err := s.ProjectIDForPath(ws)
+	if err != nil {
+		t.Fatalf("ProjectIDForPath: %v", err)
+	}
+	now := timeToStr(time.Now().UTC())
+	if _, err := db.sql.Exec(`
+		INSERT INTO milestones (
+			id, project_id, name, version, description, target_date,
+			position, predecessor_id, created_at, updated_at
+		) VALUES ('invalid-version', ?, 'not-semver', 'not-semver', '', NULL, 1, '', ?, ?)`,
+		projectID, now, now); err != nil {
+		t.Fatalf("seed invalid version: %v", err)
+	}
+
+	got, err := s.CreateVersionMilestone(ws, MilestoneBumpMinor, "", nil)
+	if err != nil {
+		t.Fatalf("CreateVersionMilestone: %v", err)
+	}
+	if got.Version != "0.1.0" || got.PredecessorID != "" {
+		t.Fatalf("legacy/invalid rows affected allocation: %+v (legacy=%+v)", got, legacy)
+	}
+}
+
+func TestCreateVersionMilestoneConcurrentAllocationIsUnique(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "meta.db")
+	db1, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db1.Close() })
+	db2, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db2.Close() })
+
+	stores := []*TaskStore{NewTaskStore(db1), NewTaskStore(db2)}
+	ws := t.TempDir()
+	const count = 12
+	results := make(chan Milestone, count)
+	errs := make(chan error, count)
+	var wg sync.WaitGroup
+	for i := 0; i < count; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			got, err := stores[i%len(stores)].CreateVersionMilestone(ws, MilestoneBumpPatch, "", nil)
+			if err != nil {
+				errs <- err
+				return
+			}
+			results <- got
+		}(i)
+	}
+	wg.Wait()
+	close(results)
+	close(errs)
+	for err := range errs {
+		t.Errorf("concurrent create: %v", err)
+	}
+
+	versions := map[string]bool{}
+	for got := range results {
+		if versions[got.Version] {
+			t.Errorf("duplicate version allocated: %s", got.Version)
+		}
+		versions[got.Version] = true
+	}
+	if len(versions) != count {
+		t.Fatalf("unique versions = %d, want %d (%v)", len(versions), count, versions)
+	}
+	for i := 1; i <= count; i++ {
+		want := fmt.Sprintf("0.0.%d", i)
+		if !versions[want] {
+			t.Errorf("missing allocated version %s: %v", want, versions)
+		}
+	}
+}
+
+func TestVersionMilestoneOrdinaryUpdateProtectsVersionAndChain(t *testing.T) {
+	s := NewTaskStore(newTestDB(t))
+	ws := t.TempDir()
+	first, err := s.CreateVersionMilestone(ws, MilestoneBumpMinor, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.CreateVersionMilestone(ws, MilestoneBumpMinor, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	changedVersion := "9.9.9"
+	if _, err := s.UpdateMilestone(ws, second.ID, MilestonePatch{Version: &changedVersion}); err != ErrMilestoneVersionImmutable {
+		t.Fatalf("version patch err = %v, want ErrMilestoneVersionImmutable", err)
+	}
+	changedName := "renamed"
+	if _, err := s.UpdateMilestone(ws, second.ID, MilestonePatch{Name: &changedName}); err != ErrMilestoneVersionImmutable {
+		t.Fatalf("name patch err = %v, want ErrMilestoneVersionImmutable", err)
+	}
+	noPredecessor := ""
+	if _, err := s.UpdateMilestone(ws, second.ID, MilestonePatch{PredecessorID: &noPredecessor}); err != ErrMilestoneChainImmutable {
+		t.Fatalf("predecessor patch err = %v, want ErrMilestoneChainImmutable", err)
+	}
+
+	description := "editable"
+	updated, err := s.UpdateMilestone(ws, second.ID, MilestonePatch{Description: &description})
+	if err != nil {
+		t.Fatalf("description patch: %v", err)
+	}
+	if updated.Description != description || updated.Version != second.Version ||
+		updated.Name != second.Name || updated.PredecessorID != first.ID {
+		t.Fatalf("allowed patch changed protected fields: %+v", updated)
+	}
+}
+
+func TestLegacyMilestoneRemainsReadableEditableAndTaskAssociated(t *testing.T) {
+	s := NewTaskStore(newTestDB(t))
+	ws := t.TempDir()
+	legacy, err := s.CreateMilestone(ws, "历史阶段", "legacy", nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	saveTaskWithMilestone(t, s, ws, "legacy-task", "保留关联", legacy.Name, TaskStatusPending)
+
+	renamed := "历史阶段（修订）"
+	root := ""
+	updated, err := s.UpdateMilestone(ws, legacy.ID, MilestonePatch{Name: &renamed, PredecessorID: &root})
+	if err != nil {
+		t.Fatalf("update legacy: %v", err)
+	}
+	if updated.Version != "" || !updated.IsLegacy || updated.Name != renamed {
+		t.Fatalf("legacy metadata changed semantics: %+v", updated)
+	}
+	task, ok, err := s.GetTask("legacy-task")
+	if err != nil || !ok {
+		t.Fatalf("GetTask: ok=%v err=%v", ok, err)
+	}
+	if task.Milestone != renamed {
+		t.Fatalf("legacy task association = %q, want %q", task.Milestone, renamed)
+	}
+	list, err := s.ListMilestones(ws)
+	if err != nil || len(list) != 1 || list[0].Total != 1 || !list[0].IsLegacy {
+		t.Fatalf("legacy list/count = %+v err=%v", list, err)
 	}
 }

@@ -57,6 +57,7 @@ type CreateTaskArgs struct {
 	Type                string   `json:"type"`
 	Priority            string   `json:"priority"`
 	Milestone           string   `json:"milestone"`
+	FeatureID           string   `json:"featureId"`
 	Assignee            string   `json:"assignee"`
 	Verifier            string   `json:"verifier"`
 	VerifierCount       int      `json:"verifierCount"`
@@ -82,10 +83,9 @@ type CreateTaskArgs struct {
 
 // CreateMilestoneArgs mirrors the create_milestone tool arguments.
 type CreateMilestoneArgs struct {
-	Name          string `json:"name"`
-	Description   string `json:"description"`
-	TargetDate    string `json:"targetDate"`
-	PredecessorID string `json:"predecessorId"`
+	Bump        string `json:"bump"`
+	Description string `json:"description"`
+	TargetDate  string `json:"targetDate"`
 }
 
 // updatableItemFields is the PATCH whitelist shared by the MCP update tool and
@@ -135,6 +135,9 @@ func (c *Client) CreateTask(a CreateTaskArgs) (int, []byte, error) {
 		"assignee":           a.Assignee,
 		"verifier":           a.Verifier,
 		"dependsOn":          a.DependsOn,
+	}
+	if a.FeatureID != "" {
+		body["featureId"] = a.FeatureID
 	}
 	if a.VerifierCount > 0 {
 		body["verifierCount"] = a.VerifierCount
@@ -208,10 +211,9 @@ func (c *Client) ListMilestones() (int, []byte, error) {
 // CreateMilestone builds the REST milestone body (workspace-scoped) and POSTs it.
 func (c *Client) CreateMilestone(a CreateMilestoneArgs) (int, []byte, error) {
 	body := map[string]any{
-		"workspace_id":  c.workspaceID,
-		"name":          a.Name,
-		"description":   a.Description,
-		"predecessorId": a.PredecessorID,
+		"workspace_id": c.workspaceID,
+		"bump":         a.Bump,
+		"description":  a.Description,
 	}
 	if a.TargetDate != "" {
 		body["targetDate"] = a.TargetDate
@@ -222,6 +224,80 @@ func (c *Client) CreateMilestone(a CreateMilestoneArgs) (int, []byte, error) {
 // UpdateMilestone PATCHes a milestone. patch already carries workspace_id.
 func (c *Client) UpdateMilestone(id string, patch map[string]any) (int, []byte, error) {
 	return c.api.do("PATCH", "/api/agent/milestones/"+url.PathEscape(id), nil, patch)
+}
+
+// ListFeatureCatalog returns the normalized feature nodes and item links for
+// this client's locked workspace.
+func (c *Client) ListFeatureCatalog() (int, []byte, error) {
+	q := url.Values{"workspace_id": {c.workspaceID}}
+	return c.api.do("GET", "/api/agent/feature-catalog", q, nil)
+}
+
+func (c *Client) FeatureCatalogGantt() (int, []byte, error) {
+	q := url.Values{"workspace_id": {c.workspaceID}}
+	return c.api.do("GET", "/api/agent/feature-catalog/gantt", q, nil)
+}
+
+func (c *Client) FeatureCatalogExport(format string) (int, []byte, error) {
+	q := url.Values{"workspace_id": {c.workspaceID}, "format": {format}}
+	return c.api.do("GET", "/api/agent/feature-catalog/export", q, nil)
+}
+
+// CreateFeatureNode POSTs one module or feature point.
+func (c *Client) CreateFeatureNode(input map[string]any) (int, []byte, error) {
+	body := map[string]any{}
+	for key, value := range input {
+		body[key] = value
+	}
+	body["workspace_id"] = c.workspaceID
+	return c.api.do("POST", "/api/agent/feature-catalog", nil, body)
+}
+
+// UpdateFeatureNode applies the same PATCH used by Web, including moves when
+// parentId and/or position is present.
+func (c *Client) UpdateFeatureNode(id string, patch map[string]any) (int, []byte, error) {
+	body := map[string]any{}
+	for key, value := range patch {
+		body[key] = value
+	}
+	body["workspace_id"] = c.workspaceID
+	return c.api.do("PATCH", "/api/agent/feature-catalog/"+url.PathEscape(id), nil, body)
+}
+
+func (c *Client) LinkFeatureItem(featureID, itemID, relation string) (int, []byte, error) {
+	return c.api.do(
+		"POST",
+		"/api/agent/feature-catalog/"+url.PathEscape(featureID)+"/items",
+		nil,
+		map[string]any{
+			"workspace_id": c.workspaceID,
+			"itemId":       itemID,
+			"relation":     relation,
+		},
+	)
+}
+
+func (c *Client) UnlinkFeatureItem(featureID, itemID, relation string) (int, []byte, error) {
+	q := url.Values{
+		"workspace_id": {c.workspaceID},
+		"relation":     {relation},
+	}
+	return c.api.do(
+		"DELETE",
+		"/api/agent/feature-catalog/"+url.PathEscape(featureID)+"/items/"+url.PathEscape(itemID),
+		q,
+		nil,
+	)
+}
+
+// BatchFeatureCatalog sends operations unchanged except for injecting the
+// locked workspace. The daemon's FeatureCatalogStore owns reference resolution,
+// validation, and the single transaction.
+func (c *Client) BatchFeatureCatalog(operations json.RawMessage) (int, []byte, error) {
+	return c.api.do("POST", "/api/agent/feature-catalog/batch", nil, map[string]any{
+		"workspace_id": c.workspaceID,
+		"operations":   operations,
+	})
 }
 
 // ResolveNumber maps a per-project short number (the `#N` shown by `list`) to the

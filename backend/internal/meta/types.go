@@ -662,6 +662,114 @@ type TasksConfig struct {
 	Tasks []ProjectItem `json:"tasks"`
 }
 
+// FeatureNodeKind identifies the two node kinds in a project's feature
+// catalog. Modules form the hierarchy; feature points are leaves.
+type FeatureNodeKind string
+
+const (
+	FeatureNodeModule FeatureNodeKind = "module"
+	FeatureNodePoint  FeatureNodeKind = "feature"
+)
+
+// FeatureNode is one persisted module or feature point in a project's feature
+// catalog. Level, path, progress, and aggregated milestone data are derived at
+// read time and therefore are intentionally absent from this storage contract.
+type FeatureNode struct {
+	ID                string                   `json:"id"`
+	ProjectID         string                   `json:"-"`
+	ParentID          string                   `json:"parentId,omitempty"`
+	Kind              FeatureNodeKind          `json:"kind"`
+	Title             string                   `json:"title"`
+	Description       string                   `json:"description,omitempty"`
+	TargetMilestoneID string                   `json:"targetMilestoneId,omitempty"`
+	Position          int                      `json:"position"`
+	CreatedAt         time.Time                `json:"createdAt"`
+	UpdatedAt         time.Time                `json:"updatedAt"`
+	Progress          *FeatureProgress         `json:"progress,omitempty"`
+	VersionCoverage   []FeatureVersionCoverage `json:"versionCoverage,omitempty"`
+}
+
+// FeatureVersionCoverage is the derived target-version distribution for the
+// feature points below a module. It is never persisted.
+type FeatureVersionCoverage struct {
+	MilestoneID  string `json:"milestoneId"`
+	Version      string `json:"version"`
+	FeatureCount int    `json:"featureCount"`
+}
+
+// FeatureProgressStatus is derived from a feature's non-cancelled delivery
+// tasks. It is never persisted, so task status remains the single source of
+// truth.
+type FeatureProgressStatus string
+
+const (
+	FeatureProgressUnplanned  FeatureProgressStatus = "unplanned"
+	FeatureProgressPending    FeatureProgressStatus = "pending"
+	FeatureProgressInProgress FeatureProgressStatus = "in_progress"
+	FeatureProgressDelivered  FeatureProgressStatus = "delivered"
+	FeatureProgressReplan     FeatureProgressStatus = "replan"
+)
+
+// FeatureProgress is the derived delivery/coverage read model for a feature
+// point or a module subtree. ProgressPercent is nil when there is no valid
+// delivery-task denominator, which keeps "未拆解"/"需要重新规划" distinct from
+// a real zero-percent plan.
+type FeatureProgress struct {
+	Status            FeatureProgressStatus `json:"status"`
+	ProgressPercent   *int                  `json:"progressPercent"`
+	CompletedTasks    int                   `json:"completedTasks"`
+	TotalTasks        int                   `json:"totalTasks"`
+	CoveredFeatures   int                   `json:"coveredFeatures"`
+	TotalFeatures     int                   `json:"totalFeatures"`
+	UnplannedFeatures int                   `json:"unplannedFeatures"`
+	ReplanFeatures    int                   `json:"replanFeatures"`
+}
+
+// FeatureItemRelation describes why a project item is linked to a feature
+// point: source requirements/bugs explain why it exists, while delivery tasks
+// implement it.
+type FeatureItemRelation string
+
+const (
+	FeatureItemSource   FeatureItemRelation = "source"
+	FeatureItemDelivery FeatureItemRelation = "delivery"
+)
+
+// FeatureItemLink is the many-to-many traceability edge between a feature
+// point and a project item.
+type FeatureItemLink struct {
+	FeatureID string              `json:"featureId"`
+	ItemID    string              `json:"itemId"`
+	Relation  FeatureItemRelation `json:"relation"`
+	CreatedAt time.Time           `json:"createdAt"`
+}
+
+// FeatureCatalog is the project-scoped read model returned by the feature
+// catalog API. Nodes and traceability links remain normalized in storage.
+type FeatureCatalog struct {
+	Nodes []FeatureNode     `json:"nodes"`
+	Links []FeatureItemLink `json:"links"`
+}
+
+// FeatureMilestoneTaskDiff describes one delivery task whose milestone differs
+// from its feature point's current target version.
+type FeatureMilestoneTaskDiff struct {
+	ID               string `json:"id"`
+	Number           int    `json:"number,omitempty"`
+	Title            string `json:"title"`
+	CurrentMilestone string `json:"currentMilestone,omitempty"`
+}
+
+// FeatureMilestoneSyncPreview is returned both before and after an explicit
+// sync. Tasks always contains the rows that would be (or were) changed.
+type FeatureMilestoneSyncPreview struct {
+	FeatureID         string                     `json:"featureId"`
+	TargetMilestoneID string                     `json:"targetMilestoneId,omitempty"`
+	TargetMilestone   string                     `json:"targetMilestone,omitempty"`
+	TargetVersion     string                     `json:"targetVersion,omitempty"`
+	Tasks             []FeatureMilestoneTaskDiff `json:"tasks"`
+}
+
 // Milestone is a first-class roadmap stage (schema v7). Its identity is the
 // pair (ProjectID, Name): tasks still link to a milestone through the existing
 // Task.Milestone *string* column, so the milestones table only stores the
@@ -670,9 +778,14 @@ type TasksConfig struct {
 // name stays a valid join key. The "current/past/future" distinction is NOT
 // stored — it is derived from Position + task completion at read time.
 type Milestone struct {
-	ID          string     `json:"id"`
-	ProjectID   string     `json:"-"`
-	Name        string     `json:"name"`
+	ID        string `json:"id"`
+	ProjectID string `json:"-"`
+	Name      string `json:"name"`
+	// Version is the canonical SemVer for system-generated milestones. It stays
+	// empty for historical/free-name milestones so their task join key is never
+	// rewritten during migration.
+	Version     string     `json:"version,omitempty"`
+	IsLegacy    bool       `json:"isLegacy,omitempty"`
 	Description string     `json:"description,omitempty"`
 	TargetDate  *time.Time `json:"targetDate,omitempty"`
 	Position    int        `json:"position"`

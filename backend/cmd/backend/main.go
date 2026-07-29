@@ -82,6 +82,10 @@ func ensureUserAgentBinDirs() {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "feature-catalog" {
+		os.Exit(projectitems.RunFeatureCatalogCLI(os.Args[2:]))
+	}
+
 	// ── `1agents project-items` MCP subcommand ─────────────────────────────────
 	// Dispatched before flag parsing and the daemon check so stdout stays a
 	// clean JSON-RPC channel (all logging goes to stderr). The AI Project

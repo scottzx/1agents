@@ -51,15 +51,14 @@ var toolDefs = []map[string]any{
 	},
 	{
 		"name":        "create_milestone",
-		"description": "Create a new milestone (roadmap stage) in the current project. It is appended to the end of the roadmap. Assign tasks to it by passing its name as the `milestone` field of create_project_item / update_project_item. Pass predecessorId to place it after another milestone — milestones sharing a predecessor branch in parallel on the roadmap.",
+		"description": "Create the next semantic-version milestone in the current project. Choose patch, minor, or major; the server atomically allocates the version and links its predecessor. Assign tasks using the returned name (which equals version).",
 		"inputSchema": map[string]any{
 			"type":     "object",
-			"required": []string{"name"},
+			"required": []string{"bump"},
 			"properties": map[string]any{
-				"name":          map[string]any{"type": "string", "description": "Milestone name; must be unique within the project."},
-				"description":   map[string]any{"type": "string"},
-				"targetDate":    map[string]any{"type": "string", "description": "Optional target/due date, RFC3339 (e.g. 2026-07-01T00:00:00Z)."},
-				"predecessorId": map[string]any{"type": "string", "description": "Optional id of the predecessor (parent) milestone; empty makes it a root."},
+				"bump":        map[string]any{"type": "string", "enum": []string{"patch", "minor", "major"}},
+				"description": map[string]any{"type": "string"},
+				"targetDate":  map[string]any{"type": "string", "description": "Optional target/due date, RFC3339 (e.g. 2026-07-01T00:00:00Z)."},
 			},
 		},
 	},
@@ -80,7 +79,7 @@ var toolDefs = []map[string]any{
 	},
 	{
 		"name":        "create_project_item",
-		"description": "Create a new project item (type task/requirement/bug) in the current project. Use dependsOn to express ordering when decomposing a PRD/Epic into dependent subtasks (pass the ids returned by earlier create_project_item calls). type defaults to 'task'; use 'requirement' or 'bug' for the requirement pool. IMPORTANT: an executable task (type 'task') MUST include acceptanceCriteria — without it the task is held as 未就绪 (not_ready) and never enters the scheduler queue. 任务归口 (#68): an executable task in a real project MUST also trace to a requirement or bug — either set parentId to the source requirement, pass its id in the `links` field (rel 'relates') right here at creation, or reference the source's #N in the description (e.g. \"实现 #5 ...\", which auto-creates the same relates link); otherwise it is held as not_ready until sourced. Subtasks inherit their parent's sourcing. Personal-bucket tasks (no project) are exempt.\n\nDecomposition flow: once the user has agreed on a top-level requirement, you may break it down into sub-requirements and executable tasks and schedule them directly — small sub-items do NOT need a separate user-confirmation round. When every task decomposed under a requirement (its ParentID children) reaches a terminal state, the requirement auto-closes.\n\nA personal reminder/todo/deadline for the USER is just a task with assignee='user': it is never dispatched to an agent, it lives on the user's calendar until they mark it done, and dueAt/recurrence schedule it. Use assignee='user' (with dueAt for a deadline) when the user asks you to remember something.\n\nGitHub mapping (#74): title/description/type/milestone map to native GitHub Issue fields; priority maps to a GitHub Projects v2 custom field (not an Issue field). NOTE the two distinct assignee dimensions: `assignee` is WHO executes this task — either an AI agent type (claudecode/codex, dispatched by the scheduler) or 'user' (a human/personal task, never dispatched) — and is local-only; `githubAssignees` are GitHub login names (issue.assignees[].login) for human collaborators. The github* reference fields (githubRepo/githubKind/githubNumber/githubNodeId/githubUrl/githubState/lastSyncedAt) are the sync anchor to a GitHub Issue/PR — normally backfilled by the sync pass, accept-only here, and not something you set when authoring a task.",
+		"description": "Create a new project item (type task/requirement/bug) in the current project. Use dependsOn to express ordering when decomposing a PRD/Epic into dependent subtasks (pass the ids returned by earlier create_project_item calls). type defaults to 'task'; use 'requirement' or 'bug' for the requirement pool. IMPORTANT: an executable task (type 'task') MUST include acceptanceCriteria — without it the task is held as 未就绪 (not_ready) and never enters the scheduler queue. 任务归口 (#68): an executable task in a real project MUST also trace to a requirement or bug — either set parentId to the source requirement, pass its id in the `links` field (rel 'relates') right here at creation, or reference the source's #N in the description (e.g. \"实现 #5 ...\", which auto-creates the same relates link); otherwise it is held as not_ready until sourced. Subtasks inherit their parent's sourcing. Personal-bucket tasks (no project) are exempt. When creating a task from an enabled feature catalog, also pass the feature point's id as featureId: the server establishes the delivery link and inherits the feature point's target milestone.\n\nDecomposition flow: once the user has agreed on a top-level requirement, you may break it down into sub-requirements and executable tasks and schedule them directly — small sub-items do NOT need a separate user-confirmation round. When every task decomposed under a requirement (its ParentID children) reaches a terminal state, the requirement auto-closes.\n\nA personal reminder/todo/deadline for the USER is just a task with assignee='user': it is never dispatched to an agent, it lives on the user's calendar until they mark it done, and dueAt/recurrence schedule it. Use assignee='user' (with dueAt for a deadline) when the user asks you to remember something.\n\nGitHub mapping (#74): title/description/type/milestone map to native GitHub Issue fields; priority maps to a GitHub Projects v2 custom field (not an Issue field). NOTE the two distinct assignee dimensions: `assignee` is WHO executes this task — either an AI agent type (claudecode/codex, dispatched by the scheduler) or 'user' (a human/personal task, never dispatched) — and is local-only; `githubAssignees` are GitHub login names (issue.assignees[].login) for human collaborators. The github* reference fields (githubRepo/githubKind/githubNumber/githubNodeId/githubUrl/githubState/lastSyncedAt) are the sync anchor to a GitHub Issue/PR — normally backfilled by the sync pass, accept-only here, and not something you set when authoring a task.",
 		"inputSchema": map[string]any{
 			"type":     "object",
 			"required": []string{"title"},
@@ -91,6 +90,7 @@ var toolDefs = []map[string]any{
 				"type":                map[string]any{"type": "string", "enum": []string{"task", "requirement", "bug"}, "description": "Issue discriminator. Maps to GitHub Issue Types / a label."},
 				"priority":            map[string]any{"type": "string", "enum": []string{"urgent", "high", "medium", "low"}, "description": "Local scheduling priority. No native GitHub Issue field — maps to a Projects v2 custom field."},
 				"milestone":           map[string]any{"type": "string", "description": "Maps to GitHub milestone (matched/created by title)."},
+				"featureId":           map[string]any{"type": "string", "description": "Feature point id when this task delivers a feature. The server creates the delivery link and overrides milestone with the feature point's target version."},
 				"assignee":            map[string]any{"type": "string", "description": "WHO executes this task. An AGENT type (e.g. 'claudecode' or 'codex', whichever are installed) is dispatched by the scheduler. 'user' makes it a personal/human task: never dispatched, lives on the user's calendar until they mark it done (use with dueAt/recurrence for reminders/deadlines). LOCAL ONLY — not a GitHub user. Empty defaults to claudecode. For GitHub users, use githubAssignees."},
 				"githubAssignees":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "GitHub login names (issue.assignees[].login) — human collaborators on the mapped Issue/PR. Distinct from `assignee` (the executing agent). Sync field."},
 				"verifier":            map[string]any{"type": "string", "description": "Optional reviewing agent type. When set (and acceptanceCriteria is non-empty), after the executor finishes a verifier of this type auto-checks the output against the criteria; the task only completes when every criterion passes, otherwise it re-executes. Empty = no verification."},
@@ -213,6 +213,114 @@ var toolDefs = []map[string]any{
 			},
 		},
 	},
+}
+
+func init() {
+	relation := map[string]any{"type": "string", "enum": []string{"source", "delivery"}}
+	toolDefs = append(toolDefs,
+		map[string]any{
+			"name":        "list_feature_catalog",
+			"description": "List the current project's normalized feature-catalog nodes and source/delivery links.",
+			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}},
+		},
+		map[string]any{
+			"name":        "create_feature_node",
+			"description": "Create one module or feature point in the current project's feature catalog.",
+			"inputSchema": map[string]any{
+				"type": "object", "required": []string{"kind", "title"},
+				"properties": map[string]any{
+					"kind":              map[string]any{"type": "string", "enum": []string{"module", "feature"}},
+					"title":             map[string]any{"type": "string"},
+					"parentId":          map[string]any{"type": "string"},
+					"description":       map[string]any{"type": "string"},
+					"targetMilestoneId": map[string]any{"type": "string"},
+					"position":          map[string]any{"type": "integer"},
+				},
+			},
+		},
+		map[string]any{
+			"name":        "update_feature_node",
+			"description": "Update one feature node's title, description, or semantic target milestone.",
+			"inputSchema": map[string]any{
+				"type": "object", "required": []string{"id"},
+				"properties": map[string]any{
+					"id":                map[string]any{"type": "string"},
+					"title":             map[string]any{"type": "string"},
+					"description":       map[string]any{"type": "string"},
+					"targetMilestoneId": map[string]any{"type": "string"},
+				},
+			},
+		},
+		map[string]any{
+			"name":        "move_feature_node",
+			"description": "Move/reorder one feature node. Pass parentId, position, or both.",
+			"inputSchema": map[string]any{
+				"type": "object", "required": []string{"id"},
+				"properties": map[string]any{
+					"id":       map[string]any{"type": "string"},
+					"parentId": map[string]any{"type": "string"},
+					"position": map[string]any{"type": "integer"},
+				},
+			},
+		},
+		map[string]any{
+			"name":        "link_feature_item",
+			"description": "Idempotently link a source requirement/bug or delivery task to a feature point.",
+			"inputSchema": map[string]any{
+				"type": "object", "required": []string{"featureId", "itemId", "relation"},
+				"properties": map[string]any{
+					"featureId": map[string]any{"type": "string"},
+					"itemId":    map[string]any{"type": "string"},
+					"relation":  relation,
+				},
+			},
+		},
+		map[string]any{
+			"name":        "unlink_feature_item",
+			"description": "Idempotently remove one source/delivery link from a feature point.",
+			"inputSchema": map[string]any{
+				"type": "object", "required": []string{"featureId", "itemId", "relation"},
+				"properties": map[string]any{
+					"featureId": map[string]any{"type": "string"},
+					"itemId":    map[string]any{"type": "string"},
+					"relation":  relation,
+				},
+			},
+		},
+		map[string]any{
+			"name":        "batch_feature_catalog",
+			"description": "Atomically apply create/update/move/link/unlink operations. Create operations may publish clientRef; parentRef, nodeRef, and featureRef resolve those ids inside the batch. Any failure rolls back every operation.",
+			"inputSchema": map[string]any{
+				"type": "object", "required": []string{"operations"},
+				"properties": map[string]any{
+					"operations": map[string]any{
+						"type": "array", "minItems": 1,
+						"items": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"op":                map[string]any{"type": "string", "enum": []string{"create", "update", "move", "link", "unlink"}},
+								"id":                map[string]any{"type": "string"},
+								"nodeRef":           map[string]any{"type": "string"},
+								"clientRef":         map[string]any{"type": "string"},
+								"parentId":          map[string]any{"type": "string"},
+								"parentRef":         map[string]any{"type": "string"},
+								"featureId":         map[string]any{"type": "string"},
+								"featureRef":        map[string]any{"type": "string"},
+								"itemId":            map[string]any{"type": "string"},
+								"relation":          relation,
+								"kind":              map[string]any{"type": "string", "enum": []string{"module", "feature"}},
+								"title":             map[string]any{"type": "string"},
+								"description":       map[string]any{"type": "string"},
+								"targetMilestoneId": map[string]any{"type": "string"},
+								"position":          map[string]any{"type": "integer"},
+							},
+							"required": []string{"op"},
+						},
+					},
+				},
+			},
+		},
+	)
 }
 
 // complete_human_project_item + Workspace Inbox mail tools (appended at init).
@@ -445,6 +553,20 @@ func (s *server) onToolCall(params json.RawMessage) map[string]any {
 		return s.toolGetTask(p.Arguments)
 	case "get_project_item_graph":
 		return s.toolGetTaskGraph(p.Arguments)
+	case "list_feature_catalog":
+		return s.toolListFeatureCatalog()
+	case "create_feature_node":
+		return s.toolCreateFeatureNode(p.Arguments)
+	case "update_feature_node":
+		return s.toolUpdateFeatureNode(p.Arguments, false)
+	case "move_feature_node":
+		return s.toolUpdateFeatureNode(p.Arguments, true)
+	case "link_feature_item":
+		return s.toolFeatureLink(p.Arguments, false)
+	case "unlink_feature_item":
+		return s.toolFeatureLink(p.Arguments, true)
+	case "batch_feature_catalog":
+		return s.toolBatchFeatureCatalog(p.Arguments)
 	case "list_milestones":
 		return s.toolListMilestones()
 	case "create_milestone":
@@ -573,13 +695,156 @@ func (s *server) toolListMilestones() map[string]any {
 	return toolJSON(map[string]any{"count": len(milestones), "milestones": json.RawMessage(body)})
 }
 
+func (s *server) toolListFeatureCatalog() map[string]any {
+	status, body, err := s.cl().ListFeatureCatalog()
+	if err != nil {
+		return toolErr(err.Error())
+	}
+	if status != 200 {
+		return toolErr(fmt.Sprintf("list feature catalog failed (%d): %s", status, strings.TrimSpace(string(body))))
+	}
+	return toolText(string(body))
+}
+
+func featureObjectArgs(args json.RawMessage, allowed ...string) (map[string]any, error) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(args, &raw); err != nil {
+		return nil, err
+	}
+	out := map[string]any{}
+	for _, key := range allowed {
+		value, ok := raw[key]
+		if !ok {
+			continue
+		}
+		var decoded any
+		if err := json.Unmarshal(value, &decoded); err != nil {
+			return nil, fmt.Errorf("%s: %w", key, err)
+		}
+		out[key] = decoded
+	}
+	return out, nil
+}
+
+func stringFeatureArg(values map[string]any, key string) string {
+	value, _ := values[key].(string)
+	return strings.TrimSpace(value)
+}
+
+func (s *server) toolCreateFeatureNode(args json.RawMessage) map[string]any {
+	input, err := featureObjectArgs(
+		args, "kind", "title", "parentId", "description", "targetMilestoneId", "position",
+	)
+	if err != nil {
+		return toolErr("invalid arguments: " + err.Error())
+	}
+	kind := stringFeatureArg(input, "kind")
+	if kind != "module" && kind != "feature" {
+		return toolErr("kind must be module or feature")
+	}
+	if stringFeatureArg(input, "title") == "" {
+		return toolErr("title is required")
+	}
+	status, body, err := s.cl().CreateFeatureNode(input)
+	if err != nil {
+		return toolErr(err.Error())
+	}
+	if status != 200 {
+		return toolErr(fmt.Sprintf("create feature node failed (%d): %s", status, strings.TrimSpace(string(body))))
+	}
+	return toolText(string(body))
+}
+
+func (s *server) toolUpdateFeatureNode(args json.RawMessage, move bool) map[string]any {
+	fields := []string{"id", "title", "description", "targetMilestoneId"}
+	action := "update"
+	if move {
+		fields = []string{"id", "parentId", "position"}
+		action = "move"
+	}
+	input, err := featureObjectArgs(args, fields...)
+	if err != nil {
+		return toolErr("invalid arguments: " + err.Error())
+	}
+	id := stringFeatureArg(input, "id")
+	if id == "" {
+		return toolErr("id is required")
+	}
+	delete(input, "id")
+	if len(input) == 0 {
+		return toolErr(action + " requires at least one field")
+	}
+	status, body, err := s.cl().UpdateFeatureNode(id, input)
+	if err != nil {
+		return toolErr(err.Error())
+	}
+	if status != 200 {
+		return toolErr(fmt.Sprintf("%s feature node failed (%d): %s", action, status, strings.TrimSpace(string(body))))
+	}
+	return toolText(string(body))
+}
+
+func (s *server) toolFeatureLink(args json.RawMessage, unlink bool) map[string]any {
+	input, err := featureObjectArgs(args, "featureId", "itemId", "relation")
+	if err != nil {
+		return toolErr("invalid arguments: " + err.Error())
+	}
+	featureID := stringFeatureArg(input, "featureId")
+	itemID := stringFeatureArg(input, "itemId")
+	relation := stringFeatureArg(input, "relation")
+	if featureID == "" || itemID == "" {
+		return toolErr("featureId and itemId are required")
+	}
+	if relation != "source" && relation != "delivery" {
+		return toolErr("relation must be source or delivery")
+	}
+	var status int
+	var body []byte
+	if unlink {
+		status, body, err = s.cl().UnlinkFeatureItem(featureID, itemID, relation)
+	} else {
+		status, body, err = s.cl().LinkFeatureItem(featureID, itemID, relation)
+	}
+	if err != nil {
+		return toolErr(err.Error())
+	}
+	if status != 200 {
+		return toolErr(fmt.Sprintf("feature link mutation failed (%d): %s", status, strings.TrimSpace(string(body))))
+	}
+	return toolText(string(body))
+}
+
+func (s *server) toolBatchFeatureCatalog(args json.RawMessage) map[string]any {
+	var input struct {
+		Operations json.RawMessage `json:"operations"`
+	}
+	if err := json.Unmarshal(args, &input); err != nil {
+		return toolErr("invalid arguments: " + err.Error())
+	}
+	var operations []json.RawMessage
+	if err := json.Unmarshal(input.Operations, &operations); err != nil || len(operations) == 0 {
+		return toolErr("operations must be a non-empty array")
+	}
+	status, body, err := s.cl().BatchFeatureCatalog(input.Operations)
+	if err != nil {
+		return toolErr(err.Error())
+	}
+	if status != 200 {
+		return toolErr(fmt.Sprintf("feature catalog batch failed (%d): %s", status, strings.TrimSpace(string(body))))
+	}
+	return toolText(string(body))
+}
+
 func (s *server) toolCreateMilestone(args json.RawMessage) map[string]any {
 	var a CreateMilestoneArgs
 	if err := json.Unmarshal(args, &a); err != nil {
 		return toolErr("invalid arguments: " + err.Error())
 	}
-	if strings.TrimSpace(a.Name) == "" {
-		return toolErr("name is required")
+	switch strings.ToLower(strings.TrimSpace(a.Bump)) {
+	case "patch", "minor", "major":
+		a.Bump = strings.ToLower(strings.TrimSpace(a.Bump))
+	default:
+		return toolErr("bump must be patch, minor, or major")
 	}
 	status, resp, err := s.cl().CreateMilestone(a)
 	if err != nil {

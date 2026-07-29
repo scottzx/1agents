@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -76,9 +78,9 @@ func TestInitializeAndToolsList(t *testing.T) {
 	env = call(t, s, buf, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
 	res, _ = env["result"].(map[string]any)
 	tools, _ := res["tools"].([]any)
-	// 10 legacy + 6 Workspace Inbox mail tools (#205)
-	if len(tools) != 16 {
-		t.Fatalf("expected 16 tools, got %d", len(tools))
+	// 10 legacy + 6 Workspace Inbox + 7 Feature Catalog tools.
+	if len(tools) != 23 {
+		t.Fatalf("expected 23 tools, got %d", len(tools))
 	}
 	got := map[string]bool{}
 	for _, tl := range tools {
@@ -87,6 +89,9 @@ func TestInitializeAndToolsList(t *testing.T) {
 	}
 	for _, want := range []string{
 		"check_inbox", "get_mail", "accept_mail", "archive_mail", "list_mail_targets", "send_mail",
+		"list_feature_catalog", "create_feature_node", "update_feature_node",
+		"move_feature_node", "link_feature_item", "unlink_feature_item",
+		"batch_feature_catalog",
 	} {
 		if !got[want] {
 			t.Errorf("PM tools/list missing mail tool %q; got %v", want, got)
@@ -142,6 +147,274 @@ func TestConversationExposesPMToolsAndPersonalTask(t *testing.T) {
 	}
 	if gotBody["scheduleType"] != "scheduled" || gotBody["scheduledAt"] != "2026-06-25T15:00:00+08:00" {
 		t.Errorf("schedule fields = %v / %v", gotBody["scheduleType"], gotBody["scheduledAt"])
+	}
+}
+
+func TestCreateMilestoneToolForwardsBumpOnly(t *testing.T) {
+	var gotBody map[string]any
+	s, buf, _ := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/agent/milestones" {
+			http.Error(w, "unexpected", http.StatusBadRequest)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &gotBody)
+		w.Write([]byte(`{"id":"m1","name":"0.1.0","version":"0.1.0"}`))
+	})
+
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"create_milestone","arguments":{"bump":"minor","description":"foundation"}}}`)
+	if text, isErr := resultText(t, env); isErr {
+		t.Fatalf("create_milestone returned error: %s", text)
+	}
+	if gotBody["workspace_id"] != "ws1" || gotBody["bump"] != "minor" ||
+		gotBody["description"] != "foundation" {
+		t.Fatalf("milestone request body = %v", gotBody)
+	}
+	if _, ok := gotBody["name"]; ok {
+		t.Fatalf("milestone request must not contain legacy name: %v", gotBody)
+	}
+	if _, ok := gotBody["predecessorId"]; ok {
+		t.Fatalf("milestone request must not contain predecessorId: %v", gotBody)
+	}
+
+	env = call(t, s, buf, `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"create_milestone","arguments":{"name":"legacy"}}}`)
+	if text, isErr := resultText(t, env); !isErr || !strings.Contains(text, "bump") {
+		t.Fatalf("legacy MCP shape should fail with bump guidance: %v", env)
+	}
+}
+
+func TestMilestoneCLIUsesBumpAndRejectsDeprecatedName(t *testing.T) {
+	var gotBody map[string]any
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/agent/milestones" {
+			http.Error(w, "unexpected", http.StatusBadRequest)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &gotBody)
+		w.Write([]byte(`{"id":"m1","name":"0.0.1","version":"0.0.1"}`))
+	}))
+	defer api.Close()
+
+	home := t.TempDir()
+	agentsDir := filepath.Join(home, ".1agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	listenAddr := strings.TrimPrefix(api.URL, "http://")
+	if err := os.WriteFile(
+		filepath.Join(agentsDir, "daemon.json"),
+		[]byte(`{"listen_addr":"`+listenAddr+`"}`),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ONEAGENTS_HOME", home)
+	t.Setenv("ONEAGENTS_WORKSPACE_ID", "ws-cli")
+
+	oldStdout := os.Stdout
+	readOut, writeOut, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = writeOut
+	code := RunCLI([]string{
+		"milestones", "create", "--bump", "patch", "--description", "hotfix",
+	})
+	_ = writeOut.Close()
+	os.Stdout = oldStdout
+	output, _ := io.ReadAll(readOut)
+	_ = readOut.Close()
+	if code != 0 {
+		t.Fatalf("milestones create --bump exit = %d", code)
+	}
+	if !strings.Contains(string(output), `"version": "0.0.1"`) {
+		t.Fatalf("milestones create did not return server version: %s", output)
+	}
+	if gotBody["workspace_id"] != "ws-cli" || gotBody["bump"] != "patch" ||
+		gotBody["description"] != "hotfix" {
+		t.Fatalf("CLI milestone request body = %v", gotBody)
+	}
+	if _, ok := gotBody["name"]; ok {
+		t.Fatalf("CLI request contains deprecated name: %v", gotBody)
+	}
+	if code := RunCLI([]string{
+		"milestones", "create", "--name", "legacy",
+	}); code == 0 {
+		t.Fatal("deprecated --name unexpectedly succeeded")
+	}
+}
+
+func writeTestDaemonFile(t *testing.T, apiURL string) {
+	t.Helper()
+	home := t.TempDir()
+	agentsDir := filepath.Join(home, ".1agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(agentsDir, "daemon.json"),
+		[]byte(`{"listen_addr":"`+strings.TrimPrefix(apiURL, "http://")+`"}`),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ONEAGENTS_HOME", home)
+}
+
+func TestFeatureCatalogCLIMapsAllVerbsAndLocksWorkspace(t *testing.T) {
+	type request struct {
+		method string
+		path   string
+		query  string
+		body   map[string]any
+	}
+	var requests []request
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if r.Body != nil {
+			_ = json.NewDecoder(r.Body).Decode(&body)
+		}
+		requests = append(requests, request{
+			method: r.Method, path: r.URL.Path, query: r.URL.RawQuery, body: body,
+		})
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/agent/feature-catalog" && r.Method == http.MethodGet {
+			w.Write([]byte(`{"nodes":[],"links":[]}`))
+			return
+		}
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer api.Close()
+	writeTestDaemonFile(t, api.URL)
+	t.Setenv("ONEAGENTS_WORKSPACE_ID", "locked-workspace")
+
+	calls := [][]string{
+		{"list"},
+		{"create", "--kind", "module", "--title", "Root"},
+		{"update", "n1", "--title", "Renamed"},
+		{"move", "n1", "--parent", "n2", "--position", "3"},
+		{"link", "n1", "--item", "req1", "--relation", "source"},
+		{"unlink", "n1", "--item", "req1", "--relation", "source"},
+		{"batch", "--json", `[{"op":"create","clientRef":"root","kind":"module","title":"Root"}]`},
+	}
+	for _, args := range calls {
+		if code := RunFeatureCatalogCLI(args); code != 0 {
+			t.Fatalf("feature-catalog %v exit = %d", args, code)
+		}
+	}
+	if len(requests) != len(calls) {
+		t.Fatalf("requests = %d, want %d: %+v", len(requests), len(calls), requests)
+	}
+	want := []struct{ method, path string }{
+		{http.MethodGet, "/api/agent/feature-catalog"},
+		{http.MethodPost, "/api/agent/feature-catalog"},
+		{http.MethodPatch, "/api/agent/feature-catalog/n1"},
+		{http.MethodPatch, "/api/agent/feature-catalog/n1"},
+		{http.MethodPost, "/api/agent/feature-catalog/n1/items"},
+		{http.MethodDelete, "/api/agent/feature-catalog/n1/items/req1"},
+		{http.MethodPost, "/api/agent/feature-catalog/batch"},
+	}
+	for i := range want {
+		if requests[i].method != want[i].method || requests[i].path != want[i].path {
+			t.Fatalf("request %d = %s %s, want %s %s", i, requests[i].method, requests[i].path, want[i].method, want[i].path)
+		}
+		if i != 0 && i != 5 && requests[i].body["workspace_id"] != "locked-workspace" {
+			t.Fatalf("request %d workspace not locked: %+v", i, requests[i].body)
+		}
+	}
+	if !strings.Contains(requests[0].query, "workspace_id=locked-workspace") ||
+		!strings.Contains(requests[5].query, "workspace_id=locked-workspace") {
+		t.Fatalf("query workspace lock missing: list=%q unlink=%q", requests[0].query, requests[5].query)
+	}
+}
+
+func TestFeatureCatalogCLIResolvesProjectFromCWDAndReportsAPIFailure(t *testing.T) {
+	workspace := t.TempDir()
+	nested := filepath.Join(workspace, "nested")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var listWorkspace string
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/workspace/list":
+			_ = json.NewEncoder(w).Encode([]wsRecord{{ID: "cwd-workspace", Name: "cwd", Path: workspace}})
+		case "/api/agent/feature-catalog":
+			listWorkspace = r.URL.Query().Get("workspace_id")
+			http.Error(w, "catalog unavailable", http.StatusConflict)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer api.Close()
+	writeTestDaemonFile(t, api.URL)
+	t.Setenv("ONEAGENTS_WORKSPACE_ID", "")
+	oldCWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(nested); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldCWD)
+
+	if code := RunFeatureCatalogCLI([]string{"list"}); code == 0 {
+		t.Fatal("non-200 feature-catalog response unexpectedly succeeded")
+	}
+	if listWorkspace != "cwd-workspace" {
+		t.Fatalf("cwd resolved workspace = %q, want cwd-workspace", listWorkspace)
+	}
+}
+
+func TestFeatureCatalogMCPToolsForwardLockedRequestsAndFailures(t *testing.T) {
+	var seen []string
+	s, buf, _ := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Method+" "+r.URL.Path)
+		var body map[string]any
+		if r.Body != nil {
+			_ = json.NewDecoder(r.Body).Decode(&body)
+		}
+		if r.Method != http.MethodGet && r.Method != http.MethodDelete &&
+			body["workspace_id"] != "ws1" {
+			http.Error(w, "workspace not locked", http.StatusForbidden)
+			return
+		}
+		if r.URL.Path == "/api/agent/feature-catalog/batch" {
+			http.Error(w, "atomic validation failed", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok":true}`))
+	})
+	calls := []string{
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_feature_catalog","arguments":{}}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"create_feature_node","arguments":{"kind":"module","title":"Root"}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"update_feature_node","arguments":{"id":"n1","title":"Renamed"}}}`,
+		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"move_feature_node","arguments":{"id":"n1","position":1}}}`,
+		`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"link_feature_item","arguments":{"featureId":"n1","itemId":"req","relation":"source"}}}`,
+		`{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"unlink_feature_item","arguments":{"featureId":"n1","itemId":"req","relation":"source"}}}`,
+	}
+	for _, request := range calls {
+		if text, isErr := resultText(t, call(t, s, buf, request)); isErr {
+			t.Fatalf("feature MCP call failed: %s", text)
+		}
+	}
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"batch_feature_catalog","arguments":{"operations":[{"op":"create","clientRef":"root","kind":"module","title":"Root"}]}}}`)
+	if text, isErr := resultText(t, env); !isErr || !strings.Contains(text, "atomic validation failed") {
+		t.Fatalf("batch failure not surfaced as MCP tool error: %v", env)
+	}
+	want := []string{
+		"GET /api/agent/feature-catalog",
+		"POST /api/agent/feature-catalog",
+		"PATCH /api/agent/feature-catalog/n1",
+		"PATCH /api/agent/feature-catalog/n1",
+		"POST /api/agent/feature-catalog/n1/items",
+		"DELETE /api/agent/feature-catalog/n1/items/req",
+		"POST /api/agent/feature-catalog/batch",
+	}
+	if strings.Join(seen, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("MCP routes:\n%s\nwant:\n%s", strings.Join(seen, "\n"), strings.Join(want, "\n"))
 	}
 }
 
@@ -233,6 +506,63 @@ func TestCreateTaskForwardsGithubFields(t *testing.T) {
 	// githubNumber is JSON, so a float64 after decode.
 	if n, _ := gotBody["githubNumber"].(float64); n != 74 {
 		t.Fatalf("githubNumber mismatch: %v", gotBody["githubNumber"])
+	}
+}
+
+func TestCreateTaskForwardsFeatureContext(t *testing.T) {
+	var gotBody map[string]any
+	s, buf, _ := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/api/agent/project-items" {
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &gotBody)
+			w.Write([]byte(`{"id":"t10","number":10,"title":"Deliver feature","status":"pending"}`))
+			return
+		}
+		http.Error(w, "unexpected", http.StatusBadRequest)
+	})
+
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"create_project_item","arguments":{"title":"Deliver feature","type":"task","acceptanceCriteria":"done","featureId":"feature-1","links":[{"target":"requirement-1","rel":"relates"}]}}}`)
+	if text, isErr := resultText(t, env); isErr {
+		t.Fatalf("unexpected tool error: %s", text)
+	}
+	if gotBody["featureId"] != "feature-1" {
+		t.Fatalf("featureId not forwarded: %v", gotBody)
+	}
+	links, _ := gotBody["links"].([]any)
+	if len(links) != 1 {
+		t.Fatalf("top-level requirement link not forwarded: %v", gotBody["links"])
+	}
+}
+
+func TestCreateTaskCLIForwardsFeatureContext(t *testing.T) {
+	var gotBody map[string]any
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/agent/project-items" {
+			http.Error(w, "unexpected", http.StatusBadRequest)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &gotBody)
+		w.Write([]byte(`{"id":"t11","number":11,"title":"CLI delivery","status":"pending"}`))
+	}))
+	defer api.Close()
+	writeTestDaemonFile(t, api.URL)
+	t.Setenv("ONEAGENTS_WORKSPACE_ID", "feature-workspace")
+
+	code := RunCLI([]string{
+		"create",
+		"--json",
+		`{"title":"CLI delivery","type":"task","acceptanceCriteria":"done","featureId":"feature-2","links":[{"target":"requirement-2","rel":"relates"}]}`,
+	})
+	if code != 0 {
+		t.Fatalf("CLI create exit = %d", code)
+	}
+	if gotBody["workspace_id"] != "feature-workspace" || gotBody["featureId"] != "feature-2" {
+		t.Fatalf("feature-scoped CLI body = %v", gotBody)
+	}
+	links, _ := gotBody["links"].([]any)
+	if len(links) != 1 {
+		t.Fatalf("CLI top-level requirement link not forwarded: %v", gotBody["links"])
 	}
 }
 

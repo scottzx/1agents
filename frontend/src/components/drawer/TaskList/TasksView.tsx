@@ -1,6 +1,7 @@
 import { h } from 'preact';
 import { useEffect } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
+import type { FeatureCatalog } from '@1agents/core/types/featureCatalog';
 
 import { CalendarBoard } from './CalendarBoard';
 import { KanbanBoard } from './KanbanBoard';
@@ -18,6 +19,7 @@ interface TasksViewProps {
     onDeleteTask: (taskId: string) => void;
     onPatchTask: (taskId: string, patch: Record<string, unknown>) => Promise<void>;
     onStatusChange: (taskId: string, status: 'completed' | 'cancelled') => void;
+    featureCatalog: FeatureCatalog;
 }
 
 // The 任务 tab: a list↔board↔calendar view switch over one shared filter
@@ -31,6 +33,7 @@ export function TasksView({
     onDeleteTask,
     onPatchTask,
     onStatusChange,
+    featureCatalog,
 }: TasksViewProps) {
     const initial = viewPrefs.allPrefs.value[workspaceId] || viewPrefs.DEFAULT_PREFS;
     const search = useSignal(initial.search);
@@ -93,6 +96,7 @@ export function TasksView({
                     onSelectTask={onSelectTask}
                     onDeleteTask={onDeleteTask}
                     onPatchTask={onPatchTask}
+                    featureCatalog={featureCatalog}
                 />
             )}
             {taskView.value === 'board' && (

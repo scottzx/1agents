@@ -32,6 +32,9 @@ export function SettingsTab({ workspaceId, language }: { workspaceId: string; la
     // 可显隐的 tab：内置可选项 + 各 app 贡献的 project-tab（如 口播剪辑）。核心
     // tab(会话/文件/设置等)不在此列，始终显示。
     const hidden = tabPrefs.getHiddenTabs(workspaceId);
+    const featureCatalogEnabled = tabPrefs.getFeatureCatalogEnabled(workspaceId);
+    const configStatus = tabPrefs.getProjectConfigStatus(workspaceId);
+    const configBusy = !configStatus.loaded || configStatus.loading || configStatus.saving;
     const appTabs = appStore.projectTabMounts.value.map(({ mount }) => ({ id: mount.id, label: mount.label }));
     const toggleableTabs = [
         { id: 'activity', label: '动态' },
@@ -63,9 +66,55 @@ export function SettingsTab({ workspaceId, language }: { workspaceId: string; la
             setBusy(false);
         }
     };
+    const onToggleTab = async (tabId: string, hidden: boolean) => {
+        const ok = await tabPrefs.setTabHidden(workspaceId, wsPath, tabId, hidden);
+        if (!ok) ui.showToast('保存项目设置失败，已恢复原值');
+    };
+    const onToggleFeatureCatalog = async (enabled: boolean) => {
+        const ok = await tabPrefs.setFeatureCatalogEnabled(workspaceId, wsPath, enabled);
+        if (!ok) ui.showToast('保存项目管理能力失败，已恢复原值');
+    };
 
     return (
         <div class="settings-tab">
+            <div class="settings-row settings-row-block">
+                <div class="settings-row-info">
+                    <span class="settings-row-title">项目管理能力</span>
+                    <span class="settings-row-desc">选择本项目使用的规划与管理能力。</span>
+                </div>
+                <label class="settings-capability-toggle">
+                    <input
+                        type="checkbox"
+                        checked={featureCatalogEnabled}
+                        disabled={configBusy || !wsPath}
+                        onChange={e => void onToggleFeatureCatalog((e.target as HTMLInputElement).checked)}
+                    />
+                    <span class="settings-capability-copy">
+                        <strong>启用功能蓝图</strong>
+                        <span>
+                            按一级、二级、三级模块和功能点规划项目范围，并关联需求、任务和版本里程碑。关闭后仅隐藏入口，不删除已有数据。
+                        </span>
+                    </span>
+                </label>
+                {configStatus.loading && <span class="settings-inline-status">正在加载项目配置…</span>}
+                {configStatus.loadError && (
+                    <span class="settings-inline-status settings-inline-error">
+                        {configStatus.loadError}。
+                        <button
+                            class="assistant-btn assistant-btn-ghost"
+                            disabled={!wsPath}
+                            onClick={() => void tabPrefs.reload(workspaceId, wsPath)}
+                        >
+                            重试
+                        </button>
+                    </span>
+                )}
+                {configStatus.saving && <span class="settings-inline-status">正在保存项目配置…</span>}
+                {configStatus.saveError && (
+                    <span class="settings-inline-status settings-inline-error">{configStatus.saveError}</span>
+                )}
+            </div>
+
             <div class="settings-row settings-row-block">
                 <div class="settings-row-info">
                     <span class="settings-row-title">显示的标签页</span>
@@ -77,14 +126,8 @@ export function SettingsTab({ workspaceId, language }: { workspaceId: string; la
                             <input
                                 type="checkbox"
                                 checked={!hidden.has(tb.id)}
-                                onChange={e =>
-                                    void tabPrefs.setTabHidden(
-                                        workspaceId,
-                                        wsPath,
-                                        tb.id,
-                                        !(e.target as HTMLInputElement).checked
-                                    )
-                                }
+                                disabled={configBusy || !wsPath}
+                                onChange={e => void onToggleTab(tb.id, !(e.target as HTMLInputElement).checked)}
                             />
                             <span>{tb.label}</span>
                         </label>

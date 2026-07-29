@@ -759,6 +759,9 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 }
 
 func deleteTaskTx(tx *sql.Tx, taskID string) error {
+	if _, err := tx.Exec(`DELETE FROM feature_item_links WHERE item_id = ?`, taskID); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`DELETE FROM task_deps WHERE task_id = ?`, taskID); err != nil {
 		return err
 	}

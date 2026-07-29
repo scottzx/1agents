@@ -105,7 +105,7 @@ func (db *DB) Close() error { return db.sql.Close() }
 // migrations without touching the global schemaVersion counter.
 func (db *DB) SQL() *sql.DB { return db.sql }
 
-const schemaVersion = 27
+const schemaVersion = 28
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -266,6 +266,11 @@ func (db *DB) migrateSchema() error {
 			return fmt.Errorf("meta: apply schema v27: %w", err)
 		}
 	}
+	if version < 28 {
+		if _, err := db.sql.Exec(schemaV28); err != nil {
+			return fmt.Errorf("meta: apply schema v28: %w", err)
+		}
+	}
 	// Schema v9–v12 only add project_items columns, but the v9 branch collision
 	// between #47 (source, user_confirm) and #50 (verifier/review fields) left
 	// some DBs with user_version bumped to the latest while the other branch's
@@ -325,6 +330,12 @@ func (db *DB) migrateSchema() error {
 	}
 	if err := db.ensureTaskRunSchema(); err != nil {
 		return fmt.Errorf("meta: reconcile task run schema: %w", err)
+	}
+	// v28 (#290) adds the feature catalog tables and milestones.version.
+	// Reconcile unconditionally so databases whose user_version was advanced by
+	// a sibling branch still heal missing tables, columns, and indexes.
+	if err := db.ensureFeatureCatalogSchema(); err != nil {
+		return fmt.Errorf("meta: reconcile feature catalog schema: %w", err)
 	}
 	// v24 (#202 / #204): Workspace Inbox envelope columns + backfill of legacy
 	// unscoped rows onto the builtin default assistant workspace.
@@ -972,6 +983,61 @@ const schemaV26 = ``
 // schemaV27 adds TaskRun/completion-audit persistence. Reconciled
 // unconditionally to heal databases affected by schema-version branch overlap.
 const schemaV27 = ``
+
+// schemaV28 (#290) introduces the feature catalog persistence contract and
+// milestones.version. DDL is reconciled unconditionally below so both normal
+// upgrades and databases affected by user_version branch overlap are healed.
+const schemaV28 = ``
+
+func (db *DB) ensureFeatureCatalogSchema() error {
+	if _, err := db.sql.Exec(`
+		CREATE TABLE IF NOT EXISTS feature_nodes (
+			id                  TEXT PRIMARY KEY,
+			project_id          TEXT NOT NULL,
+			parent_id           TEXT NOT NULL DEFAULT '',
+			kind                TEXT NOT NULL,
+			title               TEXT NOT NULL,
+			description         TEXT NOT NULL DEFAULT '',
+			target_milestone_id TEXT NOT NULL DEFAULT '',
+			position            INTEGER NOT NULL DEFAULT 0,
+			created_at          TEXT NOT NULL,
+			updated_at          TEXT NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_feature_nodes_project_parent
+			ON feature_nodes(project_id, parent_id, position);
+
+		CREATE TABLE IF NOT EXISTS feature_item_links (
+			feature_id TEXT NOT NULL,
+			item_id    TEXT NOT NULL,
+			relation   TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			PRIMARY KEY (feature_id, item_id, relation)
+		);
+		CREATE INDEX IF NOT EXISTS idx_feature_item_links_item
+			ON feature_item_links(item_id, relation);
+	`); err != nil {
+		return err
+	}
+
+	milestoneCols, err := db.tableColumns("milestones")
+	if err != nil {
+		return err
+	}
+	if !milestoneCols["version"] {
+		if _, err := db.sql.Exec(
+			`ALTER TABLE milestones ADD COLUMN version TEXT NOT NULL DEFAULT ''`,
+		); err != nil {
+			return fmt.Errorf("add milestones.version: %w", err)
+		}
+	}
+	if _, err := db.sql.Exec(`
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_milestones_project_version
+			ON milestones(project_id, version) WHERE version != ''
+	`); err != nil {
+		return fmt.Errorf("create idx_milestones_project_version: %w", err)
+	}
+	return nil
+}
 
 func (db *DB) ensureTaskRunSchema() error {
 	if _, err := db.sql.Exec(`
