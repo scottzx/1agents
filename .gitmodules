@@ -22,3 +22,6 @@
 [submodule "modules/grok-build"]
 	path = modules/grok-build
 	url = https://github.com/xai-org/grok-build
+[submodule "modules/HarnessKit"]
+	path = modules/HarnessKit
+	url = https://github.com/RealZST/HarnessKit.git
