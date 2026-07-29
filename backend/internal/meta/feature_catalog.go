@@ -1201,7 +1201,7 @@ func (s *FeatureCatalogStore) GanttView(projectID string) (GanttData, error) {
 
 	// 3: Load tasks
 	taskRows, err := s.db.sql.Query(`
-		SELECT id, title, status, planned_start, planned_end, depends_on, milestone, number
+		SELECT id, title, status, planned_start, planned_end, milestone, number
 		FROM project_items
 		WHERE project_id = ? AND (type = '' OR type = 'task')`, projectID)
 	if err != nil {
@@ -1212,53 +1212,63 @@ func (s *FeatureCatalogStore) GanttView(projectID string) (GanttData, error) {
 	tasks := map[string]GanttTaskEntry{}
 	for taskRows.Next() {
 		var task GanttTaskEntry
-		var plannedStart, plannedEnd, dependsOnJSON string
+		var plannedStart, plannedEnd sql.NullString
 		if err := taskRows.Scan(
 			&task.ID, &task.Title, &task.Status,
-			&plannedStart, &plannedEnd, &dependsOnJSON,
-			&task.Milestone, &task.Number,
+			&plannedStart, &plannedEnd, &task.Milestone, &task.Number,
 		); err != nil {
 			return GanttData{}, err
 		}
-		if plannedStart != "" {
-			t := strToTime(plannedStart)
+		if plannedStart.Valid {
+			t := strToTime(plannedStart.String)
 			task.PlannedStart = &t
 		}
-		if plannedEnd != "" {
-			t := strToTime(plannedEnd)
+		if plannedEnd.Valid {
+			t := strToTime(plannedEnd.String)
 			task.PlannedEnd = &t
 		}
-		if dependsOnJSON != "" && dependsOnJSON != "null" {
-			json.Unmarshal([]byte(dependsOnJSON), &task.DependsOn)
-		}
+		task.DependsOn = []string{}
 		if task.Status == TaskStatusCompleted {
-			task.Progress = 1.0
+			task.Progress = 100
 		}
 		tasks[task.ID] = task
 	}
 	if err := taskRows.Err(); err != nil {
 		return GanttData{}, err
 	}
+	dependencies, err := s.projectDependencies(projectID)
+	if err != nil {
+		return GanttData{}, err
+	}
+	for taskID, dependsOn := range dependencies {
+		task, ok := tasks[taskID]
+		if !ok {
+			continue
+		}
+		task.DependsOn = dependsOn
+		tasks[taskID] = task
+	}
 
 	// 4: Load milestones
 	msRows, err := s.db.sql.Query(`
 		SELECT id, version, target_date
 		FROM milestones
-		WHERE project_id = ? AND version != ''`, projectID)
+		WHERE project_id = ? AND version != ''
+		ORDER BY position, created_at, id`, projectID)
 	if err != nil {
 		return GanttData{}, err
 	}
 	defer msRows.Close()
 
-	var milestones []GanttMilestone
+	milestones := []GanttMilestone{}
 	for msRows.Next() {
 		var ms GanttMilestone
-		var targetDate string
+		var targetDate sql.NullString
 		if err := msRows.Scan(&ms.ID, &ms.Version, &targetDate); err != nil {
 			return GanttData{}, err
 		}
-		if targetDate != "" {
-			t := strToTime(targetDate)
+		if targetDate.Valid {
+			t := strToTime(targetDate.String)
 			ms.TargetDate = &t
 		}
 		milestones = append(milestones, ms)
@@ -1278,8 +1288,8 @@ func (s *FeatureCatalogStore) GanttView(projectID string) (GanttData, error) {
 		}
 	}
 
-	var rootModules []GanttModule
-	
+	rootModules := []GanttModule{}
+
 	// Helper to find path and depth
 	var getPath func(nodeID string) ([]string, int)
 	getPath = func(nodeID string) ([]string, int) {
@@ -1326,24 +1336,33 @@ func (s *FeatureCatalogStore) GanttView(projectID string) (GanttData, error) {
 		}
 	}
 
-	// Link children and find roots
+	// Build a module adjacency list in catalog order. GanttModule contains
+	// value slices, so copying children into parents before their descendants
+	// are attached would truncate a three-level tree.
+	moduleChildren := map[string][]string{}
 	for _, node := range catalog.Nodes {
-		if node.Kind == FeatureNodeModule {
-			mod := modulesByID[node.ID]
-			if node.ParentID == "" {
-				// root
-			} else if parentMod, ok := modulesByID[node.ParentID]; ok {
-				parentMod.Children = append(parentMod.Children, *mod)
+		if node.Kind == FeatureNodeModule && node.ParentID != "" {
+			if _, ok := modulesByID[node.ParentID]; ok {
+				moduleChildren[node.ParentID] = append(moduleChildren[node.ParentID], node.ID)
 			}
 		}
 	}
-	
+
+	var buildModule func(string) GanttModule
+	buildModule = func(id string) GanttModule {
+		mod := *modulesByID[id]
+		for _, childID := range moduleChildren[id] {
+			mod.Children = append(mod.Children, buildModule(childID))
+		}
+		return mod
+	}
+
 	// Aggregate dates and progress up the tree
 	var aggregate func(mod *GanttModule) (int, int)
 	aggregate = func(mod *GanttModule) (int, int) {
 		total := len(mod.Tasks)
 		completed := 0
-		
+
 		for _, task := range mod.Tasks {
 			if task.Status == TaskStatusCompleted {
 				completed++
@@ -1359,12 +1378,12 @@ func (s *FeatureCatalogStore) GanttView(projectID string) (GanttData, error) {
 				}
 			}
 		}
-		
+
 		for i := range mod.Children {
 			childTotal, childCompleted := aggregate(&mod.Children[i])
 			total += childTotal
 			completed += childCompleted
-			
+
 			if mod.Children[i].AggStart != nil {
 				if mod.AggStart == nil || mod.Children[i].AggStart.Before(*mod.AggStart) {
 					mod.AggStart = mod.Children[i].AggStart
@@ -1376,24 +1395,24 @@ func (s *FeatureCatalogStore) GanttView(projectID string) (GanttData, error) {
 				}
 			}
 		}
-		
+
 		if total > 0 {
-			mod.Progress = float64(completed) / float64(total)
+			mod.Progress = float64(completed) * 100 / float64(total)
 		}
 		return total, completed
 	}
 
 	for _, node := range catalog.Nodes {
 		if node.Kind == FeatureNodeModule && node.ParentID == "" {
-			mod := modulesByID[node.ID]
-			aggregate(mod)
-			rootModules = append(rootModules, *mod)
+			mod := buildModule(node.ID)
+			aggregate(&mod)
+			rootModules = append(rootModules, mod)
 		}
 	}
 
 	unscheduled := []GanttTaskEntry{}
 	for taskID, task := range tasks {
-		if !scheduledTasks[taskID] {
+		if !scheduledTasks[taskID] || task.PlannedStart == nil || task.PlannedEnd == nil {
 			unscheduled = append(unscheduled, task)
 		}
 	}
@@ -1409,11 +1428,92 @@ func (s *FeatureCatalogStore) GanttView(projectID string) (GanttData, error) {
 }
 
 func (s *FeatureCatalogStore) ExportJSON(projectID string) ([]byte, error) {
-	data, err := s.GanttView(projectID)
+	catalog, err := s.List(projectID)
 	if err != nil {
 		return nil, err
 	}
+	gantt, err := s.GanttView(projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := s.db.sql.Query(`
+		SELECT id, number, title, type, status, planned_start, planned_end, milestone
+		FROM project_items
+		WHERE project_id = ?
+		ORDER BY number, created_at, id`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := []FeatureCatalogExportItem{}
+	for rows.Next() {
+		var item FeatureCatalogExportItem
+		var plannedStart, plannedEnd sql.NullString
+		if err := rows.Scan(
+			&item.ID, &item.Number, &item.Title, &item.Type, &item.Status,
+			&plannedStart, &plannedEnd, &item.Milestone,
+		); err != nil {
+			return nil, err
+		}
+		if item.Type == "" {
+			item.Type = ItemTypeTask
+		}
+		if plannedStart.Valid {
+			t := strToTime(plannedStart.String)
+			item.PlannedStart = &t
+		}
+		if plannedEnd.Valid {
+			t := strToTime(plannedEnd.String)
+			item.PlannedEnd = &t
+		}
+		item.DependsOn = []string{}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	dependencies, err := s.projectDependencies(projectID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range items {
+		if dependsOn, ok := dependencies[items[i].ID]; ok {
+			items[i].DependsOn = dependsOn
+		}
+	}
+
+	data := FeatureCatalogExportData{
+		SchemaVersion: 1,
+		Catalog:       catalog,
+		Items:         items,
+		Gantt:         gantt,
+	}
 	return json.MarshalIndent(data, "", "  ")
+}
+
+func (s *FeatureCatalogStore) projectDependencies(projectID string) (map[string][]string, error) {
+	rows, err := s.db.sql.Query(`
+		SELECT d.task_id, d.depends_on
+		FROM task_deps d
+		JOIN project_items t ON t.id = d.task_id
+		WHERE t.project_id = ?
+		ORDER BY d.task_id, d.seq`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	dependencies := map[string][]string{}
+	for rows.Next() {
+		var taskID, dependsOn string
+		if err := rows.Scan(&taskID, &dependsOn); err != nil {
+			return nil, err
+		}
+		dependencies[taskID] = append(dependencies[taskID], dependsOn)
+	}
+	return dependencies, rows.Err()
 }
 
 func (s *FeatureCatalogStore) ExportMarkdown(projectID string) (string, error) {
@@ -1431,16 +1531,16 @@ func (s *FeatureCatalogStore) ExportMarkdown(projectID string) (string, error) {
 	}
 	defer taskRows.Close()
 
-	items := map[string]struct{
-		ID string
-		Title string
+	items := map[string]struct {
+		ID     string
+		Title  string
 		Status TaskStatus
 		Number int
 	}{}
 	for taskRows.Next() {
 		var item struct {
-			ID string
-			Title string
+			ID     string
+			Title  string
 			Status TaskStatus
 			Number int
 		}
@@ -1450,6 +1550,28 @@ func (s *FeatureCatalogStore) ExportMarkdown(projectID string) (string, error) {
 		items[item.ID] = item
 	}
 	if err := taskRows.Err(); err != nil {
+		return "", err
+	}
+
+	milestoneRows, err := s.db.sql.Query(`
+		SELECT id, version FROM milestones
+		WHERE project_id = ? AND version != ''`, projectID)
+	if err != nil {
+		return "", err
+	}
+	milestoneVersions := map[string]string{}
+	for milestoneRows.Next() {
+		var id, version string
+		if err := milestoneRows.Scan(&id, &version); err != nil {
+			milestoneRows.Close()
+			return "", err
+		}
+		milestoneVersions[id] = version
+	}
+	if err := milestoneRows.Close(); err != nil {
+		return "", err
+	}
+	if err := milestoneRows.Err(); err != nil {
 		return "", err
 	}
 
@@ -1497,7 +1619,7 @@ func (s *FeatureCatalogStore) ExportMarkdown(projectID string) (string, error) {
 			if node.Description != "" {
 				sb.WriteString(fmt.Sprintf("  - %s\n", node.Description))
 			}
-			
+
 			srcs := sources[nodeID]
 			if len(srcs) > 0 {
 				sb.WriteString("  - Sources: ")
@@ -1509,7 +1631,7 @@ func (s *FeatureCatalogStore) ExportMarkdown(projectID string) (string, error) {
 				}
 				sb.WriteString(strings.Join(parts, ", ") + "\n")
 			}
-			
+
 			dels := deliveries[nodeID]
 			if len(dels) > 0 {
 				sb.WriteString("  - Delivery Tasks: ")
@@ -1521,9 +1643,13 @@ func (s *FeatureCatalogStore) ExportMarkdown(projectID string) (string, error) {
 				}
 				sb.WriteString(strings.Join(parts, ", ") + "\n")
 			}
-			
+
 			if node.TargetMilestoneID != "" {
-				sb.WriteString(fmt.Sprintf("  - Target Version: %s\n", node.TargetMilestoneID)) // Or version name if available
+				version := milestoneVersions[node.TargetMilestoneID]
+				if version == "" {
+					version = node.TargetMilestoneID
+				}
+				sb.WriteString(fmt.Sprintf("  - Target Version: %s\n", version))
 			}
 			if node.Progress != nil {
 				sb.WriteString(fmt.Sprintf("  - Status: %s\n", node.Progress.Status))
