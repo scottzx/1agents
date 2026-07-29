@@ -269,6 +269,7 @@ func main() {
 	defer cancel()
 
 	// ── 1. Optionally start ttyd supervisor ───────────────────────────────────
+	var ttydFreePort int
 	if !noTtyd {
 		host, portStr, err := net.SplitHostPort(cfg.TtydAddr)
 		if err != nil {
@@ -284,6 +285,9 @@ func main() {
 		} else if freePort != basePort {
 			log.Printf("[main] Port %d is busy. Automatically selected free port %d for internal ttyd.", basePort, freePort)
 			cfg.TtydAddr = net.JoinHostPort(host, fmt.Sprintf("%d", freePort))
+			ttydFreePort = freePort
+		} else {
+			ttydFreePort = basePort
 		}
 	}
 
@@ -304,12 +308,14 @@ func main() {
 	}
 	var skillsBasePort int
 	fmt.Sscanf(skillsPortStr, "%d", &skillsBasePort)
-	skillsFreePort, err := findAvailablePort(skillsHost, skillsBasePort)
+	skillsFreePort, err := findAvailablePort(skillsHost, skillsBasePort, ttydFreePort)
 	if err != nil {
 		log.Printf("[main] WARNING: Failed to find free port starting from %d for 1skills: %v. Using default.", skillsBasePort, err)
 	} else if skillsFreePort != skillsBasePort {
 		log.Printf("[main] Port %d is busy. Automatically selected free port %d for internal 1skills.", skillsBasePort, skillsFreePort)
 		cfg.SkillsAddr = net.JoinHostPort(skillsHost, fmt.Sprintf("%d", skillsFreePort))
+	} else {
+		skillsFreePort = skillsBasePort
 	}
 
 	skillsSup := supervisor.NewSkills(cfg)
@@ -322,7 +328,7 @@ func main() {
 	}
 	var coffeeBasePort int
 	fmt.Sscanf(coffeePortStr, "%d", &coffeeBasePort)
-	coffeeFreePort, err := findAvailablePort(coffeeHost, coffeeBasePort)
+	coffeeFreePort, err := findAvailablePort(coffeeHost, coffeeBasePort, ttydFreePort, skillsFreePort)
 	if err != nil {
 		log.Printf("[main] WARNING: Failed to find free port starting from %d for payment service: %v. Using default.", coffeeBasePort, err)
 	} else if coffeeFreePort != coffeeBasePort {
@@ -499,9 +505,19 @@ func writeDaemonFile(listenAddr string) {
 	os.WriteFile(filepath.Join(daemonDir, "daemon.json"), data, 0644)
 }
 
-// findAvailablePort finds the first free TCP port starting from basePort.
-func findAvailablePort(ip string, basePort int) (int, error) {
+// findAvailablePort finds the first free TCP port starting from basePort, excluding any already reserved ports.
+func findAvailablePort(ip string, basePort int, reserved ...int) (int, error) {
 	for port := basePort; port < basePort+100; port++ {
+		isReserved := false
+		for _, r := range reserved {
+			if port == r {
+				isReserved = true
+				break
+			}
+		}
+		if isReserved {
+			continue
+		}
 		addr := fmt.Sprintf("%s:%d", ip, port)
 		l, err := net.Listen("tcp", addr)
 		if err == nil {
