@@ -410,15 +410,23 @@ export function TaskList({
                 />
             )}
             {view.value === 'discussion' && <DiscussionView tasks={discussions} onSelectTask={setSelectedTaskId} />}
-            {view.value === 'milestone' && (
-                <MilestoneView
-                    tasks={boardTasks}
-                    milestones={milestones}
-                    onSelectTask={setSelectedTaskId}
-                    onPatchMilestone={patchMilestone}
-                    onDeleteMilestone={deleteMilestone}
-                />
-            )}
+            {view.value === 'milestone' &&
+                (() => {
+                    try {
+                        return (
+                            <MilestoneView
+                                tasks={boardTasks}
+                                milestones={milestones}
+                                onSelectTask={setSelectedTaskId}
+                                onPatchMilestone={patchMilestone}
+                                onDeleteMilestone={deleteMilestone}
+                            />
+                        );
+                    } catch (e) {
+                        console.error('[sidebar] failed to render MilestoneView:', e);
+                        return null;
+                    }
+                })()}
             {view.value === 'requirements' && (
                 <RequirementPool
                     tasks={boardTasks}

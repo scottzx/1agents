@@ -304,11 +304,23 @@ export class FileDetailView extends Component<FileDetailViewProps> {
     /** Scroll the highlighted line into view once, per (file, line) pair. */
     private scrollToTargetIfNeeded() {
         const { targetLine, selectedFsEntry } = this.props;
-        if (targetLine === undefined || !this.codeTargetEl) return;
+        if (targetLine === undefined) return;
         const key = `${selectedFsEntry.path}#${targetLine}`;
         if (this._lastScrolledKey === key) return;
         this._lastScrolledKey = key;
-        this.codeTargetEl.scrollIntoView({ block: 'center' });
+
+        const contentEl = this.contentEl;
+        if (contentEl) {
+            // For code view use the ref (preferred for exact row scroll)
+            if (this.codeTargetEl) {
+                this.codeTargetEl.scrollIntoView({ block: 'center' });
+                return;
+            }
+            // For md view: approximate scroll to line position using line-height
+            const lineHeight = parseInt(getComputedStyle(contentEl).lineHeight, 10) || 20;
+            const scrollTop = (targetLine - 1) * lineHeight;
+            contentEl.scrollTop = scrollTop;
+        }
     }
 
     /**
@@ -397,7 +409,6 @@ export class FileDetailView extends Component<FileDetailViewProps> {
             onShareFile,
             isStandalone,
             hideBack,
-            targetLine,
             language,
         } = this.props;
 
@@ -720,7 +731,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                         <div class="fb-pdf-preview-container">
                             <iframe src={fsService.previewUrl(selectedFsEntry.path)} class="fb-pdf-iframe" />
                         </div>
-                    ) : isMd && targetLine === undefined ? (
+                    ) : isMd ? (
                         <div
                             class="fb-md-render md-doc"
                             ref={el => {

@@ -18328,6 +18328,22 @@ body {
   }
 }
 
+.chat-bubble-turn-edit {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 4px;
+
+  &:hover {
+    background: var(--btn-hover);
+    color: var(--text-main);
+  }
+}
+
 .chat-message-row-assistant {
   align-self: flex-start;
   display: flex;
