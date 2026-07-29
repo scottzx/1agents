@@ -607,6 +607,29 @@ function GroupedToolCallItem({
             parsed.raw_output ??
             parsed.output;
         }
+        const unwrapInnerContent = (val: unknown): unknown => {
+          if (val === null || val === undefined) return val;
+          let target = val;
+          if (typeof val === 'string') {
+            try {
+              const inner = JSON.parse(val.trim());
+              if (inner && typeof inner === 'object' && !Array.isArray(inner)) {
+                target = inner;
+              }
+            } catch {}
+          }
+          if (typeof target === 'object' && target !== null && !Array.isArray(target)) {
+            const obj = target as Record<string, unknown>;
+            const innerKeys = ['content', 'content_concise', 'raw_output', 'output_for_prompt', 'formatted_output', 'output'];
+            for (const k of innerKeys) {
+              if (k in obj && obj[k] !== undefined && obj[k] !== null) {
+                return obj[k];
+              }
+            }
+          }
+          return val;
+        };
+        targetVal = unwrapInnerContent(targetVal);
         if (targetVal !== undefined && targetVal !== null) {
           if (typeof targetVal === 'object') {
             parsedOutput = JSON.stringify(targetVal, null, 2);

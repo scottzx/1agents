@@ -123,14 +123,27 @@ test('formatToolOutput: prioritizes FileContent over content and content_concise
     assert.equal(result, 'console.log("hello world");\n');
 });
 
-test('formatToolOutput: falls back to content then content_concise when FileContent is missing', () => {
+test('formatToolOutput: unwraps inner content from stringified JSON FileContent value', () => {
     const raw = JSON.stringify({
         type: 'ReadFile',
-        content: '390→ selectedFsEntry',
-        content_concise: '390→ selectedFsEntry concise',
-        absolute_path: '/path/to/file.tsx',
-        raw_output: 'selectedFsEntry raw',
+        FileContent: JSON.stringify({
+            content: '390→ selectedFsEntry',
+            content_concise: '390→ selectedFsEntry concise',
+            raw_output: 'selectedFsEntry raw',
+        }),
     });
     const result = formatToolOutput(raw);
     assert.equal(result, '390→ selectedFsEntry');
+});
+
+test('formatToolOutput: unwraps inner content from object FileContent value', () => {
+    const raw = JSON.stringify({
+        type: 'ReadFile',
+        FileContent: {
+            content_concise: '390→ concise only',
+            raw_output: 'raw only',
+        },
+    });
+    const result = formatToolOutput(raw);
+    assert.equal(result, '390→ concise only');
 });

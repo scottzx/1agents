@@ -10,7 +10,41 @@ export function formatToolOutput(raw: string): string {
     const text = raw.trim();
     if (!text) return raw;
 
-    const tryFormatValue = (val: unknown): string => {
+    const unwrapInnerContentValue = (val: unknown): unknown => {
+        if (val === null || val === undefined) return val;
+        let target = val;
+        if (typeof val === 'string') {
+            const trimmed = val.trim();
+            try {
+                const parsedInner = JSON.parse(trimmed);
+                if (parsedInner !== null && typeof parsedInner === 'object' && !Array.isArray(parsedInner)) {
+                    target = parsedInner;
+                }
+            } catch {
+                // Not a JSON string, leave as string
+            }
+        }
+        if (typeof target === 'object' && target !== null && !Array.isArray(target)) {
+            const obj = target as Record<string, unknown>;
+            const innerKeys = [
+                'content',
+                'content_concise',
+                'raw_output',
+                'output_for_prompt',
+                'formatted_output',
+                'output',
+            ];
+            for (const k of innerKeys) {
+                if (k in obj && obj[k] !== undefined && obj[k] !== null) {
+                    return obj[k];
+                }
+            }
+        }
+        return val;
+    };
+
+    const tryFormatValue = (rawVal: unknown): string => {
+        const val = unwrapInnerContentValue(rawVal);
         if (val === null || val === undefined) return '';
         if (typeof val === 'object') {
             return JSON.stringify(val, null, 2);
