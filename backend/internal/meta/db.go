@@ -1029,9 +1029,17 @@ func (db *DB) ensureTurnModelSchema() error {
 				status IN ('queued','running','completed','failed','cancelled')
 			),
 			prompt_text         TEXT NOT NULL DEFAULT '',
+			request_fingerprint TEXT NOT NULL DEFAULT '',
 			final_answer        TEXT NOT NULL DEFAULT '',
 			error_code          TEXT NOT NULL DEFAULT '',
 			error_text          TEXT NOT NULL DEFAULT '',
+			runtime_record_id   TEXT NOT NULL DEFAULT '',
+			runtime_request_id  TEXT NOT NULL DEFAULT '',
+			prompt_message_id   TEXT NOT NULL DEFAULT '',
+			final_reply_id      TEXT NOT NULL DEFAULT '',
+			stop_reason         TEXT NOT NULL DEFAULT '',
+			terminal_source     TEXT NOT NULL DEFAULT '',
+			last_event_seq      INTEGER NOT NULL DEFAULT 0,
 			started_at          TEXT,
 			completed_at        TEXT,
 			created_at          TEXT NOT NULL,
@@ -1089,6 +1097,33 @@ func (db *DB) ensureTurnModelSchema() error {
 			WHERE turn_id IS NULL AND correlation_id != '';
 	`); err != nil {
 		return err
+	}
+
+	turnCols, err := db.tableColumns("agent_turns")
+	if err != nil {
+		return err
+	}
+	for _, column := range []struct {
+		name string
+		ddl  string
+	}{
+		{"request_fingerprint", `TEXT NOT NULL DEFAULT ''`},
+		{"runtime_record_id", `TEXT NOT NULL DEFAULT ''`},
+		{"runtime_request_id", `TEXT NOT NULL DEFAULT ''`},
+		{"prompt_message_id", `TEXT NOT NULL DEFAULT ''`},
+		{"final_reply_id", `TEXT NOT NULL DEFAULT ''`},
+		{"stop_reason", `TEXT NOT NULL DEFAULT ''`},
+		{"terminal_source", `TEXT NOT NULL DEFAULT ''`},
+		{"last_event_seq", `INTEGER NOT NULL DEFAULT 0`},
+	} {
+		if turnCols[column.name] {
+			continue
+		}
+		if _, err := db.sql.Exec(
+			`ALTER TABLE agent_turns ADD COLUMN ` + column.name + ` ` + column.ddl,
+		); err != nil {
+			return fmt.Errorf("add agent_turns.%s: %w", column.name, err)
+		}
 	}
 
 	replyCols, err := db.tableColumns("replies")

@@ -20,29 +20,44 @@ func (s AgentTurnStatus) terminal() bool {
 }
 
 type AgentTurn struct {
-	ID                string          `json:"id"`
-	ProjectID         string          `json:"projectId"`
-	SessionID         string          `json:"sessionId"`
-	ClientRequestID   string          `json:"clientRequestId,omitempty"`
-	InitiatingReplyID string          `json:"initiatingReplyId,omitempty"`
-	AgentType         string          `json:"agentType,omitempty"`
-	Status            AgentTurnStatus `json:"status"`
-	PromptText        string          `json:"promptText,omitempty"`
-	FinalAnswer       string          `json:"finalAnswer,omitempty"`
-	ErrorCode         string          `json:"errorCode,omitempty"`
-	ErrorText         string          `json:"errorText,omitempty"`
-	StartedAt         *time.Time      `json:"startedAt,omitempty"`
-	CompletedAt       *time.Time      `json:"completedAt,omitempty"`
-	CreatedAt         time.Time       `json:"createdAt"`
-	UpdatedAt         time.Time       `json:"updatedAt"`
+	ID                 string          `json:"id"`
+	ProjectID          string          `json:"projectId"`
+	SessionID          string          `json:"sessionId"`
+	ClientRequestID    string          `json:"clientRequestId,omitempty"`
+	InitiatingReplyID  string          `json:"initiatingReplyId,omitempty"`
+	AgentType          string          `json:"agentType,omitempty"`
+	Status             AgentTurnStatus `json:"status"`
+	PromptText         string          `json:"promptText,omitempty"`
+	RequestFingerprint string          `json:"requestFingerprint,omitempty"`
+	FinalAnswer        string          `json:"finalAnswer,omitempty"`
+	ErrorCode          string          `json:"errorCode,omitempty"`
+	ErrorText          string          `json:"errorText,omitempty"`
+	RuntimeRecordID    string          `json:"runtimeRecordId,omitempty"`
+	RuntimeRequestID   string          `json:"runtimeRequestId,omitempty"`
+	PromptMessageID    string          `json:"promptMessageId,omitempty"`
+	FinalReplyID       string          `json:"finalReplyId,omitempty"`
+	StopReason         string          `json:"stopReason,omitempty"`
+	TerminalSource     string          `json:"terminalSource,omitempty"`
+	LastEventSeq       int64           `json:"lastEventSeq,omitempty"`
+	StartedAt          *time.Time      `json:"startedAt,omitempty"`
+	CompletedAt        *time.Time      `json:"completedAt,omitempty"`
+	CreatedAt          time.Time       `json:"createdAt"`
+	UpdatedAt          time.Time       `json:"updatedAt"`
 }
 
 type AgentTurnTransition struct {
-	Status      AgentTurnStatus
-	FinalAnswer string
-	ErrorCode   string
-	ErrorText   string
-	At          time.Time
+	Status           AgentTurnStatus
+	FinalAnswer      string
+	ErrorCode        string
+	ErrorText        string
+	RuntimeRecordID  string
+	RuntimeRequestID string
+	PromptMessageID  string
+	FinalReplyID     string
+	StopReason       string
+	TerminalSource   string
+	LastEventSeq     int64
+	At               time.Time
 }
 
 type AgentTurnListOptions struct {

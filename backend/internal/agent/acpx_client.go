@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -152,14 +153,15 @@ func NewAcpxClient(serverPort int, stores ...*meta.AgentTurnStore) *AcpxClient {
 		c.turnStore = stores[0]
 	}
 	if c.turnStore != nil {
-		failed, cancelled, err := c.turnStore.RecoverInterrupted(
-			"backend_restarted",
-			"Backend restarted before the Turn reached a terminal state.",
+		failed, cancelled, reconciled, err := recoverInterruptedTurns(
+			c.turnStore,
+			defaultRuntimeStateDir(),
 		)
 		if err != nil {
 			log.Printf("[acpx_client] Recover interrupted Turns failed: %v", err)
-		} else if failed > 0 || cancelled > 0 {
-			log.Printf("[acpx_client] Recovered interrupted Turns: failed=%d cancelled=%d", failed, cancelled)
+		} else if failed > 0 || cancelled > 0 || reconciled > 0 {
+			log.Printf("[acpx_client] Recovered interrupted Turns: failed=%d cancelled=%d reconciled=%d",
+				failed, cancelled, reconciled)
 		}
 	}
 	go c.reapLoop()
@@ -217,23 +219,34 @@ func (c *AcpxClient) reapBridge(bridge *ActiveBridge) {
 }
 
 type WsMessage struct {
-	Action        string          `json:"action,omitempty"`
-	Event         string          `json:"event,omitempty"`
-	SessionID     string          `json:"sessionId,omitempty"`
-	WorkspacePath string          `json:"workspacePath,omitempty"`
-	AgentType     string          `json:"agentType,omitempty"`
-	CCSessionID   string          `json:"ccSessionId,omitempty"`
-	AcpSessionID  string          `json:"acpSessionId,omitempty"`
-	SystemContext string          `json:"systemContext,omitempty"`
-	Text          string          `json:"text,omitempty"`
-	RequestId     string          `json:"requestId,omitempty"`
-	TurnID        string          `json:"turnId,omitempty"`
-	Behavior      string          `json:"behavior,omitempty"`
-	ToolName      string          `json:"toolName,omitempty"`
-	ToolCallID    string          `json:"toolCallId,omitempty"`
-	IsError       bool            `json:"isError,omitempty"`
-	Arguments     json.RawMessage `json:"arguments,omitempty"`
-	Summary       string          `json:"summary,omitempty"`
+	Action           string `json:"action,omitempty"`
+	Event            string `json:"event,omitempty"`
+	SessionID        string `json:"sessionId,omitempty"`
+	WorkspacePath    string `json:"workspacePath,omitempty"`
+	AgentType        string `json:"agentType,omitempty"`
+	CCSessionID      string `json:"ccSessionId,omitempty"`
+	AcpSessionID     string `json:"acpSessionId,omitempty"`
+	SystemContext    string `json:"systemContext,omitempty"`
+	Text             string `json:"text,omitempty"`
+	RequestId        string `json:"requestId,omitempty"`
+	TurnID           string `json:"turnId,omitempty"`
+	Sequence         int64  `json:"sequence,omitempty"`
+	Status           string `json:"status,omitempty"`
+	StopReason       string `json:"stopReason,omitempty"`
+	FinalAnswer      string `json:"finalAnswer,omitempty"`
+	RuntimeRequestID string `json:"runtimeRequestId,omitempty"`
+	PromptMessageID  string `json:"promptMessageId,omitempty"`
+	Error            *struct {
+		Code    string `json:"code,omitempty"`
+		Message string `json:"message,omitempty"`
+	} `json:"error,omitempty"`
+	Attachments json.RawMessage `json:"attachments,omitempty"`
+	Behavior    string          `json:"behavior,omitempty"`
+	ToolName    string          `json:"toolName,omitempty"`
+	ToolCallID  string          `json:"toolCallId,omitempty"`
+	IsError     bool            `json:"isError,omitempty"`
+	Arguments   json.RawMessage `json:"arguments,omitempty"`
+	Summary     string          `json:"summary,omitempty"`
 	// Stopped marks a `done` event that ended because the user hit "停止"
 	// (cancel_turn), not a natural finish. The turn's partial reply is still
 	// recorded, but handleTaskSessionDone must NOT flip the task to Completed.
@@ -320,6 +333,7 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, projectID, w
 		}
 		bridge.mu.Unlock()
 		c.mu.Unlock()
+		c.enqueueTurnSync(bridge)
 
 		// Send ensure_session again so the bridge-server updates its WS connection
 		// Also reseed permission policy in case the JSON store changed while
@@ -443,6 +457,10 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, projectID, w
 
 	// Start write helper loop for writing to the active client connection
 	go c.writeToClientLoop(bridge)
+
+	// Every Browser ownership connection receives an authoritative durable
+	// Turn projection, including the first connection after a backend restart.
+	c.enqueueTurnSync(bridge)
 
 	// Read from client and forward to server connection
 	c.readFromClientLoop(bridge, clientConn)
@@ -643,34 +661,45 @@ func (c *AcpxClient) readFromServerLoop(bridge *ActiveBridge, scheduler *Schedul
 			// after the LAST tool call is the final message (issue-model
 			// decision A: full last assistant message).
 			bridge.resetTurnText()
-		} else if msg.Event == "done" {
-			log.Printf("[acpx_client] Turn done for session %s (stopped=%v). Intercepted summary: %s", bridge.SessionID, msg.Stopped, msg.Summary)
-			turnID := activeBridgeTurnID(bridge)
+		} else if msg.Event == "turn_terminal" {
+			log.Printf("[acpx_client] Turn terminal: session_id=%s turn_id=%s status=%s",
+				bridge.SessionID, msg.TurnID, msg.Status)
+			turnID := msg.TurnID
 			var explicit bool
 			var finishErr error
 			raw, nextTurn, explicit, finishErr = c.finishActiveTurn(bridge, msg, raw, tasksStore, chatStore)
 			if finishErr != nil {
-				log.Printf("[acpx_client] Finish Turn for session %s failed: %v", bridge.SessionID, finishErr)
+				log.Printf("[acpx_client] Finish Turn %s for session %s failed: %v", turnID, bridge.SessionID, finishErr)
 				break
 			}
-			if !explicit {
+			if explicit {
+				stopped := msg.Status == string(meta.AgentTurnCancelled)
+				if msg.Status == string(meta.AgentTurnFailed) {
+					errorText := msg.Message
+					if msg.Error != nil {
+						errorText = msg.Error.Message
+					}
+					c.handleTaskSessionError(bridge.WorkspacePath, taskId, bridge.SessionID, turnID, errorText, tasksStore)
+				} else {
+					c.handleTaskSessionDone(
+						bridge.WorkspacePath, taskId, bridge.SessionID, turnID,
+						msg.StopReason, stopped, tasksStore,
+					)
+				}
+				scheduler.Lock.Release(bridge.WorkspacePath)
+			}
+		} else if msg.Event == "done" {
+			log.Printf("[acpx_client] Turn done for session %s (stopped=%v). Intercepted summary: %s", bridge.SessionID, msg.Stopped, msg.Summary)
+			if activeBridgeTurnID(bridge) == "" {
 				writeAgentReply(bridge, tasksStore, chatStore)
+				c.handleTaskSessionDone(bridge.WorkspacePath, taskId, bridge.SessionID, "", msg.Summary, msg.Stopped, tasksStore)
+				scheduler.Lock.Release(bridge.WorkspacePath)
 			}
-			// A user "停止" ends the turn without completing the task: record
-			// the partial reply and free the lock, but leave task status as-is.
-			c.handleTaskSessionDone(bridge.WorkspacePath, taskId, bridge.SessionID, turnID, msg.Summary, msg.Stopped, tasksStore)
-			scheduler.Lock.Release(bridge.WorkspacePath)
 		} else if msg.Event == "error" {
-			log.Printf("[acpx_client] Intercepted turn error for session %s: %s", bridge.SessionID, msg.Message)
-			turnID := activeBridgeTurnID(bridge)
-			var finishErr error
-			raw, nextTurn, _, finishErr = c.finishActiveTurn(bridge, msg, raw, tasksStore, chatStore)
-			if finishErr != nil {
-				log.Printf("[acpx_client] Fail Turn for session %s failed: %v", bridge.SessionID, finishErr)
-				break
-			}
-			c.handleTaskSessionError(bridge.WorkspacePath, taskId, bridge.SessionID, turnID, msg.Message, tasksStore)
-			scheduler.Lock.Release(bridge.WorkspacePath)
+			// Generic errors include control/session failures and are not a Turn
+			// terminal. Only turn_terminal may transition the active AgentTurn.
+			log.Printf("[acpx_client] Non-terminal error: session_id=%s turn_id=%s code=%s message=%s",
+				bridge.SessionID, msg.TurnID, msg.Code, msg.Message)
 		}
 
 		// Send the ORIGINAL bytes to the client write channel (lossless).
@@ -748,12 +777,12 @@ func (c *AcpxClient) readFromClientLoop(bridge *ActiveBridge, clientConn *websoc
 			handled, queueErr := c.queuePrompt(bridge, msg, raw)
 			if queueErr != nil {
 				log.Printf("[acpx_client] Queue prompt for session %s failed: %v", bridge.SessionID, queueErr)
-				bridge.mu.Lock()
-				if bridge.ServerConn != nil {
-					_ = bridge.ServerConn.Close()
+				code := "TURN_ACCEPT_FAILED"
+				if errors.Is(queueErr, meta.ErrIdempotencyConflict) {
+					code = "IDEMPOTENCY_CONFLICT"
 				}
-				bridge.mu.Unlock()
-				break
+				enqueueProtocolError(bridge, msg.RequestId, code, queueErr.Error())
+				continue
 			}
 			if handled {
 				continue
@@ -809,31 +838,33 @@ func mergeSystemContextIntoPrompt(raw []byte, pending string) []byte {
 // writeUserReply records a user prompt to the task timeline (issue-model §8,
 // user side; mirror of writeAgentReply). SessionRef groups it under the
 // session's branch. No-op for sessions outside a task or empty prompts.
-func writeUserReply(bridge *ActiveBridge, tasksStore *TasksStore, text string, turnIDs ...string) {
+func writeUserReply(bridge *ActiveBridge, tasksStore *TasksStore, text string, turnIDs ...string) string {
 	bridge.mu.Lock()
 	taskID := bridge.TaskID
 	sessionID := bridge.SessionID
 	bridge.mu.Unlock()
 
 	if taskID == "" || strings.TrimSpace(text) == "" || tasksStore == nil {
-		return
+		return ""
 	}
 
 	var turnID string
 	if len(turnIDs) > 0 {
 		turnID = turnIDs[0]
 	}
-	if _, err := tasksStore.AppendReply(taskID, Reply{
+	reply, err := tasksStore.AppendReply(taskID, Reply{
 		Author:     Author{Kind: "user", Name: "user"},
 		Text:       text,
 		SessionRef: sessionID,
 		TurnID:     turnID,
 		Mode:       ModeFollowUp,
-	}); err != nil {
+	})
+	if err != nil {
 		log.Printf("[acpx_client] AppendReply(user) for task %s failed: %v", taskID, err)
 	} else {
 		log.Printf("[acpx_client] User prompt written to task %s timeline (%d chars)", taskID, len(text))
 	}
+	return reply.ID
 }
 
 // writeAgentReply writes the turn's final assistant message back to the
@@ -846,18 +877,26 @@ func writeAgentReply(bridge *ActiveBridge, tasksStore *TasksStore, chatStore *St
 	if len(turnIDs) > 0 {
 		turnID = turnIDs[0]
 	}
-	writeAgentReplyText(bridge, tasksStore, chatStore, turnID, text)
+	writeAgentReplyText(bridge, tasksStore, chatStore, turnID, "", text)
 }
 
-func writeAgentReplyText(bridge *ActiveBridge, tasksStore *TasksStore, chatStore *Store, turnID, text string) {
+func writeAgentReplyText(
+	bridge *ActiveBridge,
+	tasksStore *TasksStore,
+	chatStore *Store,
+	turnID, initiatingReplyID, text string,
+) string {
 	bridge.mu.Lock()
 	taskID := bridge.TaskID
 	agentType := bridge.AgentType
-	replyID := bridge.ReplyID
+	legacyReplyID := bridge.ReplyID
 	bridge.mu.Unlock()
 
 	if taskID == "" || strings.TrimSpace(text) == "" || tasksStore == nil {
-		return
+		return ""
+	}
+	if initiatingReplyID == "" {
+		initiatingReplyID = legacyReplyID
 	}
 
 	var acpSessionID string
@@ -867,20 +906,22 @@ func writeAgentReplyText(bridge *ActiveBridge, tasksStore *TasksStore, chatStore
 		}
 	}
 
-	if _, err := tasksStore.AppendReply(taskID, Reply{
+	reply, err := tasksStore.AppendReply(taskID, Reply{
 		Author:       Author{Kind: "agent", Name: agentType},
 		AgentType:    agentType,
 		Text:         text,
 		SessionRef:   bridge.SessionID,
 		TurnID:       turnID,
 		AcpSessionID: acpSessionID,
-		InReplyTo:    replyID,
+		InReplyTo:    initiatingReplyID,
 		Mode:         ModePureComment,
-	}); err != nil {
+	})
+	if err != nil {
 		log.Printf("[acpx_client] AppendReply for task %s failed: %v", taskID, err)
 	} else {
 		log.Printf("[acpx_client] Agent reply written to task %s timeline (%d chars)", taskID, len(text))
 	}
+	return reply.ID
 }
 
 func (c *AcpxClient) cleanupBridge(sessionId string) {

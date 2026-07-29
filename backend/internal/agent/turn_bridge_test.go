@@ -110,11 +110,17 @@ func TestTurnBridgeSerializesThreePrompts(t *testing.T) {
 	if firstPrompt.TurnID != firstID {
 		t.Fatalf("first forwarded turnId=%q, want %q", firstPrompt.TurnID, firstID)
 	}
+	if firstPrompt.RequestId != firstID {
+		t.Fatalf("runtime requestId=%q, want canonical Turn %q", firstPrompt.RequestId, firstID)
+	}
 
-	bridge.appendTurnText("answer one")
-	doneRaw := []byte(`{"event":"done","summary":"one"}`)
+	doneRaw := []byte(`{"event":"turn_terminal","turnId":"` + firstID + `","status":"completed","finalAnswer":"answer one","runtimeRequestId":"` + firstID + `","promptMessageId":"` + firstID + `","stopReason":"end_turn","sequence":7}`)
 	doneRaw, next, explicit, err := client.finishActiveTurn(
-		bridge, WsMessage{Event: "done", Summary: "one"}, doneRaw, nil, nil,
+		bridge, WsMessage{
+			Event: "turn_terminal", TurnID: firstID, Status: "completed",
+			FinalAnswer: "answer one", RuntimeRequestID: firstID,
+			PromptMessageID: firstID, StopReason: "end_turn", Sequence: 7,
+		}, doneRaw, nil, nil,
 	)
 	if err != nil || !explicit || next == nil || next.Turn.ID != secondID {
 		t.Fatalf("finish first: explicit=%v next=%+v err=%v", explicit, next, err)
@@ -130,10 +136,14 @@ func TestTurnBridgeSerializesThreePrompts(t *testing.T) {
 		t.Fatalf("second forwarded prompt = %+v", got)
 	}
 
-	errorRaw := []byte(`{"event":"error","code":"agent_error","message":"second failed"}`)
+	errorRaw := []byte(`{"event":"turn_terminal","turnId":"` + secondID + `","status":"failed","error":{"code":"agent_error","message":"second failed"}}`)
+	terminalError := &struct {
+		Code    string `json:"code,omitempty"`
+		Message string `json:"message,omitempty"`
+	}{Code: "agent_error", Message: "second failed"}
 	errorRaw, next, explicit, err = client.finishActiveTurn(
 		bridge,
-		WsMessage{Event: "error", Code: "agent_error", Message: "second failed"},
+		WsMessage{Event: "turn_terminal", TurnID: secondID, Status: "failed", Error: terminalError},
 		errorRaw, nil, nil,
 	)
 	if err != nil || !explicit || next == nil || next.Turn.ID != thirdID {
@@ -150,7 +160,12 @@ func TestTurnBridgeSerializesThreePrompts(t *testing.T) {
 	}
 
 	_, next, explicit, err = client.finishActiveTurn(
-		bridge, WsMessage{Event: "done", Stopped: true}, []byte(`{"event":"done","stopped":true}`), nil, nil,
+		bridge,
+		WsMessage{
+			Event: "turn_terminal", TurnID: thirdID, Status: "cancelled",
+			StopReason: "cancelled_by_user",
+		},
+		[]byte(`{"event":"turn_terminal","status":"cancelled"}`), nil, nil,
 	)
 	if err != nil || !explicit || next != nil {
 		t.Fatalf("finish third: explicit=%v next=%+v err=%v", explicit, next, err)
@@ -166,6 +181,62 @@ func TestTurnBridgeSerializesThreePrompts(t *testing.T) {
 		if err != nil || !ok || turn.Status != status {
 			t.Fatalf("Turn %s: ok=%v status=%q err=%v, want %q", id, ok, turn.Status, err, status)
 		}
+	}
+}
+
+func TestTurnBridgeGenericErrorAndMismatchedTerminalDoNotFinishActive(t *testing.T) {
+	t.Setenv("ONEAGENTS_HOME", t.TempDir())
+	db, err := meta.OpenDefault()
+	if err != nil {
+		t.Fatalf("OpenDefault: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err := db.EnsureProject("project-1", "Turn test", t.TempDir()); err != nil {
+		t.Fatalf("EnsureProject: %v", err)
+	}
+	if err := meta.NewSessionStore(db).Add(meta.ChatSessionRecord{
+		ID: "session-1", WorkspaceID: "project-1", AgentType: "codex",
+	}); err != nil {
+		t.Fatalf("Add session: %v", err)
+	}
+	store := meta.NewAgentTurnStore(db)
+	active, _, err := store.Create(meta.AgentTurn{
+		ID: "turn-active", ProjectID: "project-1", SessionID: "session-1",
+		ClientRequestID: "request-1", PromptText: "active",
+	})
+	if err != nil {
+		t.Fatalf("Create active Turn: %v", err)
+	}
+	active, err = store.Transition(active.ID, meta.AgentTurnTransition{Status: meta.AgentTurnRunning})
+	if err != nil {
+		t.Fatalf("Start active Turn: %v", err)
+	}
+	client := &AcpxClient{}
+	bridge := &ActiveBridge{
+		SessionID: "session-1",
+		turnStore: store,
+		activeTurn: &TurnContext{
+			Turn: active,
+		},
+	}
+
+	if _, next, explicit, err := client.finishActiveTurn(
+		bridge,
+		WsMessage{Event: "error", TurnID: active.ID, Code: "SET_MODE_FAILED"},
+		[]byte(`{"event":"error"}`), nil, nil,
+	); err != nil || explicit || next != nil {
+		t.Fatalf("generic error: explicit=%v next=%+v err=%v", explicit, next, err)
+	}
+	if _, next, explicit, err := client.finishActiveTurn(
+		bridge,
+		WsMessage{Event: "turn_terminal", TurnID: "stale-turn", Status: "completed"},
+		[]byte(`{"event":"turn_terminal"}`), nil, nil,
+	); err != nil || explicit || next != nil {
+		t.Fatalf("mismatched terminal: explicit=%v next=%+v err=%v", explicit, next, err)
+	}
+	stored, ok, err := store.Get(active.ID)
+	if err != nil || !ok || stored.Status != meta.AgentTurnRunning {
+		t.Fatalf("active after non-terminal events: %+v ok=%v err=%v", stored, ok, err)
 	}
 }
 

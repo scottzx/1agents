@@ -87,6 +87,19 @@ func TestTurnModelSchemaAndLegacyReconcile(t *testing.T) {
 			t.Fatalf("%s exists=%v err=%v", table, exists, err)
 		}
 	}
+	turnCols, err := db.tableColumns("agent_turns")
+	if err != nil {
+		t.Fatalf("agent_turns columns: %v", err)
+	}
+	for _, column := range []string{
+		"request_fingerprint", "runtime_record_id", "runtime_request_id",
+		"prompt_message_id", "final_reply_id", "stop_reason",
+		"terminal_source", "last_event_seq",
+	} {
+		if !turnCols[column] {
+			t.Errorf("agent_turns.%s missing", column)
+		}
+	}
 	for _, index := range []string{
 		"idx_agent_turns_session",
 		"idx_agent_turns_project",
@@ -141,14 +154,25 @@ func TestAgentTurnCreateIdempotentAndLifecycle(t *testing.T) {
 	if turn.Status != AgentTurnQueued || turn.ID == "" {
 		t.Fatalf("queued turn = %+v", turn)
 	}
+	if err := store.SetReplyLinks(turn.ID, "reply-user", ""); err != nil {
+		t.Fatalf("Set initiating reply: %v", err)
+	}
 	same, created, err := store.Create(AgentTurn{
 		ProjectID:       "p1",
 		SessionID:       "s1",
 		ClientRequestID: "request-1",
-		PromptText:      "must not replace original",
+		PromptText:      "create three tasks",
 	})
 	if err != nil || created || same.ID != turn.ID || same.PromptText != turn.PromptText {
 		t.Fatalf("idempotent Create: same=%+v created=%v err=%v", same, created, err)
+	}
+	if _, _, err := store.Create(AgentTurn{
+		ProjectID:       "p1",
+		SessionID:       "s1",
+		ClientRequestID: "request-1",
+		PromptText:      "must not replace original",
+	}); !errors.Is(err, ErrIdempotencyConflict) {
+		t.Fatalf("conflicting idempotent Create err=%v, want ErrIdempotencyConflict", err)
 	}
 
 	running, err := store.Transition(turn.ID, AgentTurnTransition{Status: AgentTurnRunning})
@@ -156,10 +180,26 @@ func TestAgentTurnCreateIdempotentAndLifecycle(t *testing.T) {
 		t.Fatalf("start: turn=%+v err=%v", running, err)
 	}
 	done, err := store.Transition(turn.ID, AgentTurnTransition{
-		Status:      AgentTurnCompleted,
-		FinalAnswer: "created",
+		Status:           AgentTurnCompleted,
+		FinalAnswer:      "created",
+		RuntimeRecordID:  "s1",
+		RuntimeRequestID: turn.ID,
+		PromptMessageID:  turn.ID,
+		StopReason:       "end_turn",
+		TerminalSource:   "live_runtime",
+		LastEventSeq:     42,
 	})
-	if err != nil || done.CompletedAt == nil || done.FinalAnswer != "created" {
+	if err == nil {
+		err = store.SetReplyLinks(turn.ID, "", "reply-agent")
+	}
+	if err == nil {
+		done, _, err = store.Get(turn.ID)
+	}
+	if err != nil || done.CompletedAt == nil || done.FinalAnswer != "created" ||
+		done.RuntimeRequestID != turn.ID || done.PromptMessageID != turn.ID ||
+		done.StopReason != "end_turn" || done.TerminalSource != "live_runtime" ||
+		done.LastEventSeq != 42 || done.InitiatingReplyID != "reply-user" ||
+		done.FinalReplyID != "reply-agent" {
 		t.Fatalf("complete: turn=%+v err=%v", done, err)
 	}
 	if _, err := store.Transition(turn.ID, AgentTurnTransition{Status: AgentTurnFailed}); !errors.Is(err, ErrInvalidTurnTransition) {
@@ -243,6 +283,10 @@ func TestAgentTurnOneRunningAndFIFO(t *testing.T) {
 	head, ok, err := store.NextQueued("s1")
 	if err != nil || !ok || head.ID != first.ID {
 		t.Fatalf("FIFO head=%+v ok=%v err=%v", head, ok, err)
+	}
+	queued, err := store.QueuedBySession("s1")
+	if err != nil || len(queued) != 2 || queued[0].ID != first.ID || queued[1].ID != second.ID {
+		t.Fatalf("QueuedBySession=%+v err=%v", queued, err)
 	}
 	if _, err := store.Transition(first.ID, AgentTurnTransition{Status: AgentTurnRunning}); err != nil {
 		t.Fatalf("start first: %v", err)

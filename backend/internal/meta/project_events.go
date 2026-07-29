@@ -12,6 +12,7 @@ import (
 var (
 	ErrInvalidCursor         = errors.New("meta: invalid cursor")
 	ErrInvalidTurnTransition = errors.New("meta: invalid turn transition")
+	ErrIdempotencyConflict   = errors.New("meta: idempotency conflict")
 	ErrProjectMismatch       = errors.New("meta: project mismatch")
 	ErrTurnNotRunning        = errors.New("meta: turn is not running")
 	ErrInvalidProjectEvent   = errors.New("meta: invalid project event")

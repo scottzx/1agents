@@ -1,9 +1,11 @@
 package agent
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/scottzx/1Agents/backend/internal/meta"
@@ -24,14 +26,29 @@ func addJSONFields(raw []byte, fields map[string]any) []byte {
 	return updated
 }
 
-func enqueueTurnState(bridge *ActiveBridge, event string, turn meta.AgentTurn) {
-	raw, err := json.Marshal(map[string]any{
-		"event":     event,
-		"sessionId": turn.SessionID,
-		"turnId":    turn.ID,
-		"requestId": turn.ClientRequestID,
-		"status":    turn.Status,
-	})
+func enqueueTurnState(bridge *ActiveBridge, event string, turn meta.AgentTurn, queuePosition ...int) {
+	payload := map[string]any{
+		"event":      event,
+		"sessionId":  turn.SessionID,
+		"turnId":     turn.ID,
+		"requestId":  turn.ClientRequestID,
+		"status":     turn.Status,
+		"promptText": turn.PromptText,
+		"createdAt":  turn.CreatedAt,
+	}
+	if len(queuePosition) > 0 && queuePosition[0] > 0 {
+		payload["queuePosition"] = queuePosition[0]
+	}
+	if turn.StartedAt != nil {
+		payload["startedAt"] = turn.StartedAt
+	}
+	if turn.CompletedAt != nil {
+		payload["completedAt"] = turn.CompletedAt
+	}
+	if turn.StopReason != "" {
+		payload["stopReason"] = turn.StopReason
+	}
+	raw, err := json.Marshal(payload)
 	if err != nil {
 		return
 	}
@@ -47,42 +64,109 @@ func enqueueTurnState(bridge *ActiveBridge, event string, turn meta.AgentTurn) {
 	}
 }
 
+func queuedTurnPosition(store *meta.AgentTurnStore, sessionID, turnID string) int {
+	queued, err := store.QueuedBySession(sessionID)
+	if err != nil {
+		return 0
+	}
+	for index, candidate := range queued {
+		if candidate.ID == turnID {
+			return index + 1
+		}
+	}
+	return 0
+}
+
+func enqueueProtocolError(bridge *ActiveBridge, requestID, code, message string) {
+	raw, err := json.Marshal(map[string]any{
+		"event":     "protocol_error",
+		"sessionId": bridge.SessionID,
+		"requestId": requestID,
+		"code":      code,
+		"message":   message,
+	})
+	if err != nil {
+		return
+	}
+	bridge.mu.Lock()
+	defer bridge.mu.Unlock()
+	if bridge.IsDone {
+		return
+	}
+	select {
+	case bridge.MsgChan <- raw:
+	default:
+		log.Printf("[acpx_client] MsgChan full, dropping protocol_error for %s", bridge.SessionID)
+	}
+}
+
+func promptFingerprint(msg WsMessage) string {
+	canonical, _ := json.Marshal(struct {
+		Text        string          `json:"text"`
+		Attachments json.RawMessage `json:"attachments,omitempty"`
+	}{
+		Text:        msg.Text,
+		Attachments: msg.Attachments,
+	})
+	return fmt.Sprintf("%x", sha256.Sum256(canonical))
+}
+
+func legacyRequestID() string {
+	return fmt.Sprintf("legacy-%d", time.Now().UTC().UnixNano())
+}
+
 // queuePrompt persists a prompt before forwarding it. It returns handled=true
 // whenever the explicit Turn path is enabled, including idempotent retries.
 func (c *AcpxClient) queuePrompt(bridge *ActiveBridge, msg WsMessage, raw []byte) (handled bool, err error) {
 	if bridge.turnStore == nil || bridge.ProjectID == "" {
 		return false, nil
 	}
+	if msg.TurnID != "" {
+		return true, fmt.Errorf("browser supplied forbidden turnId")
+	}
+	if msg.RequestId == "" {
+		msg.RequestId = legacyRequestID()
+		raw = addJSONFields(raw, map[string]any{"requestId": msg.RequestId})
+	}
 	turn, created, err := bridge.turnStore.Create(meta.AgentTurn{
-		ProjectID:         bridge.ProjectID,
-		SessionID:         bridge.SessionID,
-		ClientRequestID:   msg.RequestId,
-		InitiatingReplyID: bridge.ReplyID,
-		AgentType:         bridge.AgentType,
-		PromptText:        msg.Text,
+		ProjectID:          bridge.ProjectID,
+		SessionID:          bridge.SessionID,
+		ClientRequestID:    msg.RequestId,
+		AgentType:          bridge.AgentType,
+		PromptText:         msg.Text,
+		RequestFingerprint: promptFingerprint(msg),
 	})
 	if err != nil {
 		return true, err
 	}
 	if !created {
-		enqueueTurnState(bridge, "turn_state", turn)
+		enqueueTurnState(bridge, "turn_state", turn, queuedTurnPosition(bridge.turnStore, bridge.SessionID, turn.ID))
 		return true, nil
 	}
 
-	raw = addJSONFields(raw, map[string]any{"turnId": turn.ID})
-	writeUserReply(bridge, bridge.tasksStore, msg.Text, turn.ID)
-	if bridge.ReplyID != "" && bridge.tasksStore != nil {
-		if err := bridge.tasksStore.SetReplyTurn(bridge.ReplyID, turn.ID); err != nil {
-			log.Printf("[acpx_client] SetReplyTurn(%s, %s): %v", bridge.ReplyID, turn.ID, err)
+	raw = addJSONFields(raw, map[string]any{
+		"turnId":    turn.ID,
+		"requestId": turn.ID,
+	})
+	initiatingReplyID := writeUserReply(bridge, bridge.tasksStore, msg.Text, turn.ID)
+	if initiatingReplyID != "" {
+		if err := bridge.turnStore.SetReplyLinks(turn.ID, initiatingReplyID, ""); err != nil {
+			log.Printf("[acpx_client] Set initiating Reply for Turn %s: %v", turn.ID, err)
+		} else {
+			turn.InitiatingReplyID = initiatingReplyID
 		}
 	}
 
 	ctx := &TurnContext{Turn: turn, Raw: raw}
+	queuePosition := 0
 	bridge.mu.Lock()
 	startNow := bridge.activeTurn == nil
 	if startNow {
 		running, transitionErr := bridge.turnStore.Transition(turn.ID, meta.AgentTurnTransition{
-			Status: meta.AgentTurnRunning,
+			Status:           meta.AgentTurnRunning,
+			RuntimeRecordID:  bridge.SessionID,
+			RuntimeRequestID: turn.ID,
+			PromptMessageID:  turn.ID,
 		})
 		if transitionErr != nil {
 			bridge.mu.Unlock()
@@ -93,10 +177,11 @@ func (c *AcpxClient) queuePrompt(bridge *ActiveBridge, msg WsMessage, raw []byte
 		bridge.turnText = nil
 	} else {
 		bridge.pendingTurns = append(bridge.pendingTurns, ctx)
+		queuePosition = len(bridge.pendingTurns)
 	}
 	bridge.mu.Unlock()
 
-	enqueueTurnState(bridge, "turn_queued", turn)
+	enqueueTurnState(bridge, "turn_state", turn, queuePosition)
 	if startNow {
 		return true, c.startTurn(bridge, ctx)
 	}
@@ -104,7 +189,7 @@ func (c *AcpxClient) queuePrompt(bridge *ActiveBridge, msg WsMessage, raw []byte
 }
 
 func (c *AcpxClient) startTurn(bridge *ActiveBridge, ctx *TurnContext) error {
-	enqueueTurnState(bridge, "turn_started", ctx.Turn)
+	enqueueTurnState(bridge, "turn_state", ctx.Turn)
 	return c.writeServerRaw(bridge, ctx.Raw)
 }
 
@@ -158,7 +243,7 @@ func (c *AcpxClient) cancelPendingTurn(bridge *ActiveBridge, turnID string) (boo
 	if err != nil {
 		return true, err
 	}
-	enqueueTurnState(bridge, "turn_cancelled", cancelled)
+	enqueueTurnState(bridge, "turn_state", cancelled)
 	return true, nil
 }
 
@@ -171,44 +256,78 @@ func (c *AcpxClient) finishActiveTurn(bridge *ActiveBridge, msg WsMessage, raw [
 	if active == nil || bridge.turnStore == nil {
 		return raw, nil, false, nil
 	}
-
-	text := bridge.takeTurnText()
-	change := meta.AgentTurnTransition{
-		Status:      meta.AgentTurnCompleted,
-		FinalAnswer: text,
+	if msg.Event != "turn_terminal" {
+		return raw, nil, false, nil
 	}
-	if msg.Event == "error" {
+	if msg.TurnID == "" || msg.TurnID != active.Turn.ID {
+		log.Printf("[acpx_client] Ignoring terminal mismatch: session_id=%s active_turn_id=%s event_turn_id=%s",
+			bridge.SessionID, active.Turn.ID, msg.TurnID)
+		return raw, nil, false, nil
+	}
+
+	text := msg.FinalAnswer
+	change := meta.AgentTurnTransition{
+		Status:           meta.AgentTurnCompleted,
+		FinalAnswer:      text,
+		RuntimeRecordID:  bridge.SessionID,
+		RuntimeRequestID: msg.RuntimeRequestID,
+		PromptMessageID:  msg.PromptMessageID,
+		StopReason:       msg.StopReason,
+		TerminalSource:   "live_runtime",
+		LastEventSeq:     msg.Sequence,
+	}
+	switch meta.AgentTurnStatus(msg.Status) {
+	case meta.AgentTurnFailed:
 		change.Status = meta.AgentTurnFailed
-		change.ErrorCode = msg.Code
-		change.ErrorText = msg.Message
-		if change.ErrorCode == "" {
-			change.ErrorCode = "agent_error"
+		if msg.Error != nil {
+			change.ErrorCode = msg.Error.Code
+			change.ErrorText = msg.Error.Message
 		}
-	} else if msg.Stopped {
+		if change.ErrorCode == "" {
+			change.ErrorCode = "runtime_error"
+		}
+	case meta.AgentTurnCancelled:
 		change.Status = meta.AgentTurnCancelled
 		change.ErrorCode = "cancelled_by_user"
-		change.ErrorText = "Turn was stopped by the user."
+	case meta.AgentTurnCompleted:
+	default:
+		return raw, nil, true, fmt.Errorf("invalid turn terminal status %q", msg.Status)
 	}
 	finished, err := bridge.turnStore.Transition(active.Turn.ID, change)
 	if err != nil {
 		return raw, nil, true, err
 	}
-	writeAgentReplyText(bridge, tasksStore, chatStore, active.Turn.ID, text)
-	raw = addJSONFields(raw, map[string]any{
-		"turnId":     active.Turn.ID,
-		"turnStatus": finished.Status,
-	})
-
-	bridge.mu.Lock()
-	if bridge.activeTurn != nil && bridge.activeTurn.Turn.ID == active.Turn.ID {
-		bridge.activeTurn = nil
+	finalReplyID := writeAgentReplyText(
+		bridge, tasksStore, chatStore, active.Turn.ID, active.Turn.InitiatingReplyID, text,
+	)
+	if finalReplyID != "" {
+		if err := bridge.turnStore.SetReplyLinks(active.Turn.ID, "", finalReplyID); err != nil {
+			log.Printf("[acpx_client] Set final Reply for Turn %s: %v", active.Turn.ID, err)
+		}
 	}
+	raw = addJSONFields(raw, map[string]any{"turnStatus": finished.Status})
+
 	var next *TurnContext
-	if len(bridge.pendingTurns) > 0 {
-		next = bridge.pendingTurns[0]
-		bridge.pendingTurns = bridge.pendingTurns[1:]
+	nextTurn, ok, nextErr := bridge.turnStore.NextQueued(bridge.SessionID)
+	if nextErr != nil {
+		return raw, nil, true, nextErr
+	}
+	bridge.mu.Lock()
+	if ok {
+		for i, pending := range bridge.pendingTurns {
+			if pending.Turn.ID == nextTurn.ID {
+				next = pending
+				bridge.pendingTurns = append(bridge.pendingTurns[:i], bridge.pendingTurns[i+1:]...)
+				break
+			}
+		}
+	}
+	if next != nil {
 		running, transitionErr := bridge.turnStore.Transition(next.Turn.ID, meta.AgentTurnTransition{
-			Status: meta.AgentTurnRunning,
+			Status:           meta.AgentTurnRunning,
+			RuntimeRecordID:  bridge.SessionID,
+			RuntimeRequestID: next.Turn.ID,
+			PromptMessageID:  next.Turn.ID,
 		})
 		if transitionErr != nil {
 			bridge.mu.Unlock()
@@ -217,9 +336,47 @@ func (c *AcpxClient) finishActiveTurn(bridge *ActiveBridge, msg WsMessage, raw [
 		next.Turn = running
 		bridge.activeTurn = next
 		bridge.turnText = nil
+	} else if bridge.activeTurn != nil && bridge.activeTurn.Turn.ID == active.Turn.ID {
+		bridge.activeTurn = nil
 	}
 	bridge.mu.Unlock()
 	return raw, next, true, nil
+}
+
+func (c *AcpxClient) enqueueTurnSync(bridge *ActiveBridge) {
+	if bridge.turnStore == nil {
+		return
+	}
+	queued, err := bridge.turnStore.QueuedBySession(bridge.SessionID)
+	if err != nil {
+		log.Printf("[acpx_client] turn sync queue for %s: %v", bridge.SessionID, err)
+		return
+	}
+	bridge.mu.Lock()
+	active := bridge.activeTurn
+	bridge.mu.Unlock()
+	payload := map[string]any{
+		"event":     "turn_sync",
+		"sessionId": bridge.SessionID,
+		"queued":    queued,
+	}
+	if active != nil {
+		payload["active"] = active.Turn
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	bridge.mu.Lock()
+	defer bridge.mu.Unlock()
+	if bridge.IsDone {
+		return
+	}
+	select {
+	case bridge.MsgChan <- raw:
+	default:
+		log.Printf("[acpx_client] MsgChan full, dropping turn_sync for %s", bridge.SessionID)
+	}
 }
 
 func (c *AcpxClient) failOutstandingTurns(bridge *ActiveBridge, tasksStore *TasksStore, chatStore *Store) {
@@ -244,8 +401,13 @@ func (c *AcpxClient) failOutstandingTurns(bridge *ActiveBridge, tasksStore *Task
 		if err != nil {
 			log.Printf("[acpx_client] Fail active Turn %s after runtime loss: %v", active.Turn.ID, err)
 		} else {
-			writeAgentReplyText(bridge, tasksStore, chatStore, active.Turn.ID, partial)
-			enqueueTurnState(bridge, "turn_failed", failed)
+			finalReplyID := writeAgentReplyText(
+				bridge, tasksStore, chatStore, active.Turn.ID, active.Turn.InitiatingReplyID, partial,
+			)
+			if finalReplyID != "" {
+				_ = bridge.turnStore.SetReplyLinks(active.Turn.ID, "", finalReplyID)
+			}
+			enqueueTurnState(bridge, "turn_state", failed)
 		}
 	}
 	for _, queued := range pending {
@@ -258,6 +420,6 @@ func (c *AcpxClient) failOutstandingTurns(bridge *ActiveBridge, tasksStore *Task
 			log.Printf("[acpx_client] Cancel queued Turn %s after runtime loss: %v", queued.Turn.ID, err)
 			continue
 		}
-		enqueueTurnState(bridge, "turn_cancelled", cancelled)
+		enqueueTurnState(bridge, "turn_state", cancelled)
 	}
 }

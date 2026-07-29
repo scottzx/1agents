@@ -1,6 +1,7 @@
 package meta
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -17,8 +18,10 @@ func NewAgentTurnStore(db *DB) *AgentTurnStore {
 }
 
 const agentTurnCols = `id, project_id, session_id, client_request_id,
-	initiating_reply_id, agent_type, status, prompt_text, final_answer,
-	error_code, error_text, started_at, completed_at, created_at, updated_at`
+	initiating_reply_id, agent_type, status, prompt_text, request_fingerprint,
+	final_answer, error_code, error_text, runtime_record_id, runtime_request_id,
+	prompt_message_id, final_reply_id, stop_reason, terminal_source,
+	last_event_seq, started_at, completed_at, created_at, updated_at`
 
 func scanAgentTurn(row rowScanner) (AgentTurn, error) {
 	var turn AgentTurn
@@ -27,7 +30,10 @@ func scanAgentTurn(row rowScanner) (AgentTurn, error) {
 	if err := row.Scan(
 		&turn.ID, &turn.ProjectID, &turn.SessionID, &turn.ClientRequestID,
 		&turn.InitiatingReplyID, &turn.AgentType, &turn.Status,
-		&turn.PromptText, &turn.FinalAnswer, &turn.ErrorCode, &turn.ErrorText,
+		&turn.PromptText, &turn.RequestFingerprint, &turn.FinalAnswer,
+		&turn.ErrorCode, &turn.ErrorText, &turn.RuntimeRecordID,
+		&turn.RuntimeRequestID, &turn.PromptMessageID, &turn.FinalReplyID,
+		&turn.StopReason, &turn.TerminalSource, &turn.LastEventSeq,
 		&startedAt, &completedAt, &createdAt, &updatedAt,
 	); err != nil {
 		return AgentTurn{}, err
@@ -51,6 +57,9 @@ func (s *AgentTurnStore) Create(turn AgentTurn) (stored AgentTurn, created bool,
 	}
 	if turn.Status != AgentTurnQueued {
 		return AgentTurn{}, false, fmt.Errorf("%w: new Turn must be queued", ErrInvalidTurnTransition)
+	}
+	if turn.RequestFingerprint == "" {
+		turn.RequestFingerprint = fmt.Sprintf("%x", sha256.Sum256([]byte(turn.PromptText)))
 	}
 
 	tx, err := s.db.sql.Begin()
@@ -79,6 +88,13 @@ func (s *AgentTurnStore) Create(turn AgentTurn) (stored AgentTurn, created bool,
 		))
 		switch lookupErr {
 		case nil:
+			fingerprintMismatch := existing.RequestFingerprint != "" &&
+				existing.RequestFingerprint != turn.RequestFingerprint
+			legacyPromptMismatch := existing.RequestFingerprint == "" &&
+				existing.PromptText != turn.PromptText
+			if fingerprintMismatch || legacyPromptMismatch {
+				return AgentTurn{}, false, ErrIdempotencyConflict
+			}
 			return existing, false, nil
 		case sql.ErrNoRows:
 		default:
@@ -97,12 +113,17 @@ func (s *AgentTurnStore) Create(turn AgentTurn) (stored AgentTurn, created bool,
 	if _, err := tx.Exec(`
 		INSERT INTO agent_turns (
 			id, project_id, session_id, client_request_id, initiating_reply_id,
-			agent_type, status, prompt_text, final_answer, error_code, error_text,
-			started_at, completed_at, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			agent_type, status, prompt_text, request_fingerprint, final_answer,
+			error_code, error_text, runtime_record_id, runtime_request_id,
+			prompt_message_id, final_reply_id, stop_reason, terminal_source,
+			last_event_seq, started_at, completed_at, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		turn.ID, turn.ProjectID, turn.SessionID, turn.ClientRequestID,
 		turn.InitiatingReplyID, turn.AgentType, turn.Status, turn.PromptText,
-		turn.FinalAnswer, turn.ErrorCode, turn.ErrorText, nil, nil,
+		turn.RequestFingerprint, turn.FinalAnswer, turn.ErrorCode, turn.ErrorText,
+		turn.RuntimeRecordID, turn.RuntimeRequestID, turn.PromptMessageID,
+		turn.FinalReplyID, turn.StopReason, turn.TerminalSource,
+		turn.LastEventSeq, nil, nil,
 		timeToStr(turn.CreatedAt), timeToStr(turn.UpdatedAt),
 	); err != nil {
 		return AgentTurn{}, false, err
@@ -127,6 +148,25 @@ func (s *AgentTurnStore) Get(id string) (AgentTurn, bool, error) {
 		return AgentTurn{}, false, err
 	}
 	return turn, true, nil
+}
+
+func (s *AgentTurnStore) SetReplyLinks(id, initiatingReplyID, finalReplyID string) error {
+	if initiatingReplyID == "" && finalReplyID == "" {
+		return nil
+	}
+	res, err := s.db.sql.Exec(`
+		UPDATE agent_turns
+		SET initiating_reply_id = CASE WHEN ? != '' THEN ? ELSE initiating_reply_id END,
+		    final_reply_id = CASE WHEN ? != '' THEN ? ELSE final_reply_id END,
+		    updated_at = ?
+		WHERE id = ?`,
+		initiatingReplyID, initiatingReplyID, finalReplyID, finalReplyID,
+		timeToStr(time.Now().UTC()), id,
+	)
+	if err != nil {
+		return err
+	}
+	return affectedOrNotFound(res)
 }
 
 func (s *AgentTurnStore) RunningBySession(sessionID string) (AgentTurn, bool, error) {
@@ -157,6 +197,51 @@ func (s *AgentTurnStore) NextQueued(sessionID string) (AgentTurn, bool, error) {
 		return AgentTurn{}, false, err
 	}
 	return turn, true, nil
+}
+
+// QueuedBySession returns the durable FIFO queue projection used by reconnect
+// sync and dispatch. Runtime payload bytes remain in memory because queued
+// Turns are deliberately not replayed after a backend restart.
+func (s *AgentTurnStore) QueuedBySession(sessionID string) ([]AgentTurn, error) {
+	rows, err := s.db.sql.Query(
+		`SELECT `+agentTurnCols+` FROM agent_turns
+		 WHERE session_id = ? AND status = 'queued'
+		 ORDER BY created_at, id`, sessionID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var turns []AgentTurn
+	for rows.Next() {
+		turn, err := scanAgentTurn(rows)
+		if err != nil {
+			return nil, err
+		}
+		turns = append(turns, turn)
+	}
+	return turns, rows.Err()
+}
+
+func (s *AgentTurnStore) Outstanding() ([]AgentTurn, error) {
+	rows, err := s.db.sql.Query(
+		`SELECT ` + agentTurnCols + ` FROM agent_turns
+		 WHERE status IN ('running', 'queued')
+		 ORDER BY created_at, id`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var turns []AgentTurn
+	for rows.Next() {
+		turn, err := scanAgentTurn(rows)
+		if err != nil {
+			return nil, err
+		}
+		turns = append(turns, turn)
+	}
+	return turns, rows.Err()
 }
 
 // RecoverInterrupted closes Turns that cannot survive a backend process
@@ -242,6 +327,27 @@ func (s *AgentTurnStore) Transition(id string, change AgentTurnTransition) (Agen
 	next := current
 	next.Status = change.Status
 	next.UpdatedAt = change.At
+	if change.RuntimeRecordID != "" {
+		next.RuntimeRecordID = change.RuntimeRecordID
+	}
+	if change.RuntimeRequestID != "" {
+		next.RuntimeRequestID = change.RuntimeRequestID
+	}
+	if change.PromptMessageID != "" {
+		next.PromptMessageID = change.PromptMessageID
+	}
+	if change.FinalReplyID != "" {
+		next.FinalReplyID = change.FinalReplyID
+	}
+	if change.StopReason != "" {
+		next.StopReason = change.StopReason
+	}
+	if change.TerminalSource != "" {
+		next.TerminalSource = change.TerminalSource
+	}
+	if change.LastEventSeq > next.LastEventSeq {
+		next.LastEventSeq = change.LastEventSeq
+	}
 	switch change.Status {
 	case AgentTurnRunning:
 		next.StartedAt = &change.At
@@ -260,9 +366,13 @@ func (s *AgentTurnStore) Transition(id string, change AgentTurnTransition) (Agen
 	res, err := tx.Exec(`
 		UPDATE agent_turns
 		SET status = ?, final_answer = ?, error_code = ?, error_text = ?,
-		    started_at = ?, completed_at = ?, updated_at = ?
+		    runtime_record_id = ?, runtime_request_id = ?, prompt_message_id = ?,
+		    final_reply_id = ?, stop_reason = ?, terminal_source = ?,
+		    last_event_seq = ?, started_at = ?, completed_at = ?, updated_at = ?
 		WHERE id = ? AND status = ?`,
 		next.Status, next.FinalAnswer, next.ErrorCode, next.ErrorText,
+		next.RuntimeRecordID, next.RuntimeRequestID, next.PromptMessageID,
+		next.FinalReplyID, next.StopReason, next.TerminalSource, next.LastEventSeq,
 		timePtrToVal(next.StartedAt), timePtrToVal(next.CompletedAt),
 		timeToStr(next.UpdatedAt), id, current.Status,
 	)
