@@ -293,10 +293,13 @@ export function normalizeMarkdownThematicBreaks(src: string): string {
     return out.join('\n');
 }
 
-const instance = new Marked({ gfm: true, breaks: true });
+export const markedInstance = new Marked({ gfm: true, breaks: true });
 // taskRef must be registered first so `project#N` is captured before fileRef
 // can see the backtick.
-instance.use({ extensions: [frontmatterExtension, taskRefExtension, fileRefExtension], renderer: mermaidRenderer });
+markedInstance.use({
+    extensions: [frontmatterExtension, taskRefExtension, fileRefExtension],
+    renderer: mermaidRenderer,
+});
 
 /**
  * Render Markdown to an HTML string, autolinking task references using `c`.
@@ -307,7 +310,7 @@ export function renderMarkdown(content: string, c: MarkdownContext = {}): string
     ctx = c;
     try {
         const src = normalizeMarkdownThematicBreaks(content);
-        return instance.parse(src, { async: false }) as string;
+        return markedInstance.parse(src, { async: false }) as string;
     } catch (err) {
         return `<pre class="md-parse-error">Markdown parse error: ${escapeHtml(String(err))}</pre>`;
     } finally {
