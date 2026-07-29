@@ -138,16 +138,27 @@ export type HistoryItem =
           createdAt?: string;
       };
 
+export type TurnAwareHistoryItem = HistoryItem & { turnId?: string };
+
 export type ChatTurnStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 export interface ChatTurnMetadata {
     /** Persisted Agent Turn identity. Absent for legacy transcripts. */
     turnId?: string;
     turnStatus?: ChatTurnStatus;
+    queuePosition?: number;
 }
 
 export type ChatItem = (
-    | { id: string; kind: 'user'; content: string; createdAt: number; queueStatus?: 'queued'; queueRequestId?: string }
+    | {
+          id: string;
+          kind: 'user';
+          content: string;
+          createdAt: number;
+          clientRequestId?: string;
+          queueStatus?: 'queued';
+          queueRequestId?: string;
+      }
     | { id: string; kind: 'assistant_text'; content: string; createdAt: number; streaming: boolean }
     | { id: string; kind: 'thinking'; content: string; createdAt: number }
     | {

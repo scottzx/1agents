@@ -33,6 +33,7 @@ import {
     applyTextDelta,
     applyPromptQueued,
     applyPromptCancelled,
+    applyTurnState,
     applyToolCall,
     applyToolResult,
     applyPermissionRequest,
@@ -86,6 +87,16 @@ const WS_OPEN = 1;
 /** Mirror WebSocket.CLOSED without referencing the (weapp-absent) global. */
 const WS_CLOSED = 3;
 
+function bindEventTurn(previous: ChatItem[], next: ChatItem[], turnId: string | undefined): ChatItem[] {
+    if (!turnId) return next;
+    const previousById = new Map(previous.map(item => [item.id, item]));
+    return next.map(item => {
+        if (item.turnId) return item;
+        const prior = previousById.get(item.id);
+        return prior === item ? item : { ...item, turnId, turnStatus: 'running' };
+    });
+}
+
 /** Host-specific dependencies the manager needs but core can't supply itself. */
 export interface ChatBridgeOptions {
     /**
@@ -134,6 +145,8 @@ export interface SessionBridgeState {
     ws: ChatTransport | null;
     listeners: Set<() => void>;
     turnStarted: boolean;
+    activeTurnId: string | null;
+    lastTurnSequence: Record<string, number>;
     /**
      * Real-time-only holding pen for tool_result and permission_request
      * events that arrived before (or without) their matching tool_call.
@@ -260,6 +273,8 @@ export class ChatBridgeManager {
                 ws: null,
                 listeners: new Set(),
                 turnStarted: false,
+                activeTurnId: null,
+                lastTurnSequence: {},
                 pendingResults: [],
                 pendingPermissions: [],
                 // New sessions stay `ready: false` until the bridge-server
@@ -587,6 +602,74 @@ export class ChatBridgeManager {
                     }
                     this.notify(state);
                     break;
+                case 'turn_state': {
+                    if (!payload.turnId || !payload.status) break;
+                    const status = payload.status as 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+                    state.items = applyTurnState(state.items, {
+                        turnId: payload.turnId,
+                        requestId: payload.requestId,
+                        status,
+                        promptText: payload.promptText,
+                        queuePosition: payload.queuePosition,
+                    });
+                    if (status === 'running') {
+                        state.activeTurnId = payload.turnId;
+                        state.turnStarted = true;
+                        state.typing = true;
+                    } else if (
+                        (status === 'completed' || status === 'failed' || status === 'cancelled') &&
+                        state.activeTurnId === payload.turnId
+                    ) {
+                        state.activeTurnId = null;
+                        state.turnStarted = false;
+                        state.typing = false;
+                    }
+                    this.notify(state);
+                    break;
+                }
+                case 'turn_sync': {
+                    let items = state.items;
+                    if (payload.active) {
+                        items = applyTurnState(items, {
+                            ...payload.active,
+                            turnId: payload.active.turnId ?? payload.active.id,
+                            requestId: payload.active.requestId ?? payload.active.clientRequestId,
+                        });
+                        state.activeTurnId = payload.active.turnId ?? payload.active.id ?? null;
+                    } else {
+                        state.activeTurnId = null;
+                    }
+                    for (const [index, queued] of (payload.queued ?? []).entries()) {
+                        items = applyTurnState(items, {
+                            ...queued,
+                            turnId: queued.turnId ?? queued.id,
+                            requestId: queued.requestId ?? queued.clientRequestId,
+                            queuePosition: index + 1,
+                        });
+                    }
+                    state.items = items;
+                    state.turnStarted = !!state.activeTurnId;
+                    state.typing = !!state.activeTurnId;
+                    this.notify(state);
+                    break;
+                }
+                case 'turn_terminal': {
+                    if (!payload.turnId || !payload.status || !this.acceptTurnEvent(state, payload)) break;
+                    state.items = applyTurnState(state.items, {
+                        turnId: payload.turnId,
+                        status: payload.status as 'completed' | 'failed' | 'cancelled',
+                    });
+                    state.items = applyDone(state.items);
+                    if (state.activeTurnId === payload.turnId) {
+                        state.activeTurnId = null;
+                        state.typing = false;
+                        state.turnStarted = false;
+                    }
+                    state.cancelling = false;
+                    this.notify(state);
+                    this.reloadHistory(session, state);
+                    break;
+                }
                 case 'prompt_queued': {
                     // Bridge accepted the prompt but couldn't start it because
                     // another turn is already running. Mark the most-recent user
@@ -612,7 +695,7 @@ export class ChatBridgeManager {
                     break;
                 }
                 case 'text_delta': {
-                    if (!this.acceptTurnEvent(state)) break;
+                    if (!this.acceptTurnEvent(state, payload)) break;
                     const delta = payload.text;
                     if (!delta) break;
                     const deltaType = payload.type || 'output';
@@ -626,12 +709,12 @@ export class ChatBridgeManager {
                             this.opts.onAssistantText?.(state.sessionId);
                         }
                     }
-                    state.items = applyTextDelta(state.items, delta, deltaType);
+                    state.items = applyTextDelta(state.items, delta, deltaType, payload.turnId);
                     this.notify(state);
                     break;
                 }
                 case 'tool_call': {
-                    if (!this.acceptTurnEvent(state)) break;
+                    if (!this.acceptTurnEvent(state, payload)) break;
                     // Backend's SSE safety fallback may emit tool_call events
                     // without `arguments` (omitted) or with `arguments: {}` (the
                     // runtime's no-input placeholder); neither carries renderable
@@ -648,27 +731,39 @@ export class ChatBridgeManager {
                     );
                     if (!hasRenderableArguments(payload.arguments) && !hasMeta) break;
                     const next = applyToolCall(state, payload);
-                    state.items = next.items;
-                    state.pendingResults = next.pendingResults;
-                    state.pendingPermissions = next.pendingPermissions;
+                    state.items = bindEventTurn(state.items, next.items, payload.turnId);
+                    state.pendingResults = bindEventTurn(state.pendingResults, next.pendingResults, payload.turnId);
+                    state.pendingPermissions = bindEventTurn(
+                        state.pendingPermissions,
+                        next.pendingPermissions,
+                        payload.turnId
+                    );
                     this.notify(state);
                     break;
                 }
                 case 'tool_result': {
-                    if (!this.acceptTurnEvent(state)) break;
+                    if (!this.acceptTurnEvent(state, payload)) break;
                     const next = applyToolResult(state, payload);
-                    state.items = next.items;
-                    state.pendingResults = next.pendingResults;
-                    state.pendingPermissions = next.pendingPermissions;
+                    state.items = bindEventTurn(state.items, next.items, payload.turnId);
+                    state.pendingResults = bindEventTurn(state.pendingResults, next.pendingResults, payload.turnId);
+                    state.pendingPermissions = bindEventTurn(
+                        state.pendingPermissions,
+                        next.pendingPermissions,
+                        payload.turnId
+                    );
                     this.notify(state);
                     break;
                 }
                 case 'permission_request': {
-                    if (!this.acceptTurnEvent(state)) break;
+                    if (!this.acceptTurnEvent(state, payload)) break;
                     const next = applyPermissionRequest(state, payload);
-                    state.items = next.items;
-                    state.pendingResults = next.pendingResults;
-                    state.pendingPermissions = next.pendingPermissions;
+                    state.items = bindEventTurn(state.items, next.items, payload.turnId);
+                    state.pendingResults = bindEventTurn(state.pendingResults, next.pendingResults, payload.turnId);
+                    state.pendingPermissions = bindEventTurn(
+                        state.pendingPermissions,
+                        next.pendingPermissions,
+                        payload.turnId
+                    );
                     this.notify(state);
                     break;
                 }
@@ -682,9 +777,9 @@ export class ChatBridgeManager {
                     break;
                 }
                 case 'ask_user_question': {
-                    if (!this.acceptTurnEvent(state)) break;
+                    if (!this.acceptTurnEvent(state, payload)) break;
                     const next = applyAskUserQuestion(state, payload);
-                    state.items = next.items;
+                    state.items = bindEventTurn(state.items, next.items, payload.turnId);
                     state.pendingResults = next.pendingResults;
                     state.pendingPermissions = next.pendingPermissions;
                     this.notify(state);
@@ -700,9 +795,9 @@ export class ChatBridgeManager {
                     break;
                 }
                 case 'exit_plan_mode': {
-                    if (!this.acceptTurnEvent(state)) break;
+                    if (!this.acceptTurnEvent(state, payload)) break;
                     const next = applyExitPlanMode(state, payload);
-                    state.items = next.items;
+                    state.items = bindEventTurn(state.items, next.items, payload.turnId);
                     state.pendingResults = next.pendingResults;
                     state.pendingPermissions = next.pendingPermissions;
                     this.notify(state);
@@ -805,7 +900,16 @@ export class ChatBridgeManager {
                     break;
                 }
                 case 'history_response': {
-                    state.items = normalizeHistory(payload.items, payload.messages);
+                    const history = normalizeHistory(payload.items, payload.messages);
+                    const persistedTurnIds = new Set(history.map(item => item.turnId).filter(Boolean));
+                    const optimistic = state.items.filter(
+                        item =>
+                            item.kind === 'user' &&
+                            !!item.turnId &&
+                            (item.turnStatus === 'queued' || item.turnStatus === 'running') &&
+                            !persistedTurnIds.has(item.turnId)
+                    );
+                    state.items = [...history, ...optimistic];
                     // History is authoritative: drop the realtime holding pools so
                     // the renderer stops showing the "待分配" group once the
                     // on-disk record has been replayed.
@@ -814,6 +918,7 @@ export class ChatBridgeManager {
                     this.notify(state);
                     break;
                 }
+                case 'protocol_error':
                 case 'error': {
                     // SESSION_NOT_FOUND before `session_ready` is the bridge
                     // answering a control action fired during the init window
@@ -854,6 +959,17 @@ export class ChatBridgeManager {
                     // Held until the user clicks × or refreshes the page —
                     // newer errors replace older ones, never stack.
                     state.lastError = { message: errorMessage, code: payload.code || '' };
+                    const endsLegacyTurn =
+                        event === 'error' &&
+                        payload.terminal !== false &&
+                        !payload.scope &&
+                        !payload.turnId &&
+                        state.turnStarted;
+                    const endsExplicitTurn = payload.terminal === true && payload.scope === 'turn';
+                    if (!endsLegacyTurn && !endsExplicitTurn) {
+                        this.notify(state);
+                        break;
+                    }
                     // Only reload history when the error came from inside a turn —
                     // that's when on-disk state may be authoritative over memory.
                     // Out-of-turn control errors don't touch history; reloading
@@ -861,6 +977,7 @@ export class ChatBridgeManager {
                     const wasInTurn = state.turnStarted;
                     state.typing = false;
                     state.turnStarted = false;
+                    state.activeTurnId = null;
                     state.cancelling = false;
                     this.notify(state);
                     if (wasInTurn) {
@@ -919,17 +1036,18 @@ export class ChatBridgeManager {
         // A new prompt starts a fresh turn — clear any lingering cancel intent
         // from a previous 停止 so its streamed output isn't dropped.
         state.cancelling = false;
-        const msgId = cryptoId();
+        const requestId = cryptoId();
         state.items = [
             ...state.items,
             {
-                id: msgId,
+                id: requestId,
                 kind: 'user',
                 content,
                 createdAt: Date.now(),
+                clientRequestId: requestId,
             },
         ];
-        state.ws.send(JSON.stringify(promptAction(session.id, content)));
+        state.ws.send(JSON.stringify(promptAction(session.id, requestId, content)));
         state.typing = true;
         this.notify(state);
     }
@@ -938,19 +1056,17 @@ export class ChatBridgeManager {
         const state = this.sessions.get(session.id);
         if (!state || !state.ws || state.ws.readyState !== WS_OPEN) return;
         if (!state.ready) return;
-        // The composer "停止" button stops generating: it cancels the active
-        // turn and drops any queued prompts but KEEPS the session alive, so
-        // the user can immediately continue chatting. (Fully terminating the
-        // session — close_session — is reached only via the sidebar's archive
-        // action in bridgeManager.destroy.) The bridge answers a cancelled
-        // turn with a normal `done`; we optimistically clear the running flags
-        // here so the composer flips back to Send without waiting for it.
+        // The composer "停止" button targets only the active durable Turn and
+        // keeps both the session and its queued Turns alive. Full teardown is
+        // reached only through bridgeManager.destroy(). We optimistically clear
+        // the running UI while retaining activeTurnId until turn_terminal
+        // confirms cancellation.
         //
-        // `cancelling` holds until that `done` arrives: the agent can still emit
+        // `cancelling` holds until that terminal arrives: the agent can still emit
         // a few frames before it honors the cancel, and without this guard
         // acceptTurnEvent would re-adopt them (turnStarted back to true) and the
         // stopped turn would visibly resume — the "点了停止还在继续" symptom.
-        state.ws.send(JSON.stringify(cancelTurnAction(session.id)));
+        state.ws.send(JSON.stringify(cancelTurnAction(session.id, state.activeTurnId ?? undefined)));
         state.typing = false;
         state.turnStarted = false;
         state.cancelling = true;
@@ -964,16 +1080,16 @@ export class ChatBridgeManager {
      * bubbles — `requestId` is the queue id echoed back in
      * `prompt_queued`.
      */
-    cancelQueued(session: ChatSession, requestId: string) {
+    cancelQueued(session: ChatSession, turnId: string) {
         const state = this.sessions.get(session.id);
         if (!state || !state.ws || state.ws.readyState !== WS_OPEN) return;
         if (!state.ready) return;
-        state.ws.send(JSON.stringify(cancelQueuedAction(session.id, requestId)));
+        state.ws.send(JSON.stringify(cancelQueuedAction(session.id, turnId)));
         // Optimistically clear the badge so the user gets immediate
         // feedback; the bridge's `prompt_cancelled` event will
         // arrive later and be a no-op.
         state.items = state.items.map(it => {
-            if (it.kind === 'user' && it.queueRequestId === requestId) {
+            if (it.kind === 'user' && it.queueRequestId === turnId) {
                 return { ...it, queueStatus: undefined, queueRequestId: undefined };
             }
             return it;
@@ -1251,8 +1367,20 @@ export class ChatBridgeManager {
      *     few deltas before it honors the cancel, and re-adopting them would
      *     resurrect a turn the user just stopped.
      */
-    private acceptTurnEvent(state: SessionBridgeState): boolean {
+    private acceptTurnEvent(state: SessionBridgeState, payload: BridgeEventPayload): boolean {
+        if (payload.turnId) {
+            if (state.activeTurnId && state.activeTurnId !== payload.turnId) {
+                return false;
+            }
+            if (payload.sequence !== undefined) {
+                const last = state.lastTurnSequence[payload.turnId] ?? 0;
+                if (payload.sequence <= last) return false;
+                state.lastTurnSequence[payload.turnId] = payload.sequence;
+            }
+            state.activeTurnId = payload.turnId;
+        }
         if (state.turnStarted) return true;
+        if (payload.event === 'turn_terminal' && state.cancelling) return true;
         if (!state.ready || state.cancelling) return false;
         state.turnStarted = true;
         state.typing = true;

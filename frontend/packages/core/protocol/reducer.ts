@@ -15,7 +15,7 @@ import type {
     ChatItem,
     ExitPlanModeState,
     ExitPlanOutcome,
-    HistoryItem,
+    TurnAwareHistoryItem,
     ToolCallInfo,
     ToolCallStatus,
 } from './types';
@@ -96,11 +96,12 @@ export function parseCreatedAt(value: string | undefined): number {
 // key on every reload, remounting every bubble (visible flicker, all
 // expand/collapse state lost). Positional ids are stable between
 // consecutive reloads of the same on-disk record.
-export function historyItemToChatItem(it: HistoryItem, index: number): ChatItem {
+export function historyItemToChatItem(it: TurnAwareHistoryItem, index: number): ChatItem {
     const createdAt = parseCreatedAt(it.createdAt);
+    const turn = it.turnId ? { turnId: it.turnId } : {};
     switch (it.kind) {
         case 'user':
-            return { id: `h-${index}`, kind: 'user', content: it.text, createdAt };
+            return { id: `h-${index}`, kind: 'user', content: it.text, createdAt, ...turn };
         case 'assistant_text':
             return {
                 id: `h-${index}`,
@@ -108,9 +109,10 @@ export function historyItemToChatItem(it: HistoryItem, index: number): ChatItem 
                 content: it.text,
                 createdAt,
                 streaming: false,
+                ...turn,
             };
         case 'thinking':
-            return { id: `h-${index}`, kind: 'thinking', content: it.text, createdAt };
+            return { id: `h-${index}`, kind: 'thinking', content: it.text, createdAt, ...turn };
         case 'tool_use': {
             const inputJson = typeof it.input === 'string' ? it.input : JSON.stringify(it.input ?? {}, null, 2);
             const call: ToolCallInfo = {
@@ -126,6 +128,7 @@ export function historyItemToChatItem(it: HistoryItem, index: number): ChatItem 
                 calls: [call],
                 createdAt,
                 ...(call.toolCallId ? { toolCallId: call.toolCallId } : {}),
+                ...turn,
             };
         }
         case 'tool_result':
@@ -136,6 +139,7 @@ export function historyItemToChatItem(it: HistoryItem, index: number): ChatItem 
                 isError: !!it.isError,
                 createdAt,
                 ...(it.toolCallId ? { toolCallId: it.toolCallId } : {}),
+                ...turn,
             };
     }
 }
@@ -145,10 +149,10 @@ export function historyItemToChatItem(it: HistoryItem, index: number): ChatItem 
  * `items` array; falls back to the legacy `{role,text}[]` messages shape.
  */
 export function normalizeHistory(
-    items: HistoryItem[] | undefined,
+    items: TurnAwareHistoryItem[] | undefined,
     messages: Array<{ role: string; text: string }> | undefined
 ): ChatItem[] {
-    const historyItems: HistoryItem[] =
+    const historyItems: TurnAwareHistoryItem[] =
         items && items.length > 0
             ? items
             : (messages || []).map(m => ({
@@ -177,11 +181,11 @@ export function flushStreamingCursor(items: ChatItem[]): ChatItem[] {
  * assistant_text, or starts a new one — clearing the queue badge off the oldest
  * still-queued user bubble (the bridge drains its promptQueue FIFO).
  */
-export function applyTextDelta(items: ChatItem[], delta: string, type: string): ChatItem[] {
+export function applyTextDelta(items: ChatItem[], delta: string, type: string, turnId?: string): ChatItem[] {
     const next = [...items];
     const last = next[next.length - 1];
     if (type === 'thought') {
-        if (last && last.kind === 'thinking') {
+        if (last && last.kind === 'thinking' && (!turnId || last.turnId === turnId)) {
             next[next.length - 1] = {
                 ...last,
                 content: last.content + delta,
@@ -192,10 +196,11 @@ export function applyTextDelta(items: ChatItem[], delta: string, type: string): 
                 kind: 'thinking',
                 content: delta,
                 createdAt: Date.now(),
+                ...(turnId ? { turnId } : {}),
             });
         }
     } else {
-        if (last && last.kind === 'assistant_text' && last.streaming) {
+        if (last && last.kind === 'assistant_text' && last.streaming && (!turnId || last.turnId === turnId)) {
             next[next.length - 1] = {
                 ...last,
                 content: last.content + delta,
@@ -207,8 +212,8 @@ export function applyTextDelta(items: ChatItem[], delta: string, type: string): 
             // promptQueue FIFO, so the first remaining queued bubble just started.
             for (let i = 0; i < next.length; i++) {
                 const it = next[i];
-                if (it.kind === 'user' && it.queueStatus === 'queued') {
-                    next[i] = { ...it, queueStatus: undefined };
+                if (it.kind === 'user' && it.queueStatus === 'queued' && (!turnId || it.turnId === turnId)) {
+                    next[i] = { ...it, queueStatus: undefined, turnStatus: 'running' };
                     break;
                 }
             }
@@ -218,6 +223,7 @@ export function applyTextDelta(items: ChatItem[], delta: string, type: string): 
                 content: delta,
                 createdAt: Date.now(),
                 streaming: true,
+                ...(turnId ? { turnId } : {}),
             });
         }
     }
@@ -257,6 +263,60 @@ export function applyPromptCancelled(items: ChatItem[]): { items: ChatItem[]; mu
         return it;
     });
     return mutated ? { items: next, mutated } : { items, mutated };
+}
+
+export interface RealtimeTurnState {
+    id?: string;
+    turnId?: string;
+    clientRequestId?: string;
+    requestId?: string;
+    status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+    promptText?: string;
+    queuePosition?: number;
+}
+
+export function applyTurnState(items: ChatItem[], state: RealtimeTurnState): ChatItem[] {
+    const turnId = state.turnId ?? state.id;
+    const clientRequestId = state.clientRequestId ?? state.requestId;
+    if (!turnId) return items;
+
+    let matched = false;
+    let next = items.map(item => {
+        const isOptimisticUser = item.kind === 'user' && !!clientRequestId && item.clientRequestId === clientRequestId;
+        const belongsToTurn = item.turnId === turnId;
+        if (!isOptimisticUser && !belongsToTurn) return item;
+        matched = true;
+        return {
+            ...item,
+            turnId,
+            turnStatus: state.status,
+            ...(item.kind === 'user'
+                ? {
+                      queueStatus: state.status === 'queued' ? ('queued' as const) : undefined,
+                      queueRequestId: state.status === 'queued' ? turnId : undefined,
+                      queuePosition: state.queuePosition,
+                  }
+                : {}),
+        };
+    });
+    if (!matched && state.promptText) {
+        next = [
+            ...next,
+            {
+                id: `turn-${turnId}`,
+                kind: 'user',
+                content: state.promptText,
+                createdAt: Date.now(),
+                clientRequestId,
+                turnId,
+                turnStatus: state.status,
+                queueStatus: state.status === 'queued' ? ('queued' as const) : undefined,
+                queueRequestId: state.status === 'queued' ? turnId : undefined,
+                queuePosition: state.queuePosition,
+            },
+        ];
+    }
+    return next;
 }
 
 /**

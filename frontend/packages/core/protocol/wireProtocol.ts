@@ -9,7 +9,7 @@
 // parse `payload`. Top-level fields shared with Go's peek struct
 // (WsMessage) must still match its JSON tags exactly.
 
-import type { HistoryItem, ToolCallDiff, ToolCallLocation } from './types';
+import type { TurnAwareHistoryItem, ToolCallDiff, ToolCallLocation } from './types';
 import type { PermissionDecision, PermissionMode } from './permission';
 
 // ── Inbound: events the bridge emits ───────────────────────────────────────
@@ -24,6 +24,10 @@ export type BridgeEvent =
     | 'plan'
     | 'prompt_queued'
     | 'prompt_cancelled'
+    | 'turn_state'
+    | 'turn_sync'
+    | 'turn_terminal'
+    | 'protocol_error'
     | 'text_delta'
     | 'tool_call'
     | 'tool_result'
@@ -50,6 +54,18 @@ export interface BridgeEventPayload {
     type?: string;
     arguments?: unknown;
     requestId?: string;
+    turnId?: string;
+    sequence?: number;
+    status?: string;
+    stopReason?: string;
+    finalAnswer?: string;
+    scope?: 'turn' | 'control' | 'session' | 'transport';
+    terminal?: boolean;
+    promptText?: string;
+    queuePosition?: number;
+    turnProtocolVersion?: number;
+    active?: TurnStatePayload;
+    queued?: TurnStatePayload[];
     /** Session id on cross-session events (session_deleted, session_forked, …). */
     sessionId?: string;
     message?: string;
@@ -73,16 +89,24 @@ export interface BridgeEventPayload {
      * ACP ToolCallStatus on tool_call / tool_call_update events:
      * pending | in_progress | completed | failed.
      */
-    status?: string;
     locations?: ToolCallLocation[];
     diffs?: ToolCallDiff[];
     messages?: Array<{ role: string; text: string }>;
-    items?: HistoryItem[];
+    items?: TurnAwareHistoryItem[];
     /**
      * Structured event data (session_meta / mode_changed). Opaque to the Go
      * relay by convention; each consumer narrows it per event.
      */
     payload?: unknown;
+}
+
+export interface TurnStatePayload {
+    id?: string;
+    turnId?: string;
+    clientRequestId?: string;
+    requestId?: string;
+    status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+    promptText?: string;
 }
 
 // ── Outbound: actions the client sends ──────────────────────────────────────
@@ -96,24 +120,24 @@ export function getHistoryAction(args: { sessionId: string; agentType: string; a
     };
 }
 
-export function promptAction(sessionId: string, text: string) {
-    return { action: 'prompt', sessionId, text };
+export function promptAction(sessionId: string, requestId: string, text: string) {
+    return { action: 'prompt', sessionId, requestId, text };
 }
 
-// Stop the active turn (and drop any queued prompts) WITHOUT tearing the
-// session down — the user can immediately keep chatting in the same session.
+// Stop the active turn WITHOUT tearing the session down or dropping queued
+// Turns — the user can immediately keep chatting in the same session.
 // Distinct from close_session, which fully terminates the session and is only
 // reached via the sidebar's archive action (bridgeManager.destroy).
-export function cancelTurnAction(sessionId: string) {
-    return { action: 'cancel_turn', sessionId };
+export function cancelTurnAction(sessionId: string, turnId?: string) {
+    return { action: 'cancel_turn', sessionId, ...(turnId ? { turnId } : {}) };
 }
 
 export function closeSessionAction(sessionId: string) {
     return { action: 'close_session', sessionId };
 }
 
-export function cancelQueuedAction(sessionId: string, requestId: string) {
-    return { action: 'cancel_queued', sessionId, requestId };
+export function cancelQueuedAction(sessionId: string, turnId: string) {
+    return { action: 'cancel_turn', sessionId, turnId };
 }
 
 export function respondPermissionAction(
