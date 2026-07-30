@@ -72,6 +72,7 @@ docs/
 | 功能 | 文档 | 状态侧重 |
 |------|------|----------|
 | Chat UI / 任务看板 Tab | [chat-ui/](./features/chat-ui/) | 实现计划 + 走查 |
+| Agent Turn | [Turn 权威 Journal 迁移](./features/turn-model/journal-authority-migration.md) | 方案 A 已实现：1ACP Journal 真源、SQLite 异步投影、重连恢复 |
 | 项目模型（Workspace → ProjectItem） | [project-model/](./features/project-model/) | 已落地设计 + 走查；表名迁移见名称定义表 |
 | Issue / ProjectItem 话题模型 | [issue-model/](./features/issue-model/) | 设计 + GitHub 字段映射；主实体 = ProjectItem |
 | 可验证完成门禁 | [verification-gate/](./features/verification-gate/) | 提案中 |
