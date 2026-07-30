@@ -199,9 +199,8 @@ func (s *AgentTurnStore) NextQueued(sessionID string) (AgentTurn, bool, error) {
 	return turn, true, nil
 }
 
-// QueuedBySession returns the durable FIFO queue projection used by reconnect
-// sync and dispatch. Runtime payload bytes remain in memory because queued
-// Turns are deliberately not replayed after a backend restart.
+// QueuedBySession returns the SQLite queue projection. 1ACP owns dispatch and
+// reconnect state; callers use this view for audits and projection repair.
 func (s *AgentTurnStore) QueuedBySession(sessionID string) ([]AgentTurn, error) {
 	rows, err := s.db.sql.Query(
 		`SELECT `+agentTurnCols+` FROM agent_turns

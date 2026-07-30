@@ -103,6 +103,10 @@ type ProjectEvent struct {
 	ErrorText     string             `json:"errorText,omitempty"`
 	Sequence      int64              `json:"sequence"`
 	CreatedAt     time.Time          `json:"createdAt"`
+	// AllowUnprojectedTurn is set only by a trusted live 1ACP mutation
+	// context. It lets the immutable event commit when agent_turns is missing
+	// or stale, without weakening the default DB-backed validation path.
+	AllowUnprojectedTurn bool `json:"-"`
 }
 
 type ProjectEventListOptions struct {
@@ -136,4 +140,7 @@ type MutationContext struct {
 	TaskRunID     string
 	CorrelationID string
 	Origin        string
+	// AuthoritativeTurn means the live 1ACP Journal state already validated
+	// this Turn. It is server-derived and never accepted from request input.
+	AuthoritativeTurn bool
 }

@@ -48,12 +48,20 @@ func (h *Handler) resolveMutationContext(r *http.Request, projectID string) (met
 	if rec.WorkspaceID != projectID {
 		return meta.MutationContext{}, meta.ErrProjectMismatch
 	}
-	if h.turnStore == nil {
-		return meta.MutationContext{}, fmt.Errorf("Turn store is unavailable")
+	var turn meta.AgentTurn
+	ok = false
+	authoritative := false
+	if h.acpxClient != nil {
+		turn, ok, authoritative = h.acpxClient.authoritativeRunningTurn(sessionID)
 	}
-	turn, ok, err := h.turnStore.RunningBySession(sessionID)
-	if err != nil {
-		return meta.MutationContext{}, err
+	if !authoritative {
+		if h.turnStore == nil {
+			return meta.MutationContext{}, fmt.Errorf("Turn state is unavailable")
+		}
+		turn, ok, err = h.turnStore.RunningBySession(sessionID)
+		if err != nil {
+			return meta.MutationContext{}, err
+		}
 	}
 	if !ok {
 		return meta.MutationContext{}, meta.ErrTurnNotRunning
@@ -62,13 +70,14 @@ func (h *Handler) resolveMutationContext(r *http.Request, projectID string) (met
 		return meta.MutationContext{}, meta.ErrProjectMismatch
 	}
 	return meta.MutationContext{
-		ProjectID:     projectID,
-		ActorKind:     "agent",
-		ActorName:     turn.AgentType,
-		SessionID:     sessionID,
-		TurnID:        turn.ID,
-		CorrelationID: turn.ID,
-		Origin:        origin,
+		ProjectID:         projectID,
+		ActorKind:         "agent",
+		ActorName:         turn.AgentType,
+		SessionID:         sessionID,
+		TurnID:            turn.ID,
+		CorrelationID:     turn.ID,
+		Origin:            origin,
+		AuthoritativeTurn: authoritative,
 	}, nil
 }
 
@@ -93,22 +102,23 @@ func mutationEvent(ctx meta.MutationContext, targetType, targetID, operation str
 	beforeJSON, _ := json.Marshal(before)
 	afterJSON, _ := json.Marshal(after)
 	return meta.ProjectEvent{
-		ID:            newID(),
-		ProjectID:     ctx.ProjectID,
-		CorrelationID: ctx.CorrelationID,
-		TurnID:        ctx.TurnID,
-		SessionID:     ctx.SessionID,
-		TaskRunID:     ctx.TaskRunID,
-		ActorKind:     ctx.ActorKind,
-		ActorName:     ctx.ActorName,
-		Origin:        ctx.Origin,
-		EventType:     targetType + "." + operation,
-		TargetType:    targetType,
-		TargetID:      targetID,
-		Operation:     operation,
-		Before:        beforeJSON,
-		After:         afterJSON,
-		Status:        meta.ProjectEventSucceeded,
+		ID:                   newID(),
+		ProjectID:            ctx.ProjectID,
+		CorrelationID:        ctx.CorrelationID,
+		TurnID:               ctx.TurnID,
+		SessionID:            ctx.SessionID,
+		TaskRunID:            ctx.TaskRunID,
+		ActorKind:            ctx.ActorKind,
+		ActorName:            ctx.ActorName,
+		Origin:               ctx.Origin,
+		EventType:            targetType + "." + operation,
+		TargetType:           targetType,
+		TargetID:             targetID,
+		Operation:            operation,
+		Before:               beforeJSON,
+		After:                afterJSON,
+		Status:               meta.ProjectEventSucceeded,
+		AllowUnprojectedTurn: ctx.AuthoritativeTurn,
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/scottzx/1Agents/backend/internal/meta"
@@ -18,6 +19,7 @@ func newTurnBridgeTest(t *testing.T) (*AcpxClient, *ActiveBridge, *meta.AgentTur
 	if err != nil {
 		t.Fatalf("OpenDefault: %v", err)
 	}
+	t.Cleanup(func() { _ = db.Close() })
 	if err := db.EnsureProject("project-1", "Turn test", t.TempDir()); err != nil {
 		t.Fatalf("EnsureProject: %v", err)
 	}
@@ -46,244 +48,190 @@ func newTurnBridgeTest(t *testing.T) (*AcpxClient, *ActiveBridge, *meta.AgentTur
 	}
 	serverConn := <-serverConnCh
 	t.Cleanup(func() {
-		clientConn.Close()
-		serverConn.Close()
+		_ = clientConn.Close()
+		_ = serverConn.Close()
 	})
 
 	store := meta.NewAgentTurnStore(db)
 	bridge := &ActiveBridge{
-		SessionID:     "session-1",
-		ProjectID:     "project-1",
-		WorkspacePath: t.TempDir(),
-		AgentType:     "codex",
-		ServerConn:    clientConn,
-		MsgChan:       make(chan []byte, 32),
-		turnStore:     store,
+		SessionID:           "session-1",
+		ProjectID:           "project-1",
+		WorkspacePath:       t.TempDir(),
+		AgentType:           "codex",
+		ServerConn:          clientConn,
+		MsgChan:             make(chan []byte, 32),
+		turnStore:           store,
+		turnProtocolVersion: 3,
 	}
-	return &AcpxClient{}, bridge, store, serverConn
+	client := &AcpxClient{
+		bridges:   map[string]*ActiveBridge{"session-1": bridge},
+		turnStore: store,
+	}
+	return client, bridge, store, serverConn
 }
 
-func queueTestPrompt(t *testing.T, client *AcpxClient, bridge *ActiveBridge, requestID, text string) {
-	t.Helper()
-	raw, _ := json.Marshal(WsMessage{
-		Action:    "prompt",
-		SessionID: bridge.SessionID,
-		RequestId: requestID,
-		Text:      text,
-	})
+func TestQueuePromptForwardsCanonicalIdentityWithoutDatabasePrecondition(t *testing.T) {
+	client, bridge, _, runtime := newTurnBridgeTest(t)
+	bridge.turnStore = nil
+
+	raw := []byte(`{"action":"prompt","sessionId":"session-1","requestId":"request-1","text":"hello"}`)
 	handled, err := client.queuePrompt(bridge, WsMessage{
 		Action:    "prompt",
 		SessionID: bridge.SessionID,
-		RequestId: requestID,
-		Text:      text,
+		RequestId: "request-1",
+		Text:      "hello",
 	}, raw)
 	if err != nil || !handled {
-		t.Fatalf("queuePrompt(%s): handled=%v err=%v", requestID, handled, err)
+		t.Fatalf("queuePrompt: handled=%v err=%v", handled, err)
+	}
+	var forwarded WsMessage
+	if err := runtime.ReadJSON(&forwarded); err != nil {
+		t.Fatalf("ReadJSON: %v", err)
+	}
+	if forwarded.TurnID != "" || forwarded.RequestId != "request-1" ||
+		!forwarded.TurnManaged {
+		t.Fatalf("forwarded identity: turnId=%q requestId=%q turnManaged=%v",
+			forwarded.TurnID, forwarded.RequestId, forwarded.TurnManaged)
 	}
 }
 
-func readForwardedPrompt(t *testing.T, conn *websocket.Conn) WsMessage {
-	t.Helper()
+func TestQueuePromptRejectsStale1ACPProtocol(t *testing.T) {
+	client, bridge, _, _ := newTurnBridgeTest(t)
+	bridge.turnProtocolVersion = 2
+	handled, err := client.queuePrompt(
+		bridge,
+		WsMessage{Action: "prompt", RequestId: "request-1", Text: "hello"},
+		[]byte(`{"action":"prompt","requestId":"request-1","text":"hello"}`),
+	)
+	if !handled || err == nil || !strings.Contains(err.Error(), "protocol v3") {
+		t.Fatalf("queuePrompt stale protocol: handled=%v err=%v", handled, err)
+	}
+}
+
+func TestProjectAuthoritativeTurnRebuildsLifecycleIdempotently(t *testing.T) {
+	_, bridge, store, _ := newTurnBridgeTest(t)
+	base := time.Date(2026, 7, 30, 2, 3, 4, 0, time.UTC)
+	queued := meta.AgentTurn{
+		ID:                 "turn-1",
+		ProjectID:          bridge.ProjectID,
+		SessionID:          bridge.SessionID,
+		ClientRequestID:    "turn-1",
+		AgentType:          "codex",
+		Status:             meta.AgentTurnQueued,
+		PromptText:         "repair projection",
+		RequestFingerprint: "fingerprint",
+		LastEventSeq:       1,
+		CreatedAt:          base,
+		UpdatedAt:          base,
+	}
+	if _, err := projectAuthoritativeTurn(store, queued); err != nil {
+		t.Fatalf("project queued: %v", err)
+	}
+	startedAt := base.Add(time.Second)
+	running := queued
+	running.Status = meta.AgentTurnRunning
+	running.StartedAt = &startedAt
+	running.UpdatedAt = startedAt
+	running.LastEventSeq = 2
+	if _, err := projectAuthoritativeTurn(store, running); err != nil {
+		t.Fatalf("project running: %v", err)
+	}
+	completedAt := startedAt.Add(time.Second)
+	completed := running
+	completed.Status = meta.AgentTurnCompleted
+	completed.FinalAnswer = "done"
+	completed.StopReason = "end_turn"
+	completed.TerminalSource = "live_runtime"
+	completed.CompletedAt = &completedAt
+	completed.UpdatedAt = completedAt
+	completed.LastEventSeq = 3
+	if _, err := projectAuthoritativeTurn(store, completed); err != nil {
+		t.Fatalf("project completed: %v", err)
+	}
+	if _, err := projectAuthoritativeTurn(store, completed); err != nil {
+		t.Fatalf("repeat completed projection: %v", err)
+	}
+
+	stored, ok, err := store.Get("turn-1")
+	if err != nil || !ok {
+		t.Fatalf("Get: ok=%v err=%v", ok, err)
+	}
+	if stored.Status != meta.AgentTurnCompleted || stored.FinalAnswer != "done" ||
+		stored.TerminalSource != "live_runtime" || stored.LastEventSeq != 3 {
+		t.Fatalf("stored projection: %+v", stored)
+	}
+}
+
+func TestProjectAuthoritativeTerminalRebuildsMissingHistory(t *testing.T) {
+	_, bridge, store, _ := newTurnBridgeTest(t)
+	completedAt := time.Date(2026, 7, 29, 10, 40, 0, 0, time.UTC)
+	incoming := meta.AgentTurn{
+		ID:              "legacy-user-message-id",
+		ProjectID:       bridge.ProjectID,
+		SessionID:       bridge.SessionID,
+		ClientRequestID: "legacy-user-message-id",
+		AgentType:       "codex",
+		Status:          meta.AgentTurnCompleted,
+		PromptText:      "legacy prompt",
+		FinalAnswer:     "legacy answer",
+		TerminalSource:  "legacy_runtime_history",
+		LastEventSeq:    1,
+		CreatedAt:       completedAt.Add(-time.Minute),
+		UpdatedAt:       completedAt,
+		CompletedAt:     &completedAt,
+	}
+	if _, err := projectAuthoritativeTurn(store, incoming); err != nil {
+		t.Fatalf("project terminal history: %v", err)
+	}
+	stored, ok, err := store.Get(incoming.ID)
+	if err != nil || !ok || stored.Status != meta.AgentTurnCompleted ||
+		stored.FinalAnswer != incoming.FinalAnswer {
+		t.Fatalf("rebuilt Turn: %+v ok=%v err=%v", stored, ok, err)
+	}
+}
+
+func TestAuthoritativeStateDrivesRunningTurnWithoutProjection(t *testing.T) {
+	client, bridge, _, _ := newTurnBridgeTest(t)
+	bridge.turnStore = nil
+	client.turnStore = nil
+	running := meta.AgentTurn{
+		ID:         "turn-live",
+		SessionID:  bridge.SessionID,
+		ProjectID:  bridge.ProjectID,
+		AgentType:  "codex",
+		Status:     meta.AgentTurnRunning,
+		PromptText: "live",
+	}
+	client.acceptAuthoritativeTurn(bridge, running, false)
+
+	got, ok, authoritative := client.authoritativeRunningTurn(bridge.SessionID)
+	if !authoritative || !ok || got.ID != running.ID {
+		t.Fatalf("authoritative running Turn: %+v ok=%v authoritative=%v", got, ok, authoritative)
+	}
+}
+
+func TestTerminalProjectionFailureDoesNotLeaveLiveTurnActive(t *testing.T) {
+	client, bridge, _, _ := newTurnBridgeTest(t)
+	bridge.turnStore = nil
+	client.turnStore = nil
+	running := meta.AgentTurn{
+		ID:        "turn-live",
+		SessionID: bridge.SessionID,
+		ProjectID: bridge.ProjectID,
+		AgentType: "codex",
+		Status:    meta.AgentTurnRunning,
+	}
+	client.acceptAuthoritativeTurn(bridge, running, false)
+
+	raw := []byte(`{"event":"turn_terminal","turnId":"turn-live","status":"completed","finalAnswer":"done","journalSequence":2}`)
 	var msg WsMessage
-	if err := conn.ReadJSON(&msg); err != nil {
-		t.Fatalf("ReadJSON forwarded prompt: %v", err)
+	if err := json.Unmarshal(raw, &msg); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
 	}
-	return msg
-}
-
-func TestTurnBridgeSerializesThreePrompts(t *testing.T) {
-	client, bridge, store, runtime := newTurnBridgeTest(t)
-
-	queueTestPrompt(t, client, bridge, "request-1", "first")
-	firstPrompt := readForwardedPrompt(t, runtime)
-	queueTestPrompt(t, client, bridge, "request-2", "second")
-	queueTestPrompt(t, client, bridge, "request-3", "third")
-
-	bridge.mu.Lock()
-	if bridge.activeTurn == nil || len(bridge.pendingTurns) != 2 {
-		t.Fatalf("active=%v pending=%d, want one active and two queued", bridge.activeTurn, len(bridge.pendingTurns))
+	if _, explicit := client.finishActiveTurn(bridge, msg, raw, nil, nil); !explicit {
+		t.Fatal("terminal event was not consumed")
 	}
-	firstID := bridge.activeTurn.Turn.ID
-	secondID := bridge.pendingTurns[0].Turn.ID
-	thirdID := bridge.pendingTurns[1].Turn.ID
-	bridge.mu.Unlock()
-	if firstPrompt.TurnID != firstID {
-		t.Fatalf("first forwarded turnId=%q, want %q", firstPrompt.TurnID, firstID)
-	}
-	if firstPrompt.RequestId != firstID {
-		t.Fatalf("runtime requestId=%q, want canonical Turn %q", firstPrompt.RequestId, firstID)
-	}
-
-	doneRaw := []byte(`{"event":"turn_terminal","turnId":"` + firstID + `","status":"completed","finalAnswer":"answer one","runtimeRequestId":"` + firstID + `","promptMessageId":"` + firstID + `","stopReason":"end_turn","sequence":7}`)
-	doneRaw, next, explicit, err := client.finishActiveTurn(
-		bridge, WsMessage{
-			Event: "turn_terminal", TurnID: firstID, Status: "completed",
-			FinalAnswer: "answer one", RuntimeRequestID: firstID,
-			PromptMessageID: firstID, StopReason: "end_turn", Sequence: 7,
-		}, doneRaw, nil, nil,
-	)
-	if err != nil || !explicit || next == nil || next.Turn.ID != secondID {
-		t.Fatalf("finish first: explicit=%v next=%+v err=%v", explicit, next, err)
-	}
-	var done WsMessage
-	if err := json.Unmarshal(doneRaw, &done); err != nil || done.TurnID != firstID {
-		t.Fatalf("done binding: msg=%+v err=%v", done, err)
-	}
-	if err := client.startTurn(bridge, next); err != nil {
-		t.Fatalf("start second: %v", err)
-	}
-	if got := readForwardedPrompt(t, runtime); got.TurnID != secondID || got.Text != "second" {
-		t.Fatalf("second forwarded prompt = %+v", got)
-	}
-
-	errorRaw := []byte(`{"event":"turn_terminal","turnId":"` + secondID + `","status":"failed","error":{"code":"agent_error","message":"second failed"}}`)
-	terminalError := &struct {
-		Code    string `json:"code,omitempty"`
-		Message string `json:"message,omitempty"`
-	}{Code: "agent_error", Message: "second failed"}
-	errorRaw, next, explicit, err = client.finishActiveTurn(
-		bridge,
-		WsMessage{Event: "turn_terminal", TurnID: secondID, Status: "failed", Error: terminalError},
-		errorRaw, nil, nil,
-	)
-	if err != nil || !explicit || next == nil || next.Turn.ID != thirdID {
-		t.Fatalf("finish second: explicit=%v next=%+v err=%v", explicit, next, err)
-	}
-	if err := json.Unmarshal(errorRaw, &done); err != nil || done.TurnID != secondID {
-		t.Fatalf("error binding: msg=%+v err=%v", done, err)
-	}
-	if err := client.startTurn(bridge, next); err != nil {
-		t.Fatalf("start third: %v", err)
-	}
-	if got := readForwardedPrompt(t, runtime); got.TurnID != thirdID || got.Text != "third" {
-		t.Fatalf("third forwarded prompt = %+v", got)
-	}
-
-	_, next, explicit, err = client.finishActiveTurn(
-		bridge,
-		WsMessage{
-			Event: "turn_terminal", TurnID: thirdID, Status: "cancelled",
-			StopReason: "cancelled_by_user",
-		},
-		[]byte(`{"event":"turn_terminal","status":"cancelled"}`), nil, nil,
-	)
-	if err != nil || !explicit || next != nil {
-		t.Fatalf("finish third: explicit=%v next=%+v err=%v", explicit, next, err)
-	}
-
-	want := map[string]meta.AgentTurnStatus{
-		firstID:  meta.AgentTurnCompleted,
-		secondID: meta.AgentTurnFailed,
-		thirdID:  meta.AgentTurnCancelled,
-	}
-	for id, status := range want {
-		turn, ok, err := store.Get(id)
-		if err != nil || !ok || turn.Status != status {
-			t.Fatalf("Turn %s: ok=%v status=%q err=%v, want %q", id, ok, turn.Status, err, status)
-		}
-	}
-}
-
-func TestTurnBridgeGenericErrorAndMismatchedTerminalDoNotFinishActive(t *testing.T) {
-	t.Setenv("ONEAGENTS_HOME", t.TempDir())
-	db, err := meta.OpenDefault()
-	if err != nil {
-		t.Fatalf("OpenDefault: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	if err := db.EnsureProject("project-1", "Turn test", t.TempDir()); err != nil {
-		t.Fatalf("EnsureProject: %v", err)
-	}
-	if err := meta.NewSessionStore(db).Add(meta.ChatSessionRecord{
-		ID: "session-1", WorkspaceID: "project-1", AgentType: "codex",
-	}); err != nil {
-		t.Fatalf("Add session: %v", err)
-	}
-	store := meta.NewAgentTurnStore(db)
-	active, _, err := store.Create(meta.AgentTurn{
-		ID: "turn-active", ProjectID: "project-1", SessionID: "session-1",
-		ClientRequestID: "request-1", PromptText: "active",
-	})
-	if err != nil {
-		t.Fatalf("Create active Turn: %v", err)
-	}
-	active, err = store.Transition(active.ID, meta.AgentTurnTransition{Status: meta.AgentTurnRunning})
-	if err != nil {
-		t.Fatalf("Start active Turn: %v", err)
-	}
-	client := &AcpxClient{}
-	bridge := &ActiveBridge{
-		SessionID: "session-1",
-		turnStore: store,
-		activeTurn: &TurnContext{
-			Turn: active,
-		},
-	}
-
-	if _, next, explicit, err := client.finishActiveTurn(
-		bridge,
-		WsMessage{Event: "error", TurnID: active.ID, Code: "SET_MODE_FAILED"},
-		[]byte(`{"event":"error"}`), nil, nil,
-	); err != nil || explicit || next != nil {
-		t.Fatalf("generic error: explicit=%v next=%+v err=%v", explicit, next, err)
-	}
-	if _, next, explicit, err := client.finishActiveTurn(
-		bridge,
-		WsMessage{Event: "turn_terminal", TurnID: "stale-turn", Status: "completed"},
-		[]byte(`{"event":"turn_terminal"}`), nil, nil,
-	); err != nil || explicit || next != nil {
-		t.Fatalf("mismatched terminal: explicit=%v next=%+v err=%v", explicit, next, err)
-	}
-	stored, ok, err := store.Get(active.ID)
-	if err != nil || !ok || stored.Status != meta.AgentTurnRunning {
-		t.Fatalf("active after non-terminal events: %+v ok=%v err=%v", stored, ok, err)
-	}
-}
-
-func TestTurnBridgeCancelsQueuedTurnWithoutForwarding(t *testing.T) {
-	client, bridge, store, runtime := newTurnBridgeTest(t)
-	queueTestPrompt(t, client, bridge, "request-1", "active")
-	_ = readForwardedPrompt(t, runtime)
-	queueTestPrompt(t, client, bridge, "request-2", "queued")
-
-	bridge.mu.Lock()
-	queuedID := bridge.pendingTurns[0].Turn.ID
-	bridge.mu.Unlock()
-	handled, err := client.cancelPendingTurn(bridge, queuedID)
-	if err != nil || !handled {
-		t.Fatalf("cancelPendingTurn: handled=%v err=%v", handled, err)
-	}
-	turn, ok, err := store.Get(queuedID)
-	if err != nil || !ok || turn.Status != meta.AgentTurnCancelled {
-		t.Fatalf("queued Turn after cancel: %+v ok=%v err=%v", turn, ok, err)
-	}
-	bridge.mu.Lock()
-	pending := len(bridge.pendingTurns)
-	bridge.mu.Unlock()
-	if pending != 0 {
-		t.Fatalf("pending Turns=%d, want 0", pending)
-	}
-}
-
-func TestTurnBridgeRuntimeLossFailsActiveAndCancelsQueue(t *testing.T) {
-	client, bridge, store, runtime := newTurnBridgeTest(t)
-	queueTestPrompt(t, client, bridge, "request-1", "active")
-	_ = readForwardedPrompt(t, runtime)
-	queueTestPrompt(t, client, bridge, "request-2", "queued")
-
-	bridge.mu.Lock()
-	activeID := bridge.activeTurn.Turn.ID
-	queuedID := bridge.pendingTurns[0].Turn.ID
-	bridge.mu.Unlock()
-	bridge.appendTurnText("partial")
-	client.failOutstandingTurns(bridge, nil, nil)
-
-	active, _, _ := store.Get(activeID)
-	queued, _, _ := store.Get(queuedID)
-	if active.Status != meta.AgentTurnFailed || active.ErrorCode != "runtime_lost" || active.FinalAnswer != "partial" {
-		t.Fatalf("active after runtime loss: %+v", active)
-	}
-	if queued.Status != meta.AgentTurnCancelled || queued.ErrorCode != "runtime_lost" {
-		t.Fatalf("queued after runtime loss: %+v", queued)
+	if _, ok, authoritative := client.authoritativeRunningTurn(bridge.SessionID); !authoritative || ok {
+		t.Fatalf("running Turn after terminal: ok=%v authoritative=%v", ok, authoritative)
 	}
 }

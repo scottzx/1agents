@@ -2,7 +2,6 @@ package agent
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -47,6 +46,7 @@ type ActiveBridge struct {
 	ProjectID     string
 	WorkspacePath string
 	mu            sync.Mutex
+	projectionMu  sync.Mutex
 	ClientConn    *websocket.Conn
 	ServerConn    *websocket.Conn
 	// MsgChan carries raw server→client frames. The relay forwards bytes
@@ -80,9 +80,18 @@ type ActiveBridge struct {
 	// the task timeline (symmetric to writeAgentReply), so the conversation
 	// is captured server-side regardless of which UI sent the prompt.
 	tasksStore   *TasksStore
+	chatStore    *Store
 	turnStore    *meta.AgentTurnStore
 	activeTurn   *TurnContext
 	pendingTurns []*TurnContext
+	// turnProtocolVersion is advertised by 1ACP at session_ready. Version 3
+	// is the first version where 1ACP owns the authoritative Turn Journal.
+	turnProtocolVersion int
+	// turnSyncReceived is set only after a 1ACP Journal snapshot or state
+	// event arrives. A live Browser bridge denies mutation attribution during
+	// this short bootstrap window; afterwards this in-memory state is
+	// authoritative. Headless paths without a bridge retain the DB fallback.
+	turnSyncReceived bool
 	// turnText accumulates the assistant's streamed output text for the
 	// current turn; reset on each tool call so that at `done` it holds the
 	// final assistant message (text after the last tool call).
@@ -138,31 +147,21 @@ func (b *ActiveBridge) takeTurnText() string {
 }
 
 type AcpxClient struct {
-	serverPort int
-	mu         sync.Mutex
-	bridges    map[string]*ActiveBridge
-	turnStore  *meta.AgentTurnStore
+	serverPort     int
+	mu             sync.Mutex
+	bridges        map[string]*ActiveBridge
+	turnStateKnown map[string]bool
+	turnStore      *meta.AgentTurnStore
 }
 
 func NewAcpxClient(serverPort int, stores ...*meta.AgentTurnStore) *AcpxClient {
 	c := &AcpxClient{
-		serverPort: serverPort,
-		bridges:    make(map[string]*ActiveBridge),
+		serverPort:     serverPort,
+		bridges:        make(map[string]*ActiveBridge),
+		turnStateKnown: make(map[string]bool),
 	}
 	if len(stores) > 0 {
 		c.turnStore = stores[0]
-	}
-	if c.turnStore != nil {
-		failed, cancelled, reconciled, err := recoverInterruptedTurns(
-			c.turnStore,
-			defaultRuntimeStateDir(),
-		)
-		if err != nil {
-			log.Printf("[acpx_client] Recover interrupted Turns failed: %v", err)
-		} else if failed > 0 || cancelled > 0 || reconciled > 0 {
-			log.Printf("[acpx_client] Recovered interrupted Turns: failed=%d cancelled=%d reconciled=%d",
-				failed, cancelled, reconciled)
-		}
 	}
 	go c.reapLoop()
 	return c
@@ -219,24 +218,44 @@ func (c *AcpxClient) reapBridge(bridge *ActiveBridge) {
 }
 
 type WsMessage struct {
-	Action           string `json:"action,omitempty"`
-	Event            string `json:"event,omitempty"`
-	SessionID        string `json:"sessionId,omitempty"`
-	WorkspacePath    string `json:"workspacePath,omitempty"`
-	AgentType        string `json:"agentType,omitempty"`
-	CCSessionID      string `json:"ccSessionId,omitempty"`
-	AcpSessionID     string `json:"acpSessionId,omitempty"`
-	SystemContext    string `json:"systemContext,omitempty"`
-	Text             string `json:"text,omitempty"`
-	RequestId        string `json:"requestId,omitempty"`
-	TurnID           string `json:"turnId,omitempty"`
-	Sequence         int64  `json:"sequence,omitempty"`
-	Status           string `json:"status,omitempty"`
-	StopReason       string `json:"stopReason,omitempty"`
-	FinalAnswer      string `json:"finalAnswer,omitempty"`
-	RuntimeRequestID string `json:"runtimeRequestId,omitempty"`
-	PromptMessageID  string `json:"promptMessageId,omitempty"`
-	Error            *struct {
+	Action              string           `json:"action,omitempty"`
+	Event               string           `json:"event,omitempty"`
+	SessionID           string           `json:"sessionId,omitempty"`
+	WorkspacePath       string           `json:"workspacePath,omitempty"`
+	AgentType           string           `json:"agentType,omitempty"`
+	CCSessionID         string           `json:"ccSessionId,omitempty"`
+	AcpSessionID        string           `json:"acpSessionId,omitempty"`
+	SystemContext       string           `json:"systemContext,omitempty"`
+	Text                string           `json:"text,omitempty"`
+	RequestId           string           `json:"requestId,omitempty"`
+	TurnManaged         bool             `json:"turnManaged,omitempty"`
+	TurnProtocolVersion int              `json:"turnProtocolVersion,omitempty"`
+	ID                  string           `json:"id,omitempty"`
+	TurnID              string           `json:"turnId,omitempty"`
+	Sequence            int64            `json:"sequence,omitempty"`
+	JournalSequence     int64            `json:"journalSequence,omitempty"`
+	LastEventSeq        int64            `json:"lastEventSeq,omitempty"`
+	Status              string           `json:"status,omitempty"`
+	ClientRequestID     string           `json:"clientRequestId,omitempty"`
+	PromptText          string           `json:"promptText,omitempty"`
+	RequestFingerprint  string           `json:"requestFingerprint,omitempty"`
+	StopReason          string           `json:"stopReason,omitempty"`
+	FinalAnswer         string           `json:"finalAnswer,omitempty"`
+	ErrorCode           string           `json:"errorCode,omitempty"`
+	ErrorText           string           `json:"errorText,omitempty"`
+	RuntimeRecordID     string           `json:"runtimeRecordId,omitempty"`
+	RuntimeRequestID    string           `json:"runtimeRequestId,omitempty"`
+	PromptMessageID     string           `json:"promptMessageId,omitempty"`
+	TerminalSource      string           `json:"terminalSource,omitempty"`
+	AcceptedNew         bool             `json:"acceptedNew,omitempty"`
+	CreatedAt           time.Time        `json:"createdAt,omitempty"`
+	UpdatedAt           time.Time        `json:"updatedAt,omitempty"`
+	StartedAt           *time.Time       `json:"startedAt,omitempty"`
+	CompletedAt         *time.Time       `json:"completedAt,omitempty"`
+	Active              *meta.AgentTurn  `json:"active,omitempty"`
+	Queued              []meta.AgentTurn `json:"queued,omitempty"`
+	Turns               []meta.AgentTurn `json:"turns,omitempty"`
+	Error               *struct {
 		Code    string `json:"code,omitempty"`
 		Message string `json:"message,omitempty"`
 	} `json:"error,omitempty"`
@@ -333,7 +352,6 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, projectID, w
 		}
 		bridge.mu.Unlock()
 		c.mu.Unlock()
-		c.enqueueTurnSync(bridge)
 
 		// Send ensure_session again so the bridge-server updates its WS connection
 		// Also reseed permission policy in case the JSON store changed while
@@ -403,6 +421,7 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, projectID, w
 		AgentType:      agentType,
 		ReplyID:        replyID,
 		tasksStore:     tasksStore,
+		chatStore:      chatStore,
 		turnStore:      c.turnStore,
 		LastActivityAt: time.Now(),
 	}
@@ -458,20 +477,15 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, projectID, w
 	// Start write helper loop for writing to the active client connection
 	go c.writeToClientLoop(bridge)
 
-	// Every Browser ownership connection receives an authoritative durable
-	// Turn projection, including the first connection after a backend restart.
-	c.enqueueTurnSync(bridge)
-
 	// Read from client and forward to server connection
 	c.readFromClientLoop(bridge, clientConn)
 }
 
 func (c *AcpxClient) readFromServerLoop(bridge *ActiveBridge, scheduler *Scheduler, tasksStore *TasksStore, chatStore *Store, taskId string) {
 	defer func() {
-		// A server-side connection loss is different from a frontend WebSocket
-		// disconnect: the ACP runtime can no longer own active work, so fail it
-		// and cancel anything that was still queued.
-		c.failOutstandingTurns(bridge, tasksStore, chatStore)
+		// 1ACP owns terminal recovery. A Go-side connection loss must not invent
+		// failed/cancelled facts in the SQLite projection.
+		c.clearAuthoritativeTurns(bridge)
 		bridge.mu.Lock()
 		bridge.IsDone = true
 		close(bridge.MsgChan)
@@ -504,11 +518,20 @@ func (c *AcpxClient) readFromServerLoop(bridge *ActiveBridge, scheduler *Schedul
 			log.Printf("[acpx_client] Peek unmarshal failed for session %s (forwarding raw): %v", bridge.SessionID, err)
 		}
 
-		var nextTurn *TurnContext
-
 		// Intercept and update status
-		if msg.Event == "session_ready" && msg.AgentSessionID != "" {
-			if chatStore != nil {
+		if msg.Event == "turn_sync" {
+			c.acceptAuthoritativeSync(bridge, msg)
+			// Full Journal history is a Go-side projection feed. The browser
+			// only needs active/queued and should not receive an ever-growing
+			// duplicate transcript on each reconnect.
+			raw = removeJSONFields(raw, "turns")
+		} else if msg.Event == "turn_state" {
+			c.acceptAuthoritativeTurn(bridge, turnFromMessage(bridge, msg), msg.AcceptedNew)
+		} else if msg.Event == "session_ready" {
+			bridge.mu.Lock()
+			bridge.turnProtocolVersion = msg.TurnProtocolVersion
+			bridge.mu.Unlock()
+			if msg.AgentSessionID != "" && chatStore != nil {
 				if err := chatStore.UpdateACP(bridge.SessionID, msg.AgentSessionID); err != nil {
 					log.Printf("[acpx_client] UpdateACP(%s, %s) failed: %v", bridge.SessionID, msg.AgentSessionID, err)
 				} else {
@@ -666,27 +689,24 @@ func (c *AcpxClient) readFromServerLoop(bridge *ActiveBridge, scheduler *Schedul
 				bridge.SessionID, msg.TurnID, msg.Status)
 			turnID := msg.TurnID
 			var explicit bool
-			var finishErr error
-			raw, nextTurn, explicit, finishErr = c.finishActiveTurn(bridge, msg, raw, tasksStore, chatStore)
-			if finishErr != nil {
-				log.Printf("[acpx_client] Finish Turn %s for session %s failed: %v", turnID, bridge.SessionID, finishErr)
-				break
-			}
+			raw, explicit = c.finishActiveTurn(bridge, msg, raw, tasksStore, chatStore)
 			if explicit {
 				stopped := msg.Status == string(meta.AgentTurnCancelled)
-				if msg.Status == string(meta.AgentTurnFailed) {
-					errorText := msg.Message
-					if msg.Error != nil {
-						errorText = msg.Error.Message
+				go func() {
+					if msg.Status == string(meta.AgentTurnFailed) {
+						errorText := msg.Message
+						if msg.Error != nil {
+							errorText = msg.Error.Message
+						}
+						c.handleTaskSessionError(bridge.WorkspacePath, taskId, bridge.SessionID, turnID, errorText, tasksStore)
+					} else {
+						c.handleTaskSessionDone(
+							bridge.WorkspacePath, taskId, bridge.SessionID, turnID,
+							msg.StopReason, stopped, tasksStore,
+						)
 					}
-					c.handleTaskSessionError(bridge.WorkspacePath, taskId, bridge.SessionID, turnID, errorText, tasksStore)
-				} else {
-					c.handleTaskSessionDone(
-						bridge.WorkspacePath, taskId, bridge.SessionID, turnID,
-						msg.StopReason, stopped, tasksStore,
-					)
-				}
-				scheduler.Lock.Release(bridge.WorkspacePath)
+					scheduler.Lock.Release(bridge.WorkspacePath)
+				}()
 			}
 		} else if msg.Event == "done" {
 			log.Printf("[acpx_client] Turn done for session %s (stopped=%v). Intercepted summary: %s", bridge.SessionID, msg.Stopped, msg.Summary)
@@ -713,12 +733,6 @@ func (c *AcpxClient) readFromServerLoop(bridge *ActiveBridge, scheduler *Schedul
 		}
 		bridge.mu.Unlock()
 
-		if nextTurn != nil {
-			if err := c.startTurn(bridge, nextTurn); err != nil {
-				log.Printf("[acpx_client] Start queued Turn %s failed: %v", nextTurn.Turn.ID, err)
-				break
-			}
-		}
 	}
 }
 
@@ -776,27 +790,9 @@ func (c *AcpxClient) readFromClientLoop(bridge *ActiveBridge, clientConn *websoc
 			}
 			handled, queueErr := c.queuePrompt(bridge, msg, raw)
 			if queueErr != nil {
-				log.Printf("[acpx_client] Queue prompt for session %s failed: %v", bridge.SessionID, queueErr)
-				code := "TURN_ACCEPT_FAILED"
-				if errors.Is(queueErr, meta.ErrIdempotencyConflict) {
-					code = "IDEMPOTENCY_CONFLICT"
-				}
-				enqueueProtocolError(bridge, msg.RequestId, code, queueErr.Error())
+				log.Printf("[acpx_client] Forward prompt for session %s failed: %v", bridge.SessionID, queueErr)
+				enqueueProtocolError(bridge, msg.RequestId, "TURN_FORWARD_FAILED", queueErr.Error())
 				continue
-			}
-			if handled {
-				continue
-			}
-
-			// Legacy compatibility for callers that do not provide a TurnStore.
-			bridge.resetTurnText()
-			writeUserReply(bridge, bridge.tasksStore, msg.Text)
-		}
-
-		if (msg.Action == "cancel_turn" || msg.Action == "cancel_queued_turn") && msg.TurnID != "" {
-			handled, cancelErr := c.cancelPendingTurn(bridge, msg.TurnID)
-			if cancelErr != nil {
-				log.Printf("[acpx_client] Cancel queued Turn %s failed: %v", msg.TurnID, cancelErr)
 			}
 			if handled {
 				continue
@@ -852,6 +848,15 @@ func writeUserReply(bridge *ActiveBridge, tasksStore *TasksStore, text string, t
 	if len(turnIDs) > 0 {
 		turnID = turnIDs[0]
 	}
+	if turnID != "" {
+		if task, ok, err := tasksStore.GetTask(taskID); err == nil && ok {
+			for _, existing := range task.Replies {
+				if existing.TurnID == turnID && existing.Author.Kind == "user" {
+					return existing.ID
+				}
+			}
+		}
+	}
 	reply, err := tasksStore.AppendReply(taskID, Reply{
 		Author:     Author{Kind: "user", Name: "user"},
 		Text:       text,
@@ -894,6 +899,15 @@ func writeAgentReplyText(
 
 	if taskID == "" || strings.TrimSpace(text) == "" || tasksStore == nil {
 		return ""
+	}
+	if turnID != "" {
+		if task, ok, err := tasksStore.GetTask(taskID); err == nil && ok {
+			for _, existing := range task.Replies {
+				if existing.TurnID == turnID && existing.Author.Kind == "agent" {
+					return existing.ID
+				}
+			}
+		}
 	}
 	if initiatingReplyID == "" {
 		initiatingReplyID = legacyReplyID

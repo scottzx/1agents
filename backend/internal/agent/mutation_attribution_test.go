@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -191,6 +192,88 @@ func TestMutationAttributionSecurityAndOutsideCLI(t *testing.T) {
 	))
 	if rr.Code != http.StatusConflict {
 		t.Fatalf("no-running Turn status=%d, want 409: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestMutationAttributionUsesAuthoritativeLiveTurnWhenProjectionIsMissing(t *testing.T) {
+	h, _, wsID, _, projected := mutationAttributionRig(t)
+	if _, err := h.turnStore.Transition(projected.ID, meta.AgentTurnTransition{
+		Status: meta.AgentTurnCompleted,
+	}); err != nil {
+		t.Fatalf("complete projected Turn: %v", err)
+	}
+	live := meta.AgentTurn{
+		ID:        "turn-only-in-1acp-journal",
+		ProjectID: wsID,
+		SessionID: "session-1",
+		AgentType: "codex",
+		Status:    meta.AgentTurnRunning,
+	}
+	h.acpxClient.mu.Lock()
+	h.acpxClient.bridges["session-1"] = &ActiveBridge{
+		SessionID:        "session-1",
+		ProjectID:        wsID,
+		AgentType:        "codex",
+		turnSyncReceived: true,
+		activeTurn:       &TurnContext{Turn: live},
+	}
+	h.acpxClient.mu.Unlock()
+
+	req := attributedCreateRequest(
+		wsID,
+		"live attribution",
+		"session-1",
+		localtoken.SessionToken("session-1"),
+	)
+	ctx, err := h.resolveMutationContext(req, wsID)
+	if err != nil {
+		t.Fatalf("resolveMutationContext: %v", err)
+	}
+	if ctx.TurnID != live.ID || ctx.SessionID != live.SessionID ||
+		ctx.ActorKind != "agent" || ctx.ActorName != "codex" {
+		t.Fatalf("live MutationContext: %+v", ctx)
+	}
+	if _, ok, err := h.turnStore.Get(live.ID); err != nil || ok {
+		t.Fatalf("live Turn unexpectedly required DB projection: ok=%v err=%v", ok, err)
+	}
+
+	rr := httptest.NewRecorder()
+	h.HandleTasksRoot(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("live authoritative mutation status=%d: %s", rr.Code, rr.Body.String())
+	}
+	var response map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
+		t.Fatalf("decode live authoritative mutation: %v", err)
+	}
+	if response["turnId"] != live.ID || response["sessionId"] != live.SessionID ||
+		response["eventId"] == "" {
+		t.Fatalf("live authoritative mutation response: %v", response)
+	}
+	if _, ok, err := h.turnStore.Get(live.ID); err != nil || ok {
+		t.Fatalf("event commit unexpectedly required Turn projection: ok=%v err=%v", ok, err)
+	}
+}
+
+func TestMutationAttributionRejectsStaleDBTurnAfterAuthoritativeIdleSync(t *testing.T) {
+	h, _, wsID, _, _ := mutationAttributionRig(t)
+	h.acpxClient.mu.Lock()
+	h.acpxClient.bridges["session-1"] = &ActiveBridge{
+		SessionID:        "session-1",
+		ProjectID:        wsID,
+		AgentType:        "codex",
+		turnSyncReceived: true,
+	}
+	h.acpxClient.mu.Unlock()
+
+	req := attributedCreateRequest(
+		wsID,
+		"must be rejected",
+		"session-1",
+		localtoken.SessionToken("session-1"),
+	)
+	if _, err := h.resolveMutationContext(req, wsID); !errors.Is(err, meta.ErrTurnNotRunning) {
+		t.Fatalf("resolveMutationContext err=%v, want ErrTurnNotRunning", err)
 	}
 }
 

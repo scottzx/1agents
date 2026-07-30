@@ -106,15 +106,20 @@ func appendProjectEventTx(tx *sql.Tx, event ProjectEvent, allowNonRunningTurn bo
 			event.TurnID,
 		).Scan(&turnProject, &turnSession, &turnStatus)
 		if err == sql.ErrNoRows {
-			return ProjectEvent{}, ErrNotFound
+			if !event.AllowUnprojectedTurn {
+				return ProjectEvent{}, ErrNotFound
+			}
+			turnProject = event.ProjectID
+			turnSession = event.SessionID
+			turnStatus = AgentTurnRunning
 		}
-		if err != nil {
+		if err != nil && err != sql.ErrNoRows {
 			return ProjectEvent{}, err
 		}
 		if turnProject != event.ProjectID || (event.SessionID != "" && turnSession != event.SessionID) {
 			return ProjectEvent{}, ErrProjectMismatch
 		}
-		if !allowNonRunningTurn && turnStatus != AgentTurnRunning {
+		if !allowNonRunningTurn && !event.AllowUnprojectedTurn && turnStatus != AgentTurnRunning {
 			return ProjectEvent{}, ErrTurnNotRunning
 		}
 		if event.SessionID == "" {

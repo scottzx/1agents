@@ -23,7 +23,11 @@ func TestWriteUserReplyAppendsToTimeline(t *testing.T) {
 	writeUserReply(&ActiveBridge{SessionID: "x", TaskID: ""}, h.tasksStore, "ignored")
 
 	// A real prompt is recorded as a user reply under the session branch.
-	writeUserReply(bridge, h.tasksStore, "可以，看下是啥情况", "turn-1")
+	firstReplyID := writeUserReply(bridge, h.tasksStore, "可以，看下是啥情况", "turn-1")
+	replayedReplyID := writeUserReply(bridge, h.tasksStore, "可以，看下是啥情况", "turn-1")
+	if replayedReplyID != firstReplyID {
+		t.Fatalf("replayed Turn reply=%q, want existing %q", replayedReplyID, firstReplyID)
+	}
 
 	got, ok, err := h.tasksStore.GetTask(task.ID)
 	if err != nil || !ok {
@@ -47,6 +51,33 @@ func TestWriteUserReplyAppendsToTimeline(t *testing.T) {
 	}
 	if rp.Mode != ModeFollowUp {
 		t.Errorf("Mode = %q, want follow_up", rp.Mode)
+	}
+}
+
+func TestWriteAgentReplyIsIdempotentByTurn(t *testing.T) {
+	h, _ := newTestHandler(t)
+	task := seedTask(t, h, t.TempDir())
+	bridge := &ActiveBridge{
+		SessionID: "sess-1",
+		TaskID:    task.ID,
+		AgentType: "codex",
+	}
+
+	firstReplyID := writeAgentReplyText(
+		bridge, h.tasksStore, h.store, "turn-1", "", "已经处理完成",
+	)
+	replayedReplyID := writeAgentReplyText(
+		bridge, h.tasksStore, h.store, "turn-1", "", "已经处理完成",
+	)
+	if replayedReplyID != firstReplyID {
+		t.Fatalf("replayed agent reply=%q, want existing %q", replayedReplyID, firstReplyID)
+	}
+	got, ok, err := h.tasksStore.GetTask(task.ID)
+	if err != nil || !ok {
+		t.Fatalf("GetTask(%s): ok=%v err=%v", task.ID, ok, err)
+	}
+	if len(got.Replies) != 1 || got.Replies[0].Author.Kind != "agent" {
+		t.Fatalf("agent replies after replay: %+v", got.Replies)
 	}
 }
 

@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -26,55 +25,19 @@ func addJSONFields(raw []byte, fields map[string]any) []byte {
 	return updated
 }
 
-func enqueueTurnState(bridge *ActiveBridge, event string, turn meta.AgentTurn, queuePosition ...int) {
-	payload := map[string]any{
-		"event":      event,
-		"sessionId":  turn.SessionID,
-		"turnId":     turn.ID,
-		"requestId":  turn.ClientRequestID,
-		"status":     turn.Status,
-		"promptText": turn.PromptText,
-		"createdAt":  turn.CreatedAt,
+func removeJSONFields(raw []byte, fields ...string) []byte {
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return raw
 	}
-	if len(queuePosition) > 0 && queuePosition[0] > 0 {
-		payload["queuePosition"] = queuePosition[0]
+	for _, field := range fields {
+		delete(payload, field)
 	}
-	if turn.StartedAt != nil {
-		payload["startedAt"] = turn.StartedAt
-	}
-	if turn.CompletedAt != nil {
-		payload["completedAt"] = turn.CompletedAt
-	}
-	if turn.StopReason != "" {
-		payload["stopReason"] = turn.StopReason
-	}
-	raw, err := json.Marshal(payload)
+	updated, err := json.Marshal(payload)
 	if err != nil {
-		return
+		return raw
 	}
-	bridge.mu.Lock()
-	defer bridge.mu.Unlock()
-	if bridge.IsDone {
-		return
-	}
-	select {
-	case bridge.MsgChan <- raw:
-	default:
-		log.Printf("[acpx_client] MsgChan full, dropping %q for Turn %s", event, turn.ID)
-	}
-}
-
-func queuedTurnPosition(store *meta.AgentTurnStore, sessionID, turnID string) int {
-	queued, err := store.QueuedBySession(sessionID)
-	if err != nil {
-		return 0
-	}
-	for index, candidate := range queued {
-		if candidate.ID == turnID {
-			return index + 1
-		}
-	}
-	return 0
+	return updated
 }
 
 func enqueueProtocolError(bridge *ActiveBridge, requestID, code, message string) {
@@ -100,102 +63,39 @@ func enqueueProtocolError(bridge *ActiveBridge, requestID, code, message string)
 	}
 }
 
-func promptFingerprint(msg WsMessage) string {
-	canonical, _ := json.Marshal(struct {
-		Text        string          `json:"text"`
-		Attachments json.RawMessage `json:"attachments,omitempty"`
-	}{
-		Text:        msg.Text,
-		Attachments: msg.Attachments,
-	})
-	return fmt.Sprintf("%x", sha256.Sum256(canonical))
-}
-
 func legacyRequestID() string {
 	return fmt.Sprintf("legacy-%d", time.Now().UTC().UnixNano())
 }
 
-// queuePrompt persists a prompt before forwarding it. It returns handled=true
-// whenever the explicit Turn path is enabled, including idempotent retries.
+// queuePrompt forwards the browser requestId as an idempotency key and marks
+// the request as managed. 1ACP generates the trusted Turn ID and persists the
+// Journal before it acknowledges or executes the prompt; agent_turns is only a
+// rebuildable projection of those facts.
 func (c *AcpxClient) queuePrompt(bridge *ActiveBridge, msg WsMessage, raw []byte) (handled bool, err error) {
-	if bridge.turnStore == nil || bridge.ProjectID == "" {
-		return false, nil
-	}
 	if msg.TurnID != "" {
 		return true, fmt.Errorf("browser supplied forbidden turnId")
 	}
-	if msg.RequestId == "" {
-		msg.RequestId = legacyRequestID()
-		raw = addJSONFields(raw, map[string]any{"requestId": msg.RequestId})
-	}
-	turn, created, err := bridge.turnStore.Create(meta.AgentTurn{
-		ProjectID:          bridge.ProjectID,
-		SessionID:          bridge.SessionID,
-		ClientRequestID:    msg.RequestId,
-		AgentType:          bridge.AgentType,
-		PromptText:         msg.Text,
-		RequestFingerprint: promptFingerprint(msg),
-	})
-	if err != nil {
-		return true, err
-	}
-	if !created {
-		enqueueTurnState(bridge, "turn_state", turn, queuedTurnPosition(bridge.turnStore, bridge.SessionID, turn.ID))
-		return true, nil
-	}
-
-	raw = addJSONFields(raw, map[string]any{
-		"turnId":    turn.ID,
-		"requestId": turn.ID,
-	})
-	initiatingReplyID := writeUserReply(bridge, bridge.tasksStore, msg.Text, turn.ID)
-	if initiatingReplyID != "" {
-		if err := bridge.turnStore.SetReplyLinks(turn.ID, initiatingReplyID, ""); err != nil {
-			log.Printf("[acpx_client] Set initiating Reply for Turn %s: %v", turn.ID, err)
-		} else {
-			turn.InitiatingReplyID = initiatingReplyID
-		}
-	}
-
-	ctx := &TurnContext{Turn: turn, Raw: raw}
-	queuePosition := 0
 	bridge.mu.Lock()
-	startNow := bridge.activeTurn == nil
-	if startNow {
-		running, transitionErr := bridge.turnStore.Transition(turn.ID, meta.AgentTurnTransition{
-			Status:           meta.AgentTurnRunning,
-			RuntimeRecordID:  bridge.SessionID,
-			RuntimeRequestID: turn.ID,
-			PromptMessageID:  turn.ID,
-		})
-		if transitionErr != nil {
-			bridge.mu.Unlock()
-			return true, transitionErr
-		}
-		ctx.Turn = running
-		bridge.activeTurn = ctx
-		bridge.turnText = nil
-	} else {
-		bridge.pendingTurns = append(bridge.pendingTurns, ctx)
-		queuePosition = len(bridge.pendingTurns)
-	}
+	protocolVersion := bridge.turnProtocolVersion
 	bridge.mu.Unlock()
-
-	enqueueTurnState(bridge, "turn_state", turn, queuePosition)
-	if startNow {
-		return true, c.startTurn(bridge, ctx)
+	if protocolVersion < 3 {
+		return true, fmt.Errorf(
+			"1ACP Turn protocol v3 is required; restart the updated 1ACP bridge before sending prompts",
+		)
 	}
-	return true, nil
+	clientRequestID := msg.RequestId
+	if clientRequestID == "" {
+		clientRequestID = legacyRequestID()
+	}
+	raw = addJSONFields(raw, map[string]any{
+		"requestId":   clientRequestID,
+		"turnManaged": true,
+	})
+	return true, c.writeServerRaw(bridge, raw)
 }
 
-func (c *AcpxClient) startTurn(bridge *ActiveBridge, ctx *TurnContext) error {
-	enqueueTurnState(bridge, "turn_state", ctx.Turn)
-	return c.writeServerRaw(bridge, ctx.Raw)
-}
-
-// writeServerRaw serializes every bridge-server write. The runtime reader can
-// promote a queued Turn while the client reader forwards controls such as
-// cancel_turn, and gorilla/websocket permits only one concurrent writer.
+// writeServerRaw serializes every bridge-server write. gorilla/websocket
+// permits only one concurrent writer.
 func (c *AcpxClient) writeServerRaw(bridge *ActiveBridge, raw []byte) error {
 	bridge.mu.Lock()
 	defer bridge.mu.Unlock()
@@ -207,219 +107,464 @@ func (c *AcpxClient) writeServerRaw(bridge *ActiveBridge, raw []byte) error {
 	return serverConn.WriteMessage(websocket.TextMessage, raw)
 }
 
-// cancelPendingTurn consumes a targeted cancel for a queued Turn. Active Turn
-// cancellation is still forwarded to ACP and reaches a stopped `done` event.
-func (c *AcpxClient) cancelPendingTurn(bridge *ActiveBridge, turnID string) (bool, error) {
-	if turnID == "" || bridge.turnStore == nil {
-		return false, nil
+func turnFromMessage(bridge *ActiveBridge, msg WsMessage) meta.AgentTurn {
+	turnID := msg.TurnID
+	if turnID == "" {
+		turnID = msg.ID
 	}
-	bridge.mu.Lock()
-	if bridge.activeTurn != nil && bridge.activeTurn.Turn.ID == turnID {
-		bridge.mu.Unlock()
-		return false, nil
+	clientRequestID := msg.ClientRequestID
+	if clientRequestID == "" {
+		clientRequestID = msg.RequestId
 	}
-	var target *TurnContext
-	for i, pending := range bridge.pendingTurns {
-		if pending.Turn.ID == turnID {
-			target = pending
-			bridge.pendingTurns = append(bridge.pendingTurns[:i], bridge.pendingTurns[i+1:]...)
-			break
+	sequence := msg.LastEventSeq
+	if sequence == 0 {
+		sequence = msg.JournalSequence
+	}
+	errorCode := msg.ErrorCode
+	errorText := msg.ErrorText
+	if msg.Error != nil {
+		if errorCode == "" {
+			errorCode = msg.Error.Code
+		}
+		if errorText == "" {
+			errorText = msg.Error.Message
 		}
 	}
-	bridge.mu.Unlock()
-	if target == nil {
-		turn, ok, err := bridge.turnStore.Get(turnID)
-		if err != nil || !ok || turn.SessionID != bridge.SessionID {
-			return false, err
-		}
-		enqueueTurnState(bridge, "turn_state", turn)
-		return true, nil
+	return meta.AgentTurn{
+		ID:                 turnID,
+		ProjectID:          bridge.ProjectID,
+		SessionID:          bridge.SessionID,
+		ClientRequestID:    clientRequestID,
+		AgentType:          firstNonEmpty(msg.AgentType, bridge.AgentType),
+		Status:             meta.AgentTurnStatus(msg.Status),
+		PromptText:         msg.PromptText,
+		RequestFingerprint: msg.RequestFingerprint,
+		FinalAnswer:        msg.FinalAnswer,
+		ErrorCode:          errorCode,
+		ErrorText:          errorText,
+		RuntimeRecordID:    msg.RuntimeRecordID,
+		RuntimeRequestID:   msg.RuntimeRequestID,
+		PromptMessageID:    msg.PromptMessageID,
+		StopReason:         msg.StopReason,
+		TerminalSource:     msg.TerminalSource,
+		LastEventSeq:       sequence,
+		StartedAt:          msg.StartedAt,
+		CompletedAt:        msg.CompletedAt,
+		CreatedAt:          msg.CreatedAt,
+		UpdatedAt:          msg.UpdatedAt,
 	}
-	cancelled, err := bridge.turnStore.Transition(turnID, meta.AgentTurnTransition{
-		Status:    meta.AgentTurnCancelled,
-		ErrorCode: "cancelled_by_user",
-		ErrorText: "Queued Turn was cancelled before execution.",
-	})
-	if err != nil {
-		return true, err
-	}
-	enqueueTurnState(bridge, "turn_state", cancelled)
-	return true, nil
 }
 
-// finishActiveTurn applies one runtime terminal event to exactly the active
-// Turn, then reserves the FIFO queue head as the next running Turn.
-func (c *AcpxClient) finishActiveTurn(bridge *ActiveBridge, msg WsMessage, raw []byte, tasksStore *TasksStore, chatStore *Store) ([]byte, *TurnContext, bool, error) {
-	bridge.mu.Lock()
-	active := bridge.activeTurn
-	bridge.mu.Unlock()
-	if active == nil || bridge.turnStore == nil {
-		return raw, nil, false, nil
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
 	}
-	if msg.Event != "turn_terminal" {
-		return raw, nil, false, nil
-	}
-	if msg.TurnID == "" || msg.TurnID != active.Turn.ID {
-		log.Printf("[acpx_client] Ignoring terminal mismatch: session_id=%s active_turn_id=%s event_turn_id=%s",
-			bridge.SessionID, active.Turn.ID, msg.TurnID)
-		return raw, nil, false, nil
-	}
+	return ""
+}
 
-	text := msg.FinalAnswer
-	change := meta.AgentTurnTransition{
-		Status:           meta.AgentTurnCompleted,
-		FinalAnswer:      text,
-		RuntimeRecordID:  bridge.SessionID,
-		RuntimeRequestID: msg.RuntimeRequestID,
-		PromptMessageID:  msg.PromptMessageID,
-		StopReason:       msg.StopReason,
-		TerminalSource:   "live_runtime",
-		LastEventSeq:     msg.Sequence,
+func terminalTurnStatus(status meta.AgentTurnStatus) bool {
+	return status == meta.AgentTurnCompleted ||
+		status == meta.AgentTurnFailed ||
+		status == meta.AgentTurnCancelled
+}
+
+// projectAuthoritativeTurn applies one 1ACP Journal snapshot to SQLite. It is
+// deliberately idempotent and must never be used to decide whether execution
+// may proceed.
+func projectAuthoritativeTurn(store *meta.AgentTurnStore, incoming meta.AgentTurn) (meta.AgentTurn, error) {
+	if store == nil {
+		return incoming, nil
 	}
-	switch meta.AgentTurnStatus(msg.Status) {
-	case meta.AgentTurnFailed:
-		change.Status = meta.AgentTurnFailed
-		if msg.Error != nil {
-			change.ErrorCode = msg.Error.Code
-			change.ErrorText = msg.Error.Message
-		}
-		if change.ErrorCode == "" {
-			change.ErrorCode = "runtime_error"
-		}
-	case meta.AgentTurnCancelled:
-		change.Status = meta.AgentTurnCancelled
-		change.ErrorCode = "cancelled_by_user"
-	case meta.AgentTurnCompleted:
+	if incoming.ID == "" || incoming.ProjectID == "" || incoming.SessionID == "" {
+		return incoming, fmt.Errorf("incomplete authoritative Turn projection")
+	}
+	switch incoming.Status {
+	case meta.AgentTurnQueued, meta.AgentTurnRunning, meta.AgentTurnCompleted,
+		meta.AgentTurnFailed, meta.AgentTurnCancelled:
 	default:
-		return raw, nil, true, fmt.Errorf("invalid turn terminal status %q", msg.Status)
+		return incoming, fmt.Errorf("invalid authoritative Turn status %q", incoming.Status)
 	}
-	finished, err := bridge.turnStore.Transition(active.Turn.ID, change)
+
+	current, ok, err := store.Get(incoming.ID)
 	if err != nil {
-		return raw, nil, true, err
+		return incoming, err
 	}
-	finalReplyID := writeAgentReplyText(
-		bridge, tasksStore, chatStore, active.Turn.ID, active.Turn.InitiatingReplyID, text,
-	)
-	if finalReplyID != "" {
-		if err := bridge.turnStore.SetReplyLinks(active.Turn.ID, "", finalReplyID); err != nil {
-			log.Printf("[acpx_client] Set final Reply for Turn %s: %v", active.Turn.ID, err)
+	if !ok {
+		createdAt := incoming.CreatedAt
+		if createdAt.IsZero() {
+			createdAt = time.Now().UTC()
+		}
+		current, _, err = store.Create(meta.AgentTurn{
+			ID:                 incoming.ID,
+			ProjectID:          incoming.ProjectID,
+			SessionID:          incoming.SessionID,
+			ClientRequestID:    firstNonEmpty(incoming.ClientRequestID, incoming.ID),
+			AgentType:          incoming.AgentType,
+			PromptText:         incoming.PromptText,
+			RequestFingerprint: incoming.RequestFingerprint,
+			RuntimeRecordID:    incoming.RuntimeRecordID,
+			LastEventSeq:       incoming.LastEventSeq,
+			CreatedAt:          createdAt,
+		})
+		if err != nil {
+			return incoming, err
 		}
 	}
-	raw = addJSONFields(raw, map[string]any{"turnStatus": finished.Status})
 
-	var next *TurnContext
-	nextTurn, ok, nextErr := bridge.turnStore.NextQueued(bridge.SessionID)
-	if nextErr != nil {
-		return raw, nil, true, nextErr
+	if current.Status == incoming.Status || terminalTurnStatus(current.Status) {
+		return current, nil
+	}
+	if incoming.Status == meta.AgentTurnQueued {
+		return current, nil
+	}
+	if current.Status == meta.AgentTurnQueued && incoming.Status != meta.AgentTurnCancelled {
+		at := incoming.UpdatedAt
+		if incoming.StartedAt != nil {
+			at = *incoming.StartedAt
+		}
+		current, err = store.Transition(current.ID, meta.AgentTurnTransition{
+			Status:           meta.AgentTurnRunning,
+			RuntimeRecordID:  incoming.RuntimeRecordID,
+			RuntimeRequestID: incoming.RuntimeRequestID,
+			PromptMessageID:  incoming.PromptMessageID,
+			LastEventSeq:     incoming.LastEventSeq,
+			At:               at,
+		})
+		if err != nil {
+			return incoming, err
+		}
+	}
+	if incoming.Status == meta.AgentTurnRunning {
+		return current, nil
+	}
+
+	at := incoming.UpdatedAt
+	if incoming.CompletedAt != nil {
+		at = *incoming.CompletedAt
+	}
+	return store.Transition(current.ID, meta.AgentTurnTransition{
+		Status:           incoming.Status,
+		FinalAnswer:      incoming.FinalAnswer,
+		ErrorCode:        incoming.ErrorCode,
+		ErrorText:        incoming.ErrorText,
+		RuntimeRecordID:  incoming.RuntimeRecordID,
+		RuntimeRequestID: incoming.RuntimeRequestID,
+		PromptMessageID:  incoming.PromptMessageID,
+		StopReason:       incoming.StopReason,
+		TerminalSource:   incoming.TerminalSource,
+		LastEventSeq:     incoming.LastEventSeq,
+		At:               at,
+	})
+}
+
+func findTurnContext(turns []*TurnContext, turnID string) (*TurnContext, int) {
+	for index, ctx := range turns {
+		if ctx.Turn.ID == turnID {
+			return ctx, index
+		}
+	}
+	return nil, -1
+}
+
+func mergeTurnContext(existing *TurnContext, turn meta.AgentTurn) *TurnContext {
+	if existing == nil {
+		return &TurnContext{Turn: turn}
+	}
+	if existing.Turn.InitiatingReplyID != "" && turn.InitiatingReplyID == "" {
+		turn.InitiatingReplyID = existing.Turn.InitiatingReplyID
+	}
+	existing.Turn = turn
+	return existing
+}
+
+// acceptAuthoritativeTurn updates the live in-memory state before attempting
+// the SQLite projection. MCP attribution therefore remains available when the
+// projection database is locked or temporarily unavailable.
+func (c *AcpxClient) acceptAuthoritativeTurn(bridge *ActiveBridge, turn meta.AgentTurn, acceptedNew bool) {
+	if turn.ID == "" {
+		return
+	}
+
+	bridge.mu.Lock()
+	bridge.turnSyncReceived = true
+	active := bridge.activeTurn
+	pending, pendingIndex := findTurnContext(bridge.pendingTurns, turn.ID)
+	switch turn.Status {
+	case meta.AgentTurnQueued:
+		if active == nil || active.Turn.ID != turn.ID {
+			if pending == nil {
+				bridge.pendingTurns = append(bridge.pendingTurns, &TurnContext{Turn: turn})
+			} else {
+				mergeTurnContext(pending, turn)
+			}
+		}
+	case meta.AgentTurnRunning:
+		if pending != nil {
+			bridge.pendingTurns = append(bridge.pendingTurns[:pendingIndex], bridge.pendingTurns[pendingIndex+1:]...)
+		}
+		if active == nil || active.Turn.ID != turn.ID {
+			bridge.activeTurn = mergeTurnContext(pending, turn)
+			bridge.turnText = nil
+		} else {
+			mergeTurnContext(active, turn)
+		}
+	default:
+		if pending != nil {
+			bridge.pendingTurns = append(bridge.pendingTurns[:pendingIndex], bridge.pendingTurns[pendingIndex+1:]...)
+		}
+		if active != nil && active.Turn.ID == turn.ID {
+			mergeTurnContext(active, turn)
+		}
+	}
+	bridge.mu.Unlock()
+
+	go func() {
+		bridge.projectionMu.Lock()
+		defer bridge.projectionMu.Unlock()
+		if acceptedNew {
+			initiatingReplyID := writeUserReply(bridge, bridge.tasksStore, turn.PromptText, turn.ID)
+			if initiatingReplyID != "" {
+				bridge.mu.Lock()
+				if bridge.activeTurn != nil && bridge.activeTurn.Turn.ID == turn.ID {
+					bridge.activeTurn.Turn.InitiatingReplyID = initiatingReplyID
+				} else if ctx, _ := findTurnContext(bridge.pendingTurns, turn.ID); ctx != nil {
+					ctx.Turn.InitiatingReplyID = initiatingReplyID
+				}
+				bridge.mu.Unlock()
+				turn.InitiatingReplyID = initiatingReplyID
+			}
+		}
+
+		projected, err := projectAuthoritativeTurn(bridge.turnStore, turn)
+		if err != nil {
+			log.Printf("[acpx_client] Non-blocking Turn projection failed: session_id=%s turn_id=%s status=%s err=%v",
+				bridge.SessionID, turn.ID, turn.Status, err)
+			return
+		}
+		if acceptedNew && turn.InitiatingReplyID != "" && bridge.turnStore != nil {
+			if err := bridge.turnStore.SetReplyLinks(projected.ID, turn.InitiatingReplyID, ""); err != nil {
+				log.Printf("[acpx_client] Non-blocking initiating Reply projection failed for Turn %s: %v", turn.ID, err)
+			}
+		}
+	}()
+}
+
+func (c *AcpxClient) acceptAuthoritativeSync(bridge *ActiveBridge, msg WsMessage) {
+	all := msg.Turns
+	if len(all) == 0 {
+		if msg.Active != nil {
+			all = append(all, *msg.Active)
+		}
+		all = append(all, msg.Queued...)
+	}
+
+	var active *TurnContext
+	if msg.Active != nil {
+		turn := *msg.Active
+		turn.ProjectID = bridge.ProjectID
+		turn.SessionID = bridge.SessionID
+		if turn.AgentType == "" {
+			turn.AgentType = bridge.AgentType
+		}
+		active = &TurnContext{Turn: turn}
+	}
+	pending := make([]*TurnContext, 0, len(msg.Queued))
+	for _, queued := range msg.Queued {
+		queued.ProjectID = bridge.ProjectID
+		queued.SessionID = bridge.SessionID
+		if queued.AgentType == "" {
+			queued.AgentType = bridge.AgentType
+		}
+		pending = append(pending, &TurnContext{Turn: queued})
 	}
 	bridge.mu.Lock()
-	if ok {
-		for i, pending := range bridge.pendingTurns {
-			if pending.Turn.ID == nextTurn.ID {
-				next = pending
-				bridge.pendingTurns = append(bridge.pendingTurns[:i], bridge.pendingTurns[i+1:]...)
-				break
+	bridge.turnSyncReceived = true
+	bridge.activeTurn = active
+	bridge.pendingTurns = pending
+	if active == nil {
+		bridge.turnText = nil
+	}
+	bridge.mu.Unlock()
+
+	go c.projectAuthoritativeSync(bridge, all)
+}
+
+func (c *AcpxClient) projectAuthoritativeSync(bridge *ActiveBridge, all []meta.AgentTurn) {
+	bridge.projectionMu.Lock()
+	defer bridge.projectionMu.Unlock()
+	if bridge.turnStore != nil {
+		known := make(map[string]bool, len(all))
+		for _, turn := range all {
+			known[turn.ID] = true
+		}
+		if stale, ok, err := bridge.turnStore.RunningBySession(bridge.SessionID); err != nil {
+			log.Printf("[acpx_client] Non-blocking stale running projection lookup failed for %s: %v",
+				bridge.SessionID, err)
+		} else if ok && !known[stale.ID] {
+			if _, err := bridge.turnStore.Transition(stale.ID, meta.AgentTurnTransition{
+				Status:         meta.AgentTurnFailed,
+				ErrorCode:      "missing_from_turn_journal",
+				ErrorText:      "Turn was absent from the authoritative 1ACP Journal snapshot.",
+				StopReason:     "projection_reconciled",
+				TerminalSource: "turn_journal_sync",
+			}); err != nil {
+				log.Printf("[acpx_client] Non-blocking stale running projection cleanup failed for Turn %s: %v",
+					stale.ID, err)
+			}
+		}
+		if staleQueued, err := bridge.turnStore.QueuedBySession(bridge.SessionID); err != nil {
+			log.Printf("[acpx_client] Non-blocking stale queue projection lookup failed for %s: %v",
+				bridge.SessionID, err)
+		} else {
+			for _, stale := range staleQueued {
+				if known[stale.ID] {
+					continue
+				}
+				if _, err := bridge.turnStore.Transition(stale.ID, meta.AgentTurnTransition{
+					Status:         meta.AgentTurnCancelled,
+					ErrorCode:      "missing_from_turn_journal",
+					ErrorText:      "Queued Turn was absent from the authoritative 1ACP Journal snapshot.",
+					StopReason:     "projection_reconciled",
+					TerminalSource: "turn_journal_sync",
+				}); err != nil {
+					log.Printf("[acpx_client] Non-blocking stale queue projection cleanup failed for Turn %s: %v",
+						stale.ID, err)
+				}
 			}
 		}
 	}
-	if next != nil {
-		running, transitionErr := bridge.turnStore.Transition(next.Turn.ID, meta.AgentTurnTransition{
-			Status:           meta.AgentTurnRunning,
-			RuntimeRecordID:  bridge.SessionID,
-			RuntimeRequestID: next.Turn.ID,
-			PromptMessageID:  next.Turn.ID,
-		})
-		if transitionErr != nil {
-			bridge.mu.Unlock()
-			return raw, nil, true, transitionErr
+	for _, turn := range all {
+		turn.ProjectID = bridge.ProjectID
+		turn.SessionID = bridge.SessionID
+		if turn.AgentType == "" {
+			turn.AgentType = bridge.AgentType
 		}
-		next.Turn = running
-		bridge.activeTurn = next
-		bridge.turnText = nil
-	} else if bridge.activeTurn != nil && bridge.activeTurn.Turn.ID == active.Turn.ID {
-		bridge.activeTurn = nil
+		projected, err := projectAuthoritativeTurn(bridge.turnStore, turn)
+		if err != nil {
+			log.Printf("[acpx_client] Non-blocking Turn sync projection failed: session_id=%s turn_id=%s status=%s err=%v",
+				bridge.SessionID, turn.ID, turn.Status, err)
+			projected = turn
+		}
+		initiatingReplyID := projected.InitiatingReplyID
+		if initiatingReplyID == "" {
+			initiatingReplyID = writeUserReply(bridge, bridge.tasksStore, turn.PromptText, turn.ID)
+			if initiatingReplyID != "" && bridge.turnStore != nil {
+				if err := bridge.turnStore.SetReplyLinks(turn.ID, initiatingReplyID, ""); err != nil {
+					log.Printf("[acpx_client] Non-blocking synced initiating Reply projection failed for Turn %s: %v",
+						turn.ID, err)
+				}
+			}
+		}
+		if terminalTurnStatus(turn.Status) && turn.FinalAnswer != "" {
+			finalReplyID := writeAgentReplyText(
+				bridge, bridge.tasksStore, bridge.chatStore, turn.ID, initiatingReplyID, turn.FinalAnswer,
+			)
+			if finalReplyID != "" && bridge.turnStore != nil {
+				if err := bridge.turnStore.SetReplyLinks(turn.ID, "", finalReplyID); err != nil {
+					log.Printf("[acpx_client] Non-blocking synced final Reply projection failed for Turn %s: %v",
+						turn.ID, err)
+				}
+			}
+		}
 	}
-	bridge.mu.Unlock()
-	return raw, next, true, nil
 }
 
-func (c *AcpxClient) enqueueTurnSync(bridge *ActiveBridge) {
-	if bridge.turnStore == nil {
-		return
+// finishActiveTurn consumes a terminal fact already persisted by 1ACP. SQLite
+// and task-timeline linkage are best-effort projections and cannot terminate
+// the runtime reader loop.
+func (c *AcpxClient) finishActiveTurn(bridge *ActiveBridge, msg WsMessage, raw []byte, tasksStore *TasksStore, chatStore *Store) ([]byte, bool) {
+	if msg.Event != "turn_terminal" || msg.TurnID == "" {
+		return raw, false
 	}
-	queued, err := bridge.turnStore.QueuedBySession(bridge.SessionID)
-	if err != nil {
-		log.Printf("[acpx_client] turn sync queue for %s: %v", bridge.SessionID, err)
-		return
-	}
+	turn := turnFromMessage(bridge, msg)
+
 	bridge.mu.Lock()
 	active := bridge.activeTurn
+	if active != nil && active.Turn.ID == turn.ID {
+		if active.Turn.InitiatingReplyID != "" {
+			turn.InitiatingReplyID = active.Turn.InitiatingReplyID
+		}
+		bridge.activeTurn = nil
+	}
+	if pending, index := findTurnContext(bridge.pendingTurns, turn.ID); pending != nil {
+		if turn.InitiatingReplyID == "" {
+			turn.InitiatingReplyID = pending.Turn.InitiatingReplyID
+		}
+		bridge.pendingTurns = append(bridge.pendingTurns[:index], bridge.pendingTurns[index+1:]...)
+	}
+	bridge.turnSyncReceived = true
 	bridge.mu.Unlock()
-	payload := map[string]any{
-		"event":     "turn_sync",
-		"sessionId": bridge.SessionID,
-		"queued":    queued,
-	}
-	if active != nil {
-		payload["active"] = active.Turn
-	}
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return
+
+	go func() {
+		bridge.projectionMu.Lock()
+		defer bridge.projectionMu.Unlock()
+		projected, err := projectAuthoritativeTurn(bridge.turnStore, turn)
+		if err != nil {
+			log.Printf("[acpx_client] Non-blocking terminal projection failed: session_id=%s turn_id=%s err=%v",
+				bridge.SessionID, turn.ID, err)
+		} else if turn.InitiatingReplyID == "" {
+			turn.InitiatingReplyID = projected.InitiatingReplyID
+		}
+
+		if turn.InitiatingReplyID == "" {
+			turn.InitiatingReplyID = writeUserReply(
+				bridge, tasksStore, turn.PromptText, turn.ID,
+			)
+		}
+		finalReplyID := writeAgentReplyText(
+			bridge, tasksStore, chatStore, turn.ID, turn.InitiatingReplyID, turn.FinalAnswer,
+		)
+		if bridge.turnStore != nil {
+			if turn.InitiatingReplyID != "" {
+				if err := bridge.turnStore.SetReplyLinks(turn.ID, turn.InitiatingReplyID, ""); err != nil {
+					log.Printf("[acpx_client] Non-blocking terminal initiating Reply projection failed for Turn %s: %v",
+						turn.ID, err)
+				}
+			}
+			if finalReplyID != "" {
+				if err := bridge.turnStore.SetReplyLinks(turn.ID, "", finalReplyID); err != nil {
+					log.Printf("[acpx_client] Non-blocking final Reply projection failed for Turn %s: %v", turn.ID, err)
+				}
+			}
+		}
+	}()
+	raw = addJSONFields(raw, map[string]any{"turnStatus": turn.Status})
+	return raw, true
+}
+
+func (c *AcpxClient) authoritativeRunningTurn(sessionID string) (meta.AgentTurn, bool, bool) {
+	c.mu.Lock()
+	bridge := c.bridges[sessionID]
+	known := c.turnStateKnown[sessionID]
+	c.mu.Unlock()
+	if bridge == nil {
+		return meta.AgentTurn{}, false, known
 	}
 	bridge.mu.Lock()
 	defer bridge.mu.Unlock()
-	if bridge.IsDone {
-		return
+	if !bridge.turnSyncReceived {
+		// A Browser bridge is already waiting for its mandatory 1ACP sync.
+		// Do not trust a possibly stale SQLite running row during this window.
+		return meta.AgentTurn{}, false, true
 	}
-	select {
-	case bridge.MsgChan <- raw:
-	default:
-		log.Printf("[acpx_client] MsgChan full, dropping turn_sync for %s", bridge.SessionID)
+	if bridge.activeTurn == nil || bridge.activeTurn.Turn.Status != meta.AgentTurnRunning {
+		return meta.AgentTurn{}, false, true
 	}
+	return bridge.activeTurn.Turn, true, true
 }
 
-func (c *AcpxClient) failOutstandingTurns(bridge *ActiveBridge, tasksStore *TasksStore, chatStore *Store) {
-	if bridge.turnStore == nil {
-		return
-	}
-	partial := bridge.takeTurnText()
+func (c *AcpxClient) clearAuthoritativeTurns(bridge *ActiveBridge) {
 	bridge.mu.Lock()
-	active := bridge.activeTurn
-	pending := append([]*TurnContext(nil), bridge.pendingTurns...)
 	bridge.activeTurn = nil
 	bridge.pendingTurns = nil
+	bridge.turnSyncReceived = true
 	bridge.mu.Unlock()
-
-	if active != nil {
-		failed, err := bridge.turnStore.Transition(active.Turn.ID, meta.AgentTurnTransition{
-			Status:      meta.AgentTurnFailed,
-			FinalAnswer: partial,
-			ErrorCode:   "runtime_lost",
-			ErrorText:   "ACP runtime connection ended before the Turn completed.",
-		})
-		if err != nil {
-			log.Printf("[acpx_client] Fail active Turn %s after runtime loss: %v", active.Turn.ID, err)
-		} else {
-			finalReplyID := writeAgentReplyText(
-				bridge, tasksStore, chatStore, active.Turn.ID, active.Turn.InitiatingReplyID, partial,
-			)
-			if finalReplyID != "" {
-				_ = bridge.turnStore.SetReplyLinks(active.Turn.ID, "", finalReplyID)
-			}
-			enqueueTurnState(bridge, "turn_state", failed)
-		}
+	c.mu.Lock()
+	if c.turnStateKnown == nil {
+		c.turnStateKnown = make(map[string]bool)
 	}
-	for _, queued := range pending {
-		cancelled, err := bridge.turnStore.Transition(queued.Turn.ID, meta.AgentTurnTransition{
-			Status:    meta.AgentTurnCancelled,
-			ErrorCode: "runtime_lost",
-			ErrorText: "ACP runtime connection ended before this queued Turn started.",
-		})
-		if err != nil {
-			log.Printf("[acpx_client] Cancel queued Turn %s after runtime loss: %v", queued.Turn.ID, err)
-			continue
-		}
-		enqueueTurnState(bridge, "turn_state", cancelled)
-	}
+	c.turnStateKnown[bridge.SessionID] = true
+	c.mu.Unlock()
 }
