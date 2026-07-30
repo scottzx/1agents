@@ -1,5 +1,13 @@
 # PRD：npm 多包拆分与分发（`@1agents/*`）
 
+> **分发勘误（2026-07-29）：** 本文 v1.3 中关于 `@1agents/skills`、1skills Python
+> 源码、uv/pip 和 `skills-panel` 的内容已被 HarnessKit 全量切换决策取代。当前版本将
+> `1agents`、`ttyd`、`hk` 与 `config/agent-extension-map.json` 放入各平台
+> `@1agents/core-*` 包；Extensions embed 随 `@1agents/web` 发布。主包不再依赖或发布
+> `@1agents/skills`。现行契约以
+> [`../harnesskit-migration/README.md`](../harnesskit-migration/README.md) 为准。
+> 下文保留为当时的包拆分决策记录，不得作为扩展运行时的实现依据。
+
 | 字段 | 内容 |
 |------|------|
 | 状态 | **已决策 / 待实现** |

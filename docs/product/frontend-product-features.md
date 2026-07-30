@@ -282,7 +282,7 @@ Chat 是用户与智能体协作的核心入口。它不仅是对话窗口，也
 - 团队页：管理助理/项目内的技能或成员配置。
 - 技能页：查看、添加、移除技能，支持版本和描述展示。
 - Agent Catalog：加载可用 Agent 类型及安装命令。
-- 1skills 嵌入模块：通过 `<skills-panel>` 管理 skills、agents、slash commands、MCP、marketplace 等。
+- Extensions 嵌入模块：通过 `<harnesskit-panel>` 统一查看 Skills、Subagents、Commands、MCP、Hooks、Plugins、CLI 与 Kits。
 
 主要前端入口：
 
@@ -417,7 +417,7 @@ Dashboard 是项目和团队运行状态的大屏入口，目前包含项目 coc
 | 文件与 Git | 查看和管理项目产物 | 文件树、预览、diff、Git 面板、浏览器 |
 | 数据源 | 接入和治理外部数据 | 数据接入、账号配置、raw table、治理表 |
 | 外部上下文 | 收束联系人、消息、资料和日程 | 联系人、消息、Inbox、提醒、日历 |
-| 助理与技能 | 管理 Agent 能力和协作对象 | 助理、团队、技能、1skills、Agent Catalog |
+| 助理与扩展 | 管理 Agent 能力和协作对象 | 助理、团队、Extensions、HarnessKit、Agent Catalog |
 | 插件应用 | 扩展业务工作流 | App Manifest、Discovery |
 | Provider/渠道 | 管理通信和执行平台连接 | cc-connect providers、渠道、Relay fetch |
 | 系统设置 | 管理 App 偏好和运维动作 | 主题、语言、模式、设备、更新、重置 |

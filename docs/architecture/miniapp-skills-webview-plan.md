@@ -1,5 +1,11 @@
 # 小程序 web-view 嵌入 skills —— 后端改造方案
 
+> **已废弃（2026-07-29）：** 本文记录的是 1skills / Skills-manager 时代的历史方案，
+> 不再描述当前运行时。现行实现使用 `/extensions/` 页面、
+> `/api/embed/harnesskit-embed.js` 和 `/api/harnesskit/*` 白名单代理；迁移与安全边界见
+> [`../features/harnesskit-migration/README.md`](../features/harnesskit-migration/README.md)。
+> 请勿按下文的 `/1skills/` 路由或 Python sidecar 设计实现新功能。
+
 > 目标:让小程序用 `<web-view>` 复用 web 端的 1skills(技能/MCP/slash-commands)
 > 重界面,而不是在 Taro 里重画一套。等价于桌面/web 今天的"嵌入模块"做法,但跨到
 > 小程序这个**非同源、受微信约束**的宿主。
