@@ -10,7 +10,6 @@ import type {
     FeatureNode,
     FeatureNodeKind,
     UpdateFeatureNodeInput,
-    GanttData,
 } from '@1agents/core/types/featureCatalog';
 import type { Milestone, ProjectItem } from './types';
 import * as sessionStore from '../../../stores/sessionStore';
@@ -20,17 +19,20 @@ import { buildFeatureBreakdownPrompt, buildFeatureCatalogGeneratePrompt } from '
 import { FeatureNodeForm } from './FeatureNodeForm';
 import {
     buildFeatureTree,
+    filterFeatureTree,
     flattenFeatureTree,
     formatFeatureError,
     siblingNodes,
     type FeatureTreeNode,
 } from './featureCatalogModel';
-import { GanttChart } from './GanttChart';
 
 interface FeatureCatalogViewProps {
     workspaceId: string;
     items: ProjectItem[];
     milestones: Milestone[];
+    versionFilterMilestoneId?: string;
+    onClearVersionFilter?: () => void;
+    onOpenMilestone?: (milestoneId: string) => void;
     onCatalogChange?: (catalog: FeatureCatalog) => void;
     onItemsChange?: () => Promise<void> | void;
 }
@@ -97,7 +99,6 @@ function TreeRow({
                 </span>
                 <span class="feature-tree-copy">
                     <span class="feature-tree-title">{entry.node.title}</span>
-                    <span class="feature-tree-path">{entry.path.join(' / ')}</span>
                 </span>
                 {entry.node.progress && <span class="feature-tree-progress">{progressSummary(entry.node)}</span>}
             </button>
@@ -116,6 +117,9 @@ export function FeatureCatalogView({
     workspaceId,
     items,
     milestones,
+    versionFilterMilestoneId,
+    onClearVersionFilter,
+    onOpenMilestone,
     onCatalogChange,
     onItemsChange,
 }: FeatureCatalogViewProps) {
@@ -130,15 +134,34 @@ export function FeatureCatalogView({
     const [sourceSelection, setSourceSelection] = useState('');
     const [deliverySelection, setDeliverySelection] = useState('');
     const [syncPreview, setSyncPreview] = useState<FeatureMilestoneSyncPreview | null>(null);
-
-    const [viewMode, setViewMode] = useState<'tree' | 'gantt'>('tree');
-    const [ganttData, setGanttData] = useState<GanttData | null>(null);
+    const [editing, setEditing] = useState(false);
+    const [query, setQuery] = useState('');
+    const [statusFilter, setStatusFilter] = useState<'all' | 'unplanned' | 'risk'>('all');
 
     const tree = useMemo(() => buildFeatureTree(catalog.nodes), [catalog.nodes]);
     const flatTree = useMemo(() => flattenFeatureTree(tree), [tree]);
     const entryById = useMemo(() => new Map(flatTree.map(entry => [entry.node.id, entry])), [flatTree]);
     const selectedEntry = selectedId ? entryById.get(selectedId) : undefined;
     const selectedNode = selectedEntry?.node;
+    const filteredTree = useMemo(() => {
+        const cleanQuery = query.trim().toLocaleLowerCase();
+        if (!cleanQuery && statusFilter === 'all' && !versionFilterMilestoneId) return tree;
+        return filterFeatureTree(tree, entry => {
+            const matchesQuery =
+                !cleanQuery ||
+                entry.node.title.toLocaleLowerCase().includes(cleanQuery) ||
+                entry.path.join(' / ').toLocaleLowerCase().includes(cleanQuery);
+            const matchesStatus =
+                statusFilter === 'all' ||
+                (statusFilter === 'unplanned' && entry.node.progress?.status === 'unplanned') ||
+                (statusFilter === 'risk' && entry.node.progress?.status === 'replan');
+            const matchesVersion =
+                !versionFilterMilestoneId ||
+                (entry.node.kind === 'feature' && entry.node.targetMilestoneId === versionFilterMilestoneId);
+            return matchesQuery && matchesStatus && matchesVersion;
+        });
+    }, [query, statusFilter, tree, versionFilterMilestoneId]);
+    const versionFilterMilestone = milestones.find(milestone => milestone.id === versionFilterMilestoneId);
 
     const loadCatalog = useCallback(async () => {
         const next = await featureCatalogService.get(workspaceId);
@@ -157,6 +180,9 @@ export function FeatureCatalogView({
         setCreateState(null);
         setDeleteTarget(null);
         setMobileDetailOpen(false);
+        setEditing(false);
+        setQuery('');
+        setStatusFilter('all');
         setLoading(true);
         setError('');
         featureCatalogService
@@ -185,7 +211,16 @@ export function FeatureCatalogView({
         setSourceSelection('');
         setDeliverySelection('');
         setSyncPreview(null);
+        setEditing(false);
     }, [selectedId]);
+
+    useEffect(() => {
+        if (!versionFilterMilestoneId) return;
+        const firstMatch = catalog.nodes.find(
+            node => node.kind === 'feature' && node.targetMilestoneId === versionFilterMilestoneId
+        );
+        if (firstMatch) setSelectedId(firstMatch.id);
+    }, [versionFilterMilestoneId, catalog.nodes]);
 
     const closeMobileDetail = useCallback(() => setMobileDetailOpen(false), []);
     useEffect(() => {
@@ -202,25 +237,6 @@ export function FeatureCatalogView({
         setError(message);
         ui.showToast(message);
     }, []);
-
-    const loadGantt = useCallback(async () => {
-        setBusy(true);
-        try {
-            const data = await featureCatalogService.gantt(workspaceId);
-            setGanttData(data);
-        } catch (cause) {
-            reportError(cause);
-        } finally {
-            setBusy(false);
-        }
-    }, [workspaceId, reportError]);
-
-    const handleViewModeChange = (mode: 'tree' | 'gantt') => {
-        setViewMode(mode);
-        if (mode === 'gantt' && !ganttData) {
-            void loadGantt();
-        }
-    };
 
     const downloadBlob = (blob: Blob, filename: string) => {
         const url = URL.createObjectURL(blob);
@@ -271,6 +287,7 @@ export function FeatureCatalogView({
     const selectNode = (id: string) => {
         setSelectedId(id);
         setCreateState(null);
+        setEditing(false);
         setError('');
         setMobileDetailOpen(true);
     };
@@ -291,9 +308,10 @@ export function FeatureCatalogView({
 
     const updateNode = async (input: UpdateFeatureNodeInput) => {
         if (!selectedNode) return;
-        await runMutation(async () => {
+        const ok = await runMutation(async () => {
             await featureCatalogService.update(workspaceId, selectedNode.id, input);
         }, '节点已保存。');
+        if (ok) setEditing(false);
     };
 
     const moveSelected = async (offset: -1 | 1) => {
@@ -539,66 +557,85 @@ export function FeatureCatalogView({
     );
 
     return (
-        <div class={`feature-catalog-view${detailOpen ? ' detail-open' : ''}`}>
-            <div class="feature-catalog-toolbar">
-                <div class="feature-view-toggle">
-                    <button class={viewMode === 'tree' ? 'active' : ''} onClick={() => handleViewModeChange('tree')}>
-                        树形视图
-                    </button>
-                    <button class={viewMode === 'gantt' ? 'active' : ''} onClick={() => handleViewModeChange('gantt')}>
-                        甘特图
-                    </button>
+        <div class="feature-catalog-shell">
+            <header class="feature-catalog-page-header">
+                <div>
+                    <h2>功能蓝图</h2>
+                    <p>管理产品由哪些模块与功能构成，以及它们从哪里来、由什么任务交付。</p>
                 </div>
-                <div class="feature-export-actions">
-                    <button
-                        type="button"
-                        class="feature-btn secondary compact"
-                        disabled={busy}
-                        onClick={() => void handleExport('markdown')}
-                    >
-                        导出 Markdown
+                <div class="feature-pane-actions">
+                    <button type="button" class="feature-btn secondary" onClick={generateWithPM}>
+                        与 AI PM 一起整理
                     </button>
-                    <button
-                        type="button"
-                        class="feature-btn secondary compact"
-                        disabled={busy}
-                        onClick={() => void handleExport('json')}
-                    >
-                        导出 JSON
+                    <button type="button" class="feature-btn primary" onClick={() => openCreate('module')}>
+                        + 一级模块
                     </button>
-                </div>
-            </div>
-
-            {viewMode === 'gantt' ? (
-                ganttData ? (
-                    <GanttChart workspaceId={workspaceId} data={ganttData} />
-                ) : (
-                    <div class="feature-catalog-loading">加载甘特图…</div>
-                )
-            ) : (
-                <Fragment>
-                    <section class="feature-catalog-tree-pane" aria-label="功能蓝图树">
-                        <div class="feature-pane-header">
-                            <div>
-                                <h3>功能蓝图</h3>
-                                <span>{catalog.nodes.length} 个节点</span>
-                            </div>
-                            <div class="feature-pane-actions">
-                                <button type="button" class="feature-btn secondary compact" onClick={generateWithPM}>
-                                    与 AI PM 一起生成
-                                </button>
-                                <button
-                                    type="button"
-                                    class="feature-btn primary compact"
-                                    onClick={() => openCreate('module')}
-                                >
-                                    + 一级模块
-                                </button>
-                            </div>
+                    <details class="feature-export-menu">
+                        <summary aria-label="导出功能蓝图">···</summary>
+                        <div>
+                            <button type="button" disabled={busy} onClick={() => void handleExport('markdown')}>
+                                导出 Markdown
+                            </button>
+                            <button type="button" disabled={busy} onClick={() => void handleExport('json')}>
+                                导出 JSON
+                            </button>
                         </div>
-                        {error && !selectedNode && <div class="feature-form-error">{error}</div>}
+                    </details>
+                </div>
+            </header>
+
+            {versionFilterMilestoneId && (
+                <div class="feature-context-banner">
+                    <span>
+                        正在查看版本{' '}
+                        <strong>{versionFilterMilestone?.version || versionFilterMilestone?.name || '未知版本'}</strong>{' '}
+                        的功能范围
+                    </span>
+                    <button type="button" onClick={onClearVersionFilter}>
+                        查看全部 ×
+                    </button>
+                </div>
+            )}
+
+            <div class={`feature-catalog-view${detailOpen ? ' detail-open' : ''}`}>
+                <section class="feature-catalog-tree-pane" aria-label="功能蓝图树">
+                    <div class="feature-tree-tools">
+                        <input
+                            type="search"
+                            value={query}
+                            placeholder="搜索模块或功能点"
+                            aria-label="搜索模块或功能点"
+                            onInput={(event: Event) => setQuery((event.currentTarget as HTMLInputElement).value)}
+                        />
+                        <div class="feature-filter-chips" aria-label="状态筛选">
+                            <button
+                                type="button"
+                                class={statusFilter === 'all' ? 'active' : ''}
+                                onClick={() => setStatusFilter('all')}
+                            >
+                                全部
+                            </button>
+                            <button
+                                type="button"
+                                class={statusFilter === 'unplanned' ? 'active' : ''}
+                                onClick={() => setStatusFilter('unplanned')}
+                            >
+                                未拆解
+                            </button>
+                            <button
+                                type="button"
+                                class={statusFilter === 'risk' ? 'active' : ''}
+                                onClick={() => setStatusFilter('risk')}
+                            >
+                                风险
+                            </button>
+                        </div>
+                    </div>
+                    <div class="feature-tree-count">{catalog.nodes.length} 个节点</div>
+                    {error && !selectedNode && <div class="feature-form-error">{error}</div>}
+                    {filteredTree.length > 0 ? (
                         <ul class="feature-tree">
-                            {tree.map(entry => (
+                            {filteredTree.map(entry => (
                                 <TreeRow
                                     key={entry.node.id}
                                     entry={entry}
@@ -607,223 +644,262 @@ export function FeatureCatalogView({
                                 />
                             ))}
                         </ul>
-                    </section>
+                    ) : (
+                        <div class="feature-tree-empty">没有符合当前条件的节点。</div>
+                    )}
+                </section>
 
-                    <section class="feature-catalog-detail-pane" aria-label="功能节点详情">
-                        <button type="button" class="feature-mobile-back" onClick={closeMobileDetail}>
-                            ← 返回功能树
-                        </button>
-                        {createState ? (
-                            <Fragment>
-                                <div class="feature-detail-heading">
-                                    <div>
-                                        <span class="feature-detail-kicker">新增</span>
-                                        <h3>{createState.kind === 'module' ? '模块' : '功能点'}</h3>
-                                    </div>
+                <section class="feature-catalog-detail-pane" aria-label="功能节点详情">
+                    <button type="button" class="feature-mobile-back" onClick={closeMobileDetail}>
+                        ← 返回功能树
+                    </button>
+                    {createState ? (
+                        <Fragment>
+                            <div class="feature-detail-heading">
+                                <div>
+                                    <span class="feature-detail-kicker">新增</span>
+                                    <h3>{createState.kind === 'module' ? '模块' : '功能点'}</h3>
                                 </div>
-                                <FeatureNodeForm
-                                    key={`create:${createState.kind}:${createState.parentId}`}
-                                    kind={createState.kind}
-                                    nodes={catalog.nodes}
-                                    milestones={milestones}
-                                    initialParentId={createState.parentId}
-                                    busy={busy}
-                                    error={error}
-                                    onCancel={() => setCreateState(null)}
-                                    onCreate={createNode}
-                                />
-                            </Fragment>
-                        ) : selectedNode && selectedEntry ? (
-                            <Fragment>
-                                <div class="feature-detail-heading">
-                                    <div>
-                                        <span class="feature-detail-kicker">
-                                            {selectedNode.kind === 'module'
-                                                ? `${selectedEntry.moduleDepth} 级模块`
-                                                : '功能点'}
-                                        </span>
-                                        <h3>{selectedNode.title}</h3>
-                                        <p>{selectedEntry.path.join(' / ')}</p>
-                                    </div>
-                                    <div class="feature-detail-actions">
-                                        <button
-                                            type="button"
-                                            class="feature-icon-btn"
-                                            title="上移"
-                                            disabled={busy || selectedIndex <= 0}
-                                            onClick={() => void moveSelected(-1)}
-                                        >
-                                            ↑
-                                        </button>
-                                        <button
-                                            type="button"
-                                            class="feature-icon-btn"
-                                            title="下移"
-                                            disabled={busy || selectedIndex === siblings.length - 1}
-                                            onClick={() => void moveSelected(1)}
-                                        >
-                                            ↓
-                                        </button>
-                                    </div>
+                            </div>
+                            <FeatureNodeForm
+                                key={`create:${createState.kind}:${createState.parentId}`}
+                                kind={createState.kind}
+                                nodes={catalog.nodes}
+                                milestones={milestones}
+                                initialParentId={createState.parentId}
+                                busy={busy}
+                                error={error}
+                                onCancel={() => setCreateState(null)}
+                                onCreate={createNode}
+                            />
+                        </Fragment>
+                    ) : selectedNode && selectedEntry ? (
+                        <Fragment>
+                            <div class="feature-detail-heading">
+                                <div>
+                                    <span class="feature-detail-kicker">
+                                        {selectedNode.kind === 'module'
+                                            ? `${selectedEntry.moduleDepth} 级模块`
+                                            : '功能点'}
+                                    </span>
+                                    <h3>{selectedNode.title}</h3>
+                                    <p>{selectedEntry.path.join(' / ')}</p>
                                 </div>
-                                {selectedNode.kind === 'module' && (
-                                    <div class="feature-add-row">
-                                        {selectedEntry.moduleDepth < 3 && (
-                                            <button
-                                                type="button"
-                                                class="feature-btn secondary"
-                                                onClick={() => openCreate('module', selectedNode.id)}
-                                            >
-                                                + 子模块
-                                            </button>
-                                        )}
+                                <div class="feature-detail-actions">
+                                    {editing ? (
                                         <button
                                             type="button"
                                             class="feature-btn secondary"
-                                            onClick={() => openCreate('feature', selectedNode.id)}
+                                            onClick={() => setEditing(false)}
+                                            disabled={busy}
                                         >
-                                            + 功能点
+                                            取消编辑
                                         </button>
-                                    </div>
-                                )}
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            class="feature-btn secondary"
+                                            onClick={() => setEditing(true)}
+                                        >
+                                            编辑
+                                        </button>
+                                    )}
+                                    <details class="feature-node-menu">
+                                        <summary aria-label="更多节点操作">···</summary>
+                                        <div>
+                                            <button
+                                                type="button"
+                                                disabled={busy || selectedIndex <= 0}
+                                                onClick={() => void moveSelected(-1)}
+                                            >
+                                                上移
+                                            </button>
+                                            <button
+                                                type="button"
+                                                disabled={busy || selectedIndex === siblings.length - 1}
+                                                onClick={() => void moveSelected(1)}
+                                            >
+                                                下移
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="danger"
+                                                disabled={busy}
+                                                onClick={() => setDeleteTarget(selectedNode)}
+                                            >
+                                                删除
+                                            </button>
+                                        </div>
+                                    </details>
+                                </div>
+                            </div>
+
+                            {editing ? (
                                 <FeatureNodeForm
-                                    key={selectedNode.id}
+                                    key={`edit:${selectedNode.id}`}
                                     kind={selectedNode.kind}
                                     nodes={catalog.nodes}
                                     milestones={milestones}
                                     node={selectedNode}
                                     busy={busy}
                                     error={error}
+                                    onCancel={() => setEditing(false)}
                                     onUpdate={updateNode}
                                 />
-                                {selectedNode.progress && (
-                                    <div class="feature-progress-card">
-                                        <div>
-                                            <span>派生状态</span>
-                                            <strong>{PROGRESS_LABELS[selectedNode.progress.status]}</strong>
-                                        </div>
-                                        <div>
-                                            <span>交付进度</span>
-                                            <strong>
-                                                {selectedNode.progress.progressPercent === null
-                                                    ? '—'
-                                                    : `${selectedNode.progress.progressPercent}%`}
-                                            </strong>
-                                            <small>
-                                                {selectedNode.progress.completedTasks}/
-                                                {selectedNode.progress.totalTasks} 个有效任务
-                                            </small>
-                                        </div>
-                                        <div>
-                                            <span>功能覆盖</span>
-                                            <strong>
-                                                {selectedNode.progress.coveredFeatures}/
-                                                {selectedNode.progress.totalFeatures}
-                                            </strong>
-                                            <small>
-                                                未拆解 {selectedNode.progress.unplannedFeatures} · 需重规划{' '}
-                                                {selectedNode.progress.replanFeatures}
-                                            </small>
-                                        </div>
-                                    </div>
-                                )}
-                                {selectedNode.kind === 'module' && (
-                                    <div class="feature-version-coverage">
-                                        <strong>后代功能点版本覆盖</strong>
-                                        {selectedNode.versionCoverage?.length ? (
+                            ) : (
+                                <Fragment>
+                                    <p class="feature-read-description">
+                                        {selectedNode.description || '尚未补充该节点的范围与边界。'}
+                                    </p>
+
+                                    {selectedNode.progress && (
+                                        <div class="feature-read-summary">
                                             <div>
-                                                {selectedNode.versionCoverage.map(coverage => (
-                                                    <span key={coverage.milestoneId}>
-                                                        {coverage.version}
-                                                        <small>{coverage.featureCount} 个功能点</small>
-                                                    </span>
-                                                ))}
+                                                <span>状态</span>
+                                                <strong>{PROGRESS_LABELS[selectedNode.progress.status]}</strong>
                                             </div>
-                                        ) : (
-                                            <p>后代功能点尚未指定目标版本。</p>
-                                        )}
-                                    </div>
-                                )}
-                                {selectedNode.kind === 'feature' && (
-                                    <Fragment>
-                                        {mismatchedTasks.length > 0 && (
-                                            <div class="feature-version-diff" role="status">
-                                                <div>
-                                                    <strong>{mismatchedTasks.length} 个关联任务版本不一致</strong>
-                                                    <span>
-                                                        目标为 {targetMilestone?.version ?? '未指定'}
-                                                        ；保存功能点不会自动修改这些任务。
-                                                    </span>
-                                                </div>
+                                            <div>
+                                                <span>交付</span>
+                                                <strong>
+                                                    {selectedNode.progress.progressPercent === null
+                                                        ? '—'
+                                                        : `${selectedNode.progress.progressPercent}%`}
+                                                </strong>
+                                                <small>
+                                                    {selectedNode.progress.completedTasks}/
+                                                    {selectedNode.progress.totalTasks} 个任务
+                                                </small>
+                                            </div>
+                                            <div>
+                                                <span>{selectedNode.kind === 'module' ? '功能覆盖' : '目标版本'}</span>
+                                                {selectedNode.kind === 'module' ? (
+                                                    <strong>
+                                                        {selectedNode.progress.coveredFeatures}/
+                                                        {selectedNode.progress.totalFeatures}
+                                                    </strong>
+                                                ) : targetMilestone && onOpenMilestone ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => onOpenMilestone(targetMilestone.id)}
+                                                    >
+                                                        {targetMilestone.version || targetMilestone.name} →
+                                                    </button>
+                                                ) : (
+                                                    <strong>
+                                                        {targetMilestone?.version || targetMilestone?.name || '未指定'}
+                                                    </strong>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {selectedNode.kind === 'module' && (
+                                        <Fragment>
+                                            <div class="feature-add-row">
+                                                {selectedEntry.moduleDepth < 3 && (
+                                                    <button
+                                                        type="button"
+                                                        class="feature-btn secondary"
+                                                        onClick={() => openCreate('module', selectedNode.id)}
+                                                    >
+                                                        + 子模块
+                                                    </button>
+                                                )}
                                                 <button
                                                     type="button"
                                                     class="feature-btn secondary"
-                                                    disabled={busy}
-                                                    onClick={() => void openSyncPreview()}
+                                                    onClick={() => openCreate('feature', selectedNode.id)}
                                                 >
-                                                    同步到关联任务
+                                                    + 功能点
                                                 </button>
                                             </div>
-                                        )}
-                                        <div class="feature-create-task">
-                                            <button type="button" class="feature-btn primary" onClick={breakdownWithPM}>
-                                                让 AI PM 拆解为任务
-                                            </button>
-                                            <small>
-                                                AI PM 会让新任务引用顶层需求、关联此功能点并继承
-                                                {targetMilestone?.version
-                                                    ? ` ${targetMilestone.version}`
-                                                    : '未指定版本'}
-                                                。
-                                            </small>
-                                        </div>
-                                        <div class="feature-trace-grid">
-                                            {renderLinks(
-                                                '来源需求 / 缺陷',
-                                                'source',
-                                                sourceLinks,
-                                                sourceCandidates,
-                                                sourceSelection,
-                                                setSourceSelection
+                                            <details class="feature-version-coverage">
+                                                <summary>后代功能点版本覆盖</summary>
+                                                {selectedNode.versionCoverage?.length ? (
+                                                    <div>
+                                                        {selectedNode.versionCoverage.map(coverage => (
+                                                            <button
+                                                                type="button"
+                                                                key={coverage.milestoneId}
+                                                                onClick={() => onOpenMilestone?.(coverage.milestoneId)}
+                                                            >
+                                                                {coverage.version}
+                                                                <small>{coverage.featureCount} 个功能点</small>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <p>后代功能点尚未指定目标版本。</p>
+                                                )}
+                                            </details>
+                                        </Fragment>
+                                    )}
+
+                                    {selectedNode.kind === 'feature' && (
+                                        <Fragment>
+                                            {mismatchedTasks.length > 0 && (
+                                                <div class="feature-version-diff" role="status">
+                                                    <div>
+                                                        <strong>{mismatchedTasks.length} 个关联任务版本不一致</strong>
+                                                        <span>
+                                                            目标为 {targetMilestone?.version ?? '未指定'}
+                                                            ；修改功能点不会自动改写这些任务。
+                                                        </span>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        class="feature-btn secondary"
+                                                        disabled={busy}
+                                                        onClick={() => void openSyncPreview()}
+                                                    >
+                                                        同步到关联任务
+                                                    </button>
+                                                </div>
                                             )}
-                                            {renderLinks(
-                                                '交付任务',
-                                                'delivery',
-                                                deliveryLinks,
-                                                deliveryCandidates,
-                                                deliverySelection,
-                                                setDeliverySelection
-                                            )}
-                                        </div>
-                                    </Fragment>
-                                )}
-                                <div class="feature-danger-zone">
-                                    <div>
-                                        <strong>删除{selectedNode.kind === 'module' ? '模块' : '功能点'}</strong>
-                                        <span>
-                                            {directChildren.length > 0
-                                                ? `包含 ${directChildren.length} 个直接子节点，需先移动或删除它们。`
-                                                : linkedItems.length > 0
-                                                  ? `将解除 ${linkedItems.length} 项关联，但不会删除关联的需求或任务。`
-                                                  : '删除后不可恢复。'}
-                                        </span>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        class="feature-btn danger"
-                                        onClick={() => setDeleteTarget(selectedNode)}
-                                        disabled={busy}
-                                    >
-                                        删除
-                                    </button>
-                                </div>
-                            </Fragment>
-                        ) : (
-                            <div class="feature-detail-placeholder">从左侧选择模块或功能点查看详情。</div>
-                        )}
-                    </section>
-                </Fragment>
-            )}
+                                            <div class="feature-create-task">
+                                                <button
+                                                    type="button"
+                                                    class="feature-btn primary"
+                                                    onClick={breakdownWithPM}
+                                                >
+                                                    让 AI PM 拆解为任务
+                                                </button>
+                                                <small>
+                                                    新任务会关联此功能点，并继承
+                                                    {targetMilestone?.version
+                                                        ? ` ${targetMilestone.version}`
+                                                        : '未指定版本'}
+                                                    。
+                                                </small>
+                                            </div>
+                                            <div class="feature-trace-grid">
+                                                {renderLinks(
+                                                    '来源需求 / 缺陷',
+                                                    'source',
+                                                    sourceLinks,
+                                                    sourceCandidates,
+                                                    sourceSelection,
+                                                    setSourceSelection
+                                                )}
+                                                {renderLinks(
+                                                    '交付任务',
+                                                    'delivery',
+                                                    deliveryLinks,
+                                                    deliveryCandidates,
+                                                    deliverySelection,
+                                                    setDeliverySelection
+                                                )}
+                                            </div>
+                                        </Fragment>
+                                    )}
+                                </Fragment>
+                            )}
+                        </Fragment>
+                    ) : (
+                        <div class="feature-detail-placeholder">从左侧选择模块或功能点查看详情。</div>
+                    )}
+                </section>
+            </div>
 
             {deleteTarget && (
                 <div class="ws-modal-overlay" onClick={() => !busy && setDeleteTarget(null)}>

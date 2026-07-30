@@ -10,16 +10,25 @@ export function GanttUnscheduledTasks({ tasks, onTaskClick }: GanttUnscheduledTa
     if (!tasks || tasks.length === 0) return null;
 
     return (
-        <div class="gantt-unscheduled">
-            <h4>未排期任务 ({tasks.length})</h4>
+        <details class="gantt-unscheduled">
+            <summary>
+                <span>{tasks.length} 个任务尚未排期</span>
+                <small>它们不会出现在时间轴中</small>
+                <strong>查看</strong>
+            </summary>
             <div class="gantt-unscheduled-list">
                 {tasks.map(task => (
-                    <div key={task.id} class="gantt-unscheduled-item" onClick={() => onTaskClick(task.id)}>
+                    <button
+                        type="button"
+                        key={task.id}
+                        class="gantt-unscheduled-item"
+                        onClick={() => onTaskClick(task.id)}
+                    >
                         <span>{`#${task.number} ${task.title}`}</span>
                         <span class="gantt-badge">{task.status}</span>
-                    </div>
+                    </button>
                 ))}
             </div>
-        </div>
+        </details>
     );
 }

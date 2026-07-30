@@ -6,6 +6,7 @@ import {
     buildFeatureTree,
     deliveryModulePathsByItem,
     featureModulePathsForItem,
+    filterFeatureTree,
     flattenFeatureTree,
     formatFeatureError,
     linkedFeatureEntries,
@@ -45,6 +46,16 @@ test('builds complete three-level paths and keeps server sibling order', () => {
     assert.equal(login?.moduleDepth, 3);
     assert.deepEqual(sms?.path, ['用户与权限', '账号', '登录', '短信登录']);
     assert.ok((flat.indexOf(sms!) ?? -1) < (flat.indexOf(password!) ?? -1));
+});
+
+test('filters a feature tree without losing the ancestors that provide context', () => {
+    const filtered = filterFeatureTree(buildFeatureTree(nodes), entry => entry.node.id === 'sms');
+
+    assert.deepEqual(
+        flattenFeatureTree(filtered).map(entry => entry.node.id),
+        ['root', 'account', 'login', 'sms']
+    );
+    assert.deepEqual(flattenFeatureTree(filtered).at(-1)?.path, ['用户与权限', '账号', '登录', '短信登录']);
 });
 
 test('features can use any module parent but can never become parents', () => {

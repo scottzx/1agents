@@ -1,7 +1,7 @@
 /**
  * Module Slot Architecture — public contract types.
  *
- * Every module embedded by the main app (1skills, cc-connect, future modules)
+ * Every module embedded by the main app (HarnessKit, cc-connect, future modules)
  * communicates its navigation surface through a `ModuleManifest`. The host's
  * `LeftSidebar` renders the manifest inside its own column; the module iframe
  * is then loaded in `?bare=1` mode and renders only the active route's content.

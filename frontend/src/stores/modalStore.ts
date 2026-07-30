@@ -2,7 +2,7 @@ import { signal } from '@preact/signals';
 
 import type { Workspace, Session, AgentType, FsEntry } from '../components/types';
 import { DEFAULT_AGENT_TYPE } from '../services/agentService';
-import type { SkillPushPreview } from '@1agents/core/services/skillService';
+import type { SkillReindexPreview } from '@1agents/core/services/skillService';
 import type { AuthMethod } from '@1agents/core/protocol/types';
 
 /**
@@ -284,27 +284,26 @@ export const closeFsDeleteModal = () => {
     fsDeleteTarget.value = null;
 };
 
-// ── Push-preview modal ────────────────────────────────────────────────────
-// Project side only submits a snapshot; Skills Manager decides adoption.
+// ── Project extension reindex confirmation ───────────────────────────────
 export const pushPreviewOpen = signal(false);
-export const pushPreviewData = signal<SkillPushPreview | null>(null);
+export const pushPreviewData = signal<SkillReindexPreview | null>(null);
 export const pushPreviewWorkspaceId = signal('');
-export const pushPreviewSkillRef = signal('');
+export const pushPreviewExtensionId = signal('');
 // Callback into SkillsTab so the modal doesn't need to know about workspace
 // refresh/flash wiring; set alongside the preview data when opening.
-type PushPreviewOnDone = (result: 'submitted' | 'unchanged') => void;
+type PushPreviewOnDone = (result: 'indexed') => void;
 export const pushPreviewOnDone = signal<PushPreviewOnDone | null>(null);
 
 export const openPushPreviewModal = (
-    preview: SkillPushPreview,
+    preview: SkillReindexPreview,
     workspaceId: string,
-    skillRef: string,
-    onDone: (result: 'submitted' | 'unchanged') => void
+    extensionId: string,
+    onDone: (result: 'indexed') => void
 ) => {
     pushPreviewOpen.value = true;
     pushPreviewData.value = preview;
     pushPreviewWorkspaceId.value = workspaceId;
-    pushPreviewSkillRef.value = skillRef;
+    pushPreviewExtensionId.value = extensionId;
     pushPreviewOnDone.value = onDone;
 };
 
@@ -312,7 +311,7 @@ export const closePushPreviewModal = () => {
     pushPreviewOpen.value = false;
     pushPreviewData.value = null;
     pushPreviewWorkspaceId.value = '';
-    pushPreviewSkillRef.value = '';
+    pushPreviewExtensionId.value = '';
     pushPreviewOnDone.value = null;
 };
 

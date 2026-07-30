@@ -116,6 +116,7 @@ export interface GanttModule {
 
 export interface GanttMilestone {
     id: string;
+    name: string;
     version: string;
     targetDate?: string;
 }

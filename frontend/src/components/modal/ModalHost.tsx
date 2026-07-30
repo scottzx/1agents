@@ -202,7 +202,7 @@ export function ModalHost() {
                 <PushPreviewModal
                     preview={modal.pushPreviewData.value}
                     workspaceId={modal.pushPreviewWorkspaceId.value}
-                    skillRef={modal.pushPreviewSkillRef.value}
+                    extensionId={modal.pushPreviewExtensionId.value}
                     onClose={modal.closePushPreviewModal}
                     onDone={result => {
                         const onDone = modal.pushPreviewOnDone.value;

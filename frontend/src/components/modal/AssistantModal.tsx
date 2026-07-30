@@ -239,13 +239,13 @@ export function AssistantModal(props: AssistantModalProps) {
                                 {!skillsLoading &&
                                     !skillsError &&
                                     rows.map(row => {
-                                        const checked = skills.includes(row.skillRef);
+                                        const checked = skills.includes(row.extensionId);
                                         return (
                                             <button
-                                                key={row.skillRef}
+                                                key={row.extensionId}
                                                 type="button"
                                                 class={`assistant-skill-card${checked ? ' checked' : ''}`}
-                                                onClick={() => toggleSkill(row.skillRef)}
+                                                onClick={() => toggleSkill(row.extensionId)}
                                             >
                                                 <div class="assistant-skill-card-title">{row.name}</div>
                                                 {row.description && (

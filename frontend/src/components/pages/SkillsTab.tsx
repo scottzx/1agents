@@ -22,30 +22,9 @@ import type { Crumb } from '../platform/ShellNav';
  * the right — reusing the workspace file preview).
  */
 const BADGE: Record<WorkspaceSkillStatus['state'], { cls: string; key: string }> = {
-    synced: { cls: 'is-synced', key: 'assistant.detail.synced' },
-    modified: { cls: 'is-modified', key: 'assistant.detail.modified' },
-    local: { cls: 'is-local', key: 'assistant.detail.local' },
-    'update-available': { cls: 'is-update', key: 'assistant.detail.updateAvailable' },
+    active: { cls: 'is-synced', key: 'assistant.detail.extensionActive' },
+    disabled: { cls: 'is-local', key: 'assistant.detail.extensionDisabled' },
 };
-
-/** Classification tag chips (primary / secondary), shared by card + detail. */
-function TagBadges({
-    primaryTag,
-    secondaryTag,
-    mt,
-}: {
-    primaryTag?: string | null;
-    secondaryTag?: string | null;
-    mt: number;
-}) {
-    if (!primaryTag && !secondaryTag) return null;
-    return (
-        <div class="skill-tags" style={`margin-top:${mt}px`}>
-            {primaryTag && <span class="tag-badge tag-badge-primary">{primaryTag}</span>}
-            {secondaryTag && <span class="tag-badge tag-badge-secondary">{secondaryTag}</span>}
-        </div>
-    );
-}
 
 export function SkillsTab({
     workspaceId,
@@ -72,7 +51,7 @@ export function SkillsTab({
     const [pushing, setPushing] = useState(false);
     const [pulling, setPulling] = useState(false);
     const [flash, setFlash] = useState('');
-    // Add-from-母体 picker + project-remove confirm (local modals).
+    // Add-from-global HarnessKit inventory picker + project-remove confirm.
     const [pickerOpen, setPickerOpen] = useState(false);
     const [available, setAvailable] = useState<AvailableSkill[]>([]);
     const [pickerBusy, setPickerBusy] = useState(false);
@@ -110,11 +89,7 @@ export function SkillsTab({
             },
         };
         taskNav.headerCrumbs.value = selected
-            ? [
-                  parentCrumb,
-                  { label: wsName, onClick: () => setSelected(null) },
-                  { label: selected.name || selected.dir },
-              ]
+            ? [parentCrumb, { label: wsName, onClick: () => setSelected(null) }, { label: selected.name }]
             : [parentCrumb, { label: wsName }];
         return () => {
             if (crumbsParent !== undefined) {
@@ -158,10 +133,10 @@ export function SkillsTab({
         }
     };
 
-    const onAdd = async (skillRef: string) => {
+    const onAdd = async (extensionId: string) => {
         setPickerBusy(true);
         try {
-            await skillService.addSkill(workspaceId, skillRef);
+            await skillService.addSkill(workspaceId, extensionId);
             setPickerOpen(false);
             setFlash(t('assistant.detail.added', language));
             await load();
@@ -176,7 +151,7 @@ export function SkillsTab({
         if (!selected) return;
         setRemoving(true);
         try {
-            await skillService.removeSkill(workspaceId, selected.skillRef);
+            await skillService.removeSkill(workspaceId, selected.extensionId);
             setConfirmRemove(false);
             setSelected(null);
             setFlash(t('assistant.detail.removed', language));
@@ -188,11 +163,11 @@ export function SkillsTab({
         }
     };
 
-    const skillDir = selected ? `.claude/skills/${selected.dir}` : '';
+    const skillDir = selected?.path ?? '';
 
     // On opening a skill, preview its SKILL.md by default.
     useEffect(() => {
-        if (!selected) return;
+        if (!selected || !skillDir) return;
         void fs.openFileDetail({
             name: 'SKILL.md',
             path: `${skillDir}/SKILL.md`,
@@ -208,13 +183,9 @@ export function SkillsTab({
         try {
             // Read-only preview first (issue #379 follow-up) — nothing is written
             // until the user picks a resolution in the dialog.
-            const preview = await skillService.previewPush(workspaceId, selected.skillRef);
-            modal.openPushPreviewModal(preview, workspaceId, selected.skillRef, result => {
-                setFlash(
-                    result === 'unchanged'
-                        ? t('assistant.push.unchanged', language)
-                        : t('assistant.push.submitted', language)
-                );
+            const preview = await skillService.previewReindex(workspaceId, selected.extensionId);
+            modal.openPushPreviewModal(preview, workspaceId, selected.extensionId, () => {
+                setFlash(t('assistant.push.indexed', language));
                 void load();
             });
         } catch {
@@ -228,10 +199,8 @@ export function SkillsTab({
         if (!selected) return;
         setPulling(true);
         try {
-            const res = await skillService.pullSkill(workspaceId, selected.skillRef);
-            setFlash(
-                res.status === 'dirty' ? t('assistant.pull.dirty', language) : t('assistant.pull.pulled', language)
-            );
+            await skillService.updateSkill(workspaceId, selected.extensionId);
+            setFlash(t('assistant.pull.updated', language));
             void load();
         } catch {
             setFlash(t('assistant.pull.failed', language));
@@ -242,8 +211,7 @@ export function SkillsTab({
 
     // ── Skill detail (folder browser + preview) ──────────────────────────────
     if (selected) {
-        const canPush = selected.state !== 'synced';
-        const canPull = selected.state === 'update-available';
+        const canPull = selected.canUpdate;
         return (
             <div class="skill-detail">
                 {/* Row 1: title + status on the left, quick actions on the right.
@@ -252,15 +220,11 @@ export function SkillsTab({
                     <div class="skill-detail-row1">
                         <div class="skill-detail-titlewrap">
                             <div class="skill-detail-title">
-                                <span class="skill-detail-name">{selected.name || selected.dir}</span>
+                                <span class="skill-detail-name">{selected.name}</span>
                                 <span class={`assistant-skill-badge ${BADGE[selected.state].cls}`}>
                                     {t(BADGE[selected.state].key, language)}
                                 </span>
-                                {selected.version > 0 && (
-                                    <span class="assistant-skill-version">v{selected.version}</span>
-                                )}
                             </div>
-                            <TagBadges primaryTag={selected.primaryTag} secondaryTag={selected.secondaryTag} mt={4} />
                         </div>
                         <div class="skill-detail-actions">
                             {flash && <span class="assistant-flash">{flash}</span>}
@@ -275,19 +239,15 @@ export function SkillsTab({
                                         : t('assistant.pull.pull', language)}
                                 </button>
                             )}
-                            {canPush && (
-                                <button
-                                    class="assistant-btn assistant-btn-ghost"
-                                    disabled={pushing}
-                                    onClick={() => void onPush()}
-                                >
-                                    {pushing
-                                        ? t('assistant.detail.pushing', language)
-                                        : selected.state === 'local'
-                                          ? t('assistant.detail.pushCreate', language)
-                                          : t('assistant.detail.push', language)}
-                                </button>
-                            )}
+                            <button
+                                class="assistant-btn assistant-btn-ghost"
+                                disabled={pushing}
+                                onClick={() => void onPush()}
+                            >
+                                {pushing
+                                    ? t('assistant.detail.indexing', language)
+                                    : t('assistant.detail.reindex', language)}
+                            </button>
                             <button
                                 class="assistant-btn assistant-btn-danger"
                                 disabled={removing}
@@ -299,14 +259,16 @@ export function SkillsTab({
                     </div>
                     {selected.description && <p class="skill-detail-desc">{selected.description}</p>}
                 </div>
-                <div class="file-split">
-                    <div class="file-split-list">
-                        <SkillFileList rootDir={skillDir} />
+                {skillDir && (
+                    <div class="file-split">
+                        <div class="file-split-list">
+                            <SkillFileList rootDir={skillDir} />
+                        </div>
+                        <div class="file-split-preview">
+                            <FilePreviewPane app={app} language={language} hideBack />
+                        </div>
                     </div>
-                    <div class="file-split-preview">
-                        <FilePreviewPane app={app} language={language} hideBack />
-                    </div>
-                </div>
+                )}
                 {confirmRemove && (
                     <div class="ws-modal-overlay" onClick={() => !removing && setConfirmRemove(false)}>
                         <div class="ws-modal" onClick={(e: MouseEvent) => e.stopPropagation()}>
@@ -319,7 +281,7 @@ export function SkillsTab({
                             <div class="ws-modal-body">
                                 <p>
                                     {t('assistant.detail.removeConfirmBody', language, {
-                                        name: selected.name || selected.dir,
+                                        name: selected.name,
                                     })}
                                 </p>
                             </div>
@@ -361,22 +323,20 @@ export function SkillsTab({
             )}
             {!loading && !error && (
                 <div class="skills-grid">
-                    {/* Add-from-母体 card — always first. */}
+                    {/* Add from the global HarnessKit inventory — always first. */}
                     <button class="skill-card skill-add-card" onClick={() => void openPicker()}>
                         <span class="skill-add-plus">＋</span>
                         <span class="skill-add-label">{t('assistant.detail.addSkill', language)}</span>
                     </button>
                     {skills.map(s => (
-                        <button key={s.skillRef} class="skill-card" onClick={() => setSelected(s)}>
+                        <button key={s.extensionId} class="skill-card" onClick={() => setSelected(s)}>
                             <div class="skill-card-head">
-                                <span class="skill-card-name">{s.name || s.dir}</span>
+                                <span class="skill-card-name">{s.name}</span>
                                 <span class={`assistant-skill-badge ${BADGE[s.state].cls}`}>
                                     {t(BADGE[s.state].key, language)}
                                 </span>
-                                {s.version > 0 && <span class="assistant-skill-version">v{s.version}</span>}
                             </div>
                             {s.description && <p class="skill-card-desc">{s.description}</p>}
-                            <TagBadges primaryTag={s.primaryTag} secondaryTag={s.secondaryTag} mt={8} />
                         </button>
                     ))}
                 </div>
@@ -402,7 +362,7 @@ export function SkillsTab({
                                 const q = pickerQuery.trim().toLowerCase();
                                 const filtered = q
                                     ? available.filter(a =>
-                                          [a.name, a.dir, a.description, a.primaryTag, a.secondaryTag]
+                                          [a.name, a.description, a.sourceAgent]
                                               .filter(Boolean)
                                               .some(s => (s as string).toLowerCase().includes(q))
                                       )
@@ -425,23 +385,15 @@ export function SkillsTab({
                                     <div class="skill-picker-grid">
                                         {filtered.map(a => (
                                             <button
-                                                key={a.skillRef}
+                                                key={a.extensionId}
                                                 class="skill-card skill-picker-card"
-                                                disabled={pickerBusy}
-                                                onClick={() => void onAdd(a.skillRef)}
+                                                disabled={pickerBusy || !a.canInstall}
+                                                onClick={() => void onAdd(a.extensionId)}
                                             >
                                                 <div class="skill-card-head">
-                                                    <span class="skill-card-name">{a.name || a.dir}</span>
-                                                    {a.version > 0 && (
-                                                        <span class="assistant-skill-version">v{a.version}</span>
-                                                    )}
+                                                    <span class="skill-card-name">{a.name}</span>
                                                 </div>
                                                 {a.description && <p class="skill-card-desc">{a.description}</p>}
-                                                <TagBadges
-                                                    primaryTag={a.primaryTag}
-                                                    secondaryTag={a.secondaryTag}
-                                                    mt={8}
-                                                />
                                             </button>
                                         ))}
                                     </div>

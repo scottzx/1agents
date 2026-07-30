@@ -1,4 +1,5 @@
 import { h } from 'preact';
+import { useState, useEffect } from 'preact/hooks';
 import type { ITerminalOptions } from '@xterm/xterm';
 
 import type { ContentView } from '../../stores/stageStore';
@@ -440,17 +441,54 @@ function renderBrowser(tabId: string, language: Lang) {
     );
 }
 
-function renderSkills(theme: 'light' | 'dark', language: Lang) {
-    const skillsMod = getModuleByTab('skills');
-    const activeModulePath = tabsStore.activeModulePath.value;
-    const initialRoute = activeModulePath || (skillsMod ? skillsMod.entryPath : '/overview');
+function HarnessKitIframe({ theme, language }: { theme: 'light' | 'dark'; language: Lang }) {
+    const [webUrl, setWebUrl] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        let active = true;
+        fetch('/api/harnesskit/status')
+            .then((res) => res.json())
+            .then((data) => {
+                if (active && data.webUrl) {
+                    setWebUrl(data.webUrl);
+                }
+            })
+            .catch(() => {})
+            .finally(() => {
+                if (active) setLoading(false);
+            });
+        return () => {
+            active = false;
+        };
+    }, []);
+
+    if (loading) {
+        return (
+            <div style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; font-family: sans-serif; opacity: 0.6;">
+                Loading HarnessKit...
+            </div>
+        );
+    }
+
+    if (!webUrl) {
+        return (
+            <div style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; font-family: sans-serif; color: #ef4444;">
+                HarnessKit service unavailable
+            </div>
+        );
+    }
+
     return (
-        <skills-panel
-            id="skills-panel"
-            route={initialRoute}
-            theme={theme}
-            lang={language}
-            style="width: 100%; height: 100%; display: flex; flex-direction: column; min-height: 0; overflow: hidden;"
+        <iframe
+            id="harnesskit-iframe"
+            src={webUrl}
+            allow="clipboard-read; clipboard-write"
+            style="width: 100%; height: 100%; border: none; display: block; min-height: 0;"
         />
     );
+}
+
+function renderSkills(theme: 'light' | 'dark', language: Lang) {
+    return <HarnessKitIframe theme={theme} language={language} />;
 }

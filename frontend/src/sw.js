@@ -13,11 +13,11 @@ self.addEventListener('fetch', event => {
         event.request.url.includes('/ws') ||
         event.request.url.includes('/token') ||
         event.request.url.includes('/cc-connect') ||
-        // 1skills embed bundle + custom element paths. Without these
+        // HarnessKit embed bundle + custom element paths. Without these
         // excludes the SW intercepts the embed scripts, then re-serves
         // a stale cache entry after the hash changes — turning "iframe
         // load fails" into "module registration fails".
-        event.request.url.includes('/1skills') ||
+        event.request.url.includes('/extensions/') ||
         event.request.url.includes('/api/embed/')
     )
         return;

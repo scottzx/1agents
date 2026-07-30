@@ -1,7 +1,7 @@
 /**
  * Discovery manifest — exposes the discovery center's categories
  * (精选推荐 / 开源项目) through the same `ModuleManifest` shape used by
- * 1skills and settings. This lets the host's `LeftSidebar` render the
+ * HarnessKit and settings. This lets the host's `LeftSidebar` render the
  * category navigation where the workspace tree normally sits — replacing
  * the old footer submenu — so discovery matches the settings sidebar idiom.
  *

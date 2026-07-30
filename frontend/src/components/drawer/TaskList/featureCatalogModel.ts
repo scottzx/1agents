@@ -51,6 +51,20 @@ export function flattenFeatureTree(tree: FeatureTreeNode[]): FeatureTreeNode[] {
     return result;
 }
 
+/** Keep matching nodes together with every ancestor required to preserve the
+ * catalog hierarchy. This powers search, status lenses, and version-context
+ * jumps without flattening results into a second navigation model. */
+export function filterFeatureTree(
+    tree: FeatureTreeNode[],
+    matches: (entry: FeatureTreeNode) => boolean
+): FeatureTreeNode[] {
+    return tree.flatMap(entry => {
+        const children = filterFeatureTree(entry.children, matches);
+        if (!matches(entry) && children.length === 0) return [];
+        return [{ ...entry, children }];
+    });
+}
+
 export function featureEntriesById(nodes: FeatureNode[]): Map<string, FeatureTreeNode> {
     return new Map(flattenFeatureTree(buildFeatureTree(nodes)).map(entry => [entry.node.id, entry]));
 }

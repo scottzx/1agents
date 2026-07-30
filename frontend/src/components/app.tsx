@@ -196,7 +196,7 @@ export class App extends Component<{}, AppState> {
         document.addEventListener('mousemove', this.handleResizerMove);
         document.addEventListener('mouseup', this.handleResizerUp);
         window.addEventListener('resize', this.handleWindowResize);
-        // Module custom elements (<skills-panel>, <cc-connect-panel>)
+        // Module custom elements (<harnesskit-panel>, <cc-connect-panel>)
         // bubble CustomEvent('navigate') up through the DOM when their
         // internal MemoryRouter routes change. The host mirrors the path
         // into its own URL state.

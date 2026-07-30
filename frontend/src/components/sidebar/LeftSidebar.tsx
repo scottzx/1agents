@@ -326,7 +326,7 @@ interface LeftSidebarProps {
 
     /**
      * Optional module nav surface. Set when the active drawer tab is backed
-     * by a module (1skills today). The host renders this inside the same
+     * by a module (HarnessKit today). The host renders this inside the same
      * sidebar column — never as a separate nested sidebar.
      */
     moduleNav?: {

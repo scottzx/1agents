@@ -1,7 +1,7 @@
 /**
  * postMessage contract between the host and module iframes.
  *
- * Since the migration to custom elements (<skills-panel>,
+ * Since the migration to custom elements (<harnesskit-panel>,
  * <cc-connect-panel>) the only remaining iframe user is the
  * cc-connect channels tab (xterm terminal), which still needs
  * THEME_CHANGE and LANG_CHANGE.

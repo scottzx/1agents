@@ -19,7 +19,8 @@ test('renders the unscheduled task group independently of the time axis', () => 
 
     const html = renderToString(h(GanttUnscheduledTasks, { tasks, onTaskClick: () => undefined }));
 
-    assert.match(html, /未排期任务 \(1\)/);
+    assert.match(html, /1 个任务尚未排期/);
+    assert.match(html, /不会出现在时间轴中/);
     assert.match(html, /#300 实现按功能模块分组的甘特图与蓝图导出/);
     assert.match(html, /awaiting_human/);
 });

@@ -71,7 +71,7 @@ export function TeamTab({ workspaceId, app, language }: { workspaceId: string; a
     const [busy, setBusy] = useState(false);
     const [flash, setFlash] = useState('');
     const [meta, setMeta] = useState<{ description: string; tools: string }>({ description: '', tools: '' });
-    // Add-from-母体 picker.
+    // Add from the global HarnessKit subagent inventory.
     const [pickerOpen, setPickerOpen] = useState(false);
     const [available, setAvailable] = useState<AvailableAgent[]>([]);
     const [pickerBusy, setPickerBusy] = useState(false);
@@ -100,7 +100,7 @@ export function TeamTab({ workspaceId, app, language }: { workspaceId: string; a
     // On opening a member: preview its .md and parse 概述/工具 from frontmatter.
     useEffect(() => {
         if (!selected) return;
-        const path = `${AGENTS_DIR}/${selected.file}`;
+        const path = selected.file.includes('/') ? selected.file : `${AGENTS_DIR}/${selected.file}`;
         void fs.openFileDetail({ name: selected.file, path, isDir: false, size: 0, modTime: 0 });
         let cancelled = false;
         fsService
@@ -140,10 +140,10 @@ export function TeamTab({ workspaceId, app, language }: { workspaceId: string; a
         }
     };
 
-    const onAdd = async (agentRef: string) => {
+    const onAdd = async (extensionId: string) => {
         setPickerBusy(true);
         try {
-            await soulService.addAgent(workspaceId, agentRef);
+            await soulService.addAgent(workspaceId, extensionId);
             setPickerOpen(false);
             setFlash(t('assistant.detail.added', language));
             await load();
@@ -158,7 +158,7 @@ export function TeamTab({ workspaceId, app, language }: { workspaceId: string; a
         if (!selected) return;
         setBusy(true);
         try {
-            await soulService.removeAgent(workspaceId, selected.file);
+            await soulService.removeAgent(workspaceId, selected.extensionId);
             setConfirmRemove(false);
             setSelected(null);
             setFlash(t('assistant.detail.removed', language));
@@ -307,7 +307,7 @@ export function TeamTab({ workspaceId, app, language }: { workspaceId: string; a
                     const isPrimary = m.file === primary && primary !== '';
                     return (
                         <button
-                            key={m.agentRef}
+                            key={m.extensionId}
                             class={`skill-card team-card${isPrimary ? ' is-primary' : ''}`}
                             onClick={() => setSelected(m)}
                         >
@@ -346,7 +346,7 @@ export function TeamTab({ workspaceId, app, language }: { workspaceId: string; a
                                 const pool = available.filter(a => !a.installed);
                                 const filtered = q
                                     ? pool.filter(a =>
-                                          [a.name, a.file, a.description]
+                                          [a.name, a.sourceAgent, a.description]
                                               .filter(Boolean)
                                               .some(s => (s as string).toLowerCase().includes(q))
                                       )
@@ -369,13 +369,13 @@ export function TeamTab({ workspaceId, app, language }: { workspaceId: string; a
                                     <div class="skill-picker-grid">
                                         {filtered.map(a => (
                                             <button
-                                                key={a.agentRef}
+                                                key={a.extensionId}
                                                 class="skill-card skill-picker-card"
                                                 disabled={pickerBusy}
-                                                onClick={() => void onAdd(a.agentRef)}
+                                                onClick={() => void onAdd(a.extensionId)}
                                             >
                                                 <div class="skill-card-head">
-                                                    <span class="skill-card-name">{a.name || a.file}</span>
+                                                    <span class="skill-card-name">{a.name}</span>
                                                 </div>
                                                 {a.description && <p class="skill-card-desc">{a.description}</p>}
                                             </button>

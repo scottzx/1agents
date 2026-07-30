@@ -1008,15 +1008,20 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                         <div class="mobile-subview-title">{t('sidebar.skills', language)}</div>
                                     </div>
                                     <div class="mobile-subview-content" style="overflow: hidden;">
-                                        <skills-panel
-                                            id="skills-panel"
+                                        <harnesskit-panel
+                                            id="harnesskit-panel"
+                                            initial-route={
+                                                (activeMobileTab === 'skills' && tabsStore.activeModulePath.value) ||
+                                                this.state.mountedSkillsPath ||
+                                                '/overview'
+                                            }
                                             route={
                                                 (activeMobileTab === 'skills' && tabsStore.activeModulePath.value) ||
                                                 this.state.mountedSkillsPath ||
                                                 '/overview'
                                             }
                                             theme={theme}
-                                            lang={language}
+                                            language={language}
                                             style="width: 100%; height: 100%; display: flex; flex-direction: column;"
                                         />
                                     </div>

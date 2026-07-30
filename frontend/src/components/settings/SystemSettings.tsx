@@ -757,10 +757,10 @@ export function SystemSettings(props: SystemSettingsProps) {
                     url: 'https://github.com/SaladDay/cc-switch-cli',
                 },
                 {
-                    name: 'skill-manager',
+                    name: 'HarnessKit',
                     descKey: 'settings.credits.skillmanager',
-                    license: 'MIT',
-                    url: 'https://github.com/mode-io/skill-manager',
+                    license: 'Apache-2.0',
+                    url: 'https://github.com/RealZST/HarnessKit',
                 },
             ],
         },

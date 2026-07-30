@@ -55,6 +55,8 @@ export function TaskList({
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [internalSelectedTaskId, setInternalSelectedTaskId] = useState<string | null>(null);
+    const [milestoneFocusId, setMilestoneFocusId] = useState<string>();
+    const [featureVersionFilterId, setFeatureVersionFilterId] = useState<string>();
 
     const isControlled = onTaskSelect !== undefined;
     const selectedTaskId = isControlled ? externalSelectedTaskId ?? null : internalSelectedTaskId;
@@ -78,6 +80,8 @@ export function TaskList({
     // projects; otherwise we'd carry the prior project's tab across.
     useEffect(() => {
         view.value = (viewPrefs.allPrefs.value[workspaceId]?.activeView as viewPrefs.TaskListView) || 'tasks';
+        setMilestoneFocusId(undefined);
+        setFeatureVersionFilterId(undefined);
     }, [workspaceId]);
 
     useEffect(() => {
@@ -454,6 +458,12 @@ export function TaskList({
                     workspaceId={workspaceId}
                     items={tasks}
                     milestones={milestones}
+                    versionFilterMilestoneId={featureVersionFilterId}
+                    onClearVersionFilter={() => setFeatureVersionFilterId(undefined)}
+                    onOpenMilestone={milestoneId => {
+                        setMilestoneFocusId(milestoneId);
+                        view.value = 'milestone';
+                    }}
                     onCatalogChange={setFeatureCatalog}
                     onItemsChange={fetchTasks}
                 />
@@ -463,8 +473,19 @@ export function TaskList({
                     try {
                         return (
                             <MilestoneView
+                                workspaceId={workspaceId}
                                 tasks={boardTasks}
                                 milestones={milestones}
+                                featureCatalog={featureCatalog}
+                                focusMilestoneId={milestoneFocusId}
+                                onOpenFeatureVersion={
+                                    featureCatalogEnabled
+                                        ? milestoneId => {
+                                              setFeatureVersionFilterId(milestoneId);
+                                              view.value = 'features';
+                                          }
+                                        : undefined
+                                }
                                 onSelectTask={setSelectedTaskId}
                                 onPatchMilestone={patchMilestone}
                                 onDeleteMilestone={deleteMilestone}

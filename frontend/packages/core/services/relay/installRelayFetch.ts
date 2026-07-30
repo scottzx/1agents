@@ -1,8 +1,8 @@
 /**
- * 嵌入面板(1skills / cc-connect)在 relay 模式下的取数修复。
+ * 嵌入面板(HarnessKit / cc-connect)在 relay 模式下的取数修复。
  *
  * 「技能管理」「模块管理」是独立打包的 embed bundle(custom element
- * <skills-panel> / <cc-connect-panel>),内部用自己的 fetch('/api/skills')、
+ * <harnesskit-panel> / <cc-connect-panel>),内部用自己的 fetch('/api/harnesskit')、
  * fetch('/api/v1/...') 取数,不经过宿主的 apiFetch()。direct 模式同源可达没问题,
  * 但 relay 模式下 H5 由中转/CDN 托管、同源没有后端,这些请求就打空 → 面板没数据。
  *
@@ -16,19 +16,7 @@ import { backendTarget } from '../apiClient';
 import { proxyApi } from './relayClient';
 
 // 两个子模块的数据路由前缀,对应后端 server.go 里的反代路由。命中即经中转转发。
-const RELAY_PREFIXES = [
-    '/api/skills',
-    '/api/mcp/',
-    '/api/slash-commands',
-    '/api/marketplace/',
-    '/api/scan/',
-    '/api/settings',
-    '/api/health',
-    '/1skills/',
-    '/cc-connect/',
-    '/api/v1/',
-    '/assets/',
-];
+const RELAY_PREFIXES = ['/api/harnesskit/', '/extensions/', '/cc-connect/', '/api/v1/', '/assets/'];
 
 function shouldRelay(pathname: string): boolean {
     // embed 脚本本身的加载不能改路由(由中转/CDN 作为静态文件提供)。
@@ -81,7 +69,7 @@ export function installRelayFetch(): void {
             body = await input.clone().text();
         }
 
-        // 子模块发出的已是完整路径(/api/skills、/1skills/...),原样透传给中转,
+        // 子模块发出的已是完整路径(/api/harnesskit/...),原样透传给中转,
         // 不要再补 /api 前缀(apiFetch 补前缀是因为其入参不含 /api)。
         const r = await proxyApi(t.socket, t.machine, url.pathname + url.search, { method, body, headers });
         return new Response(r.body ?? '', {

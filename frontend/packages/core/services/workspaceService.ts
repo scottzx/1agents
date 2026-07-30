@@ -18,7 +18,7 @@ export const workspaceService = {
     },
 
     /**
-     * Create a workspace. The optional `skills` list carries shared-store skill
+     * Create a workspace. The optional `skills` list carries HarnessKit global extension
      * refs to weak-copy into `<ws>/.claude/skills` (assistant create flow, #360)
      * — the backend ignores it for plain workspace creates. `path` and `id` can
      * be omitted for assistants; the backend mints a badge folder in that case.

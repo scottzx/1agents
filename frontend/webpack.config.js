@@ -213,7 +213,7 @@ const devConfig = {
                 // HTTP API & Asset endpoints — proxy to the Go backend.
                 // ws: true so WS upgrades under /api (e.g. /api/agent/chat/ws)
                 // survive the dev proxy.
-                context: ['/api', '/cc-connect', '/assets', '/1skills'],
+                context: ['/api', '/cc-connect', '/assets', '/extensions'],
                 target: `http://localhost:${backendPort}`,
                 changeOrigin: true,
                 ws: true,

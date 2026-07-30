@@ -1,4 +1,4 @@
-import type { GanttModule } from '@1agents/core/types/featureCatalog';
+import type { GanttData, GanttModule, GanttTaskEntry } from '@1agents/core/types/featureCatalog';
 
 export type TimeGranularity = 'day' | 'week' | 'month';
 
@@ -26,6 +26,55 @@ export interface TimeAxis {
 }
 
 const DAY_MS = 86400000;
+
+function aggregateFilteredModule(source: GanttModule, tasks: GanttTaskEntry[], children: GanttModule[]): GanttModule {
+    const descendantTasks = [...tasks];
+    const collectTasks = (modules: GanttModule[]) => {
+        for (const module of modules) {
+            descendantTasks.push(...module.tasks);
+            collectTasks(module.children);
+        }
+    };
+    collectTasks(children);
+
+    const starts = descendantTasks.map(task => task.plannedStart).filter((value): value is string => !!value);
+    const ends = descendantTasks.map(task => task.plannedEnd).filter((value): value is string => !!value);
+    const progress =
+        descendantTasks.length === 0
+            ? 0
+            : Math.round(descendantTasks.reduce((total, task) => total + task.progress, 0) / descendantTasks.length);
+
+    return {
+        ...source,
+        tasks,
+        children,
+        aggStart: starts.length > 0 ? starts.sort()[0] : undefined,
+        aggEnd: ends.length > 0 ? ends.sort().at(-1) : undefined,
+        progress,
+    };
+}
+
+/** Scope the derived schedule to one milestone while retaining module
+ * hierarchy. Dates and progress are re-aggregated from the filtered tasks, so
+ * the selected-version view never displays totals from other releases. */
+export function filterGanttDataByMilestone(data: GanttData, milestoneId?: string): GanttData {
+    if (!milestoneId) return data;
+    const selectedMilestone = data.milestones.find(milestone => milestone.id === milestoneId);
+    if (!selectedMilestone) return data;
+
+    const visit = (module: GanttModule): GanttModule | null => {
+        const tasks = module.tasks.filter(task => task.milestone === selectedMilestone.name);
+        const children = module.children.map(visit).filter((child): child is GanttModule => !!child);
+        if (tasks.length === 0 && children.length === 0) return null;
+        return aggregateFilteredModule(module, tasks, children);
+    };
+
+    return {
+        modules: data.modules.map(visit).filter((module): module is GanttModule => !!module),
+        unscheduled: data.unscheduled.filter(task => task.milestone === selectedMilestone.name),
+        milestones: [selectedMilestone],
+    };
+}
 
 export function parseDate(s?: string): Date | undefined {
     if (!s) return undefined;

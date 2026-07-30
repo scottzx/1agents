@@ -1,7 +1,6 @@
-// 技能中心 tab — embeds the web's 1skills module in a <web-view> (cross-host
-// equivalent of the desktop/web iframe embed). The page is served by the backend
-// at /1skills/; the access token in the URL gets it past the gate, and 1skills'
-// own /api/skills calls ride the cookie the gate seeds. No re-implementation in Taro.
+// 扩展中心 tab — embeds HarnessKit in a <web-view> for cross-host clients.
+// The page is served by 1agents at /extensions/ and all data requests stay
+// behind the authenticated /api/harnesskit boundary.
 import { WebView } from '@tarojs/components';
 import { useUI } from '../../hooks/useUI';
 import { skillsEmbedUrl } from '../../embed';

@@ -1,7 +1,7 @@
 /**
  * Settings manifest — exposes the system settings page's sub-categories
  * (通用/外观/安全/反馈/关于) through the same `ModuleManifest` shape used
- * by 1skills. This lets the host's `LeftSidebar` (desktop) and the mobile
+ * by embedded modules. This lets the host's `LeftSidebar` (desktop) and the mobile
  * "more" menu render the category navigation in their own chrome — instead
  * of having the `SystemSettings` component carry its own internal sidebar.
  *

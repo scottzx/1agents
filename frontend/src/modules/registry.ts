@@ -22,13 +22,10 @@ export interface ModuleRegistration {
     /** Which main-app drawer tab owns this module. */
     ownerTab: RightDrawerTab;
     /**
-     * Base URL of the module (e.g. "/1skills/").
+     * Base URL used only by legacy iframe-backed modules.
      *
-     * @deprecated Skills is now loaded as a custom element
-     * (`<skills-panel>`) — `iframeBase` is only read by
-     * `buildModuleIframeSrc()` which is itself dead code kept
-     * as a fallback. The embed entry is served as an ESM module
-     * at `/api/embed/skills-embed.js`.
+     * @deprecated Extension management is loaded as a custom element;
+     * `iframeBase` is retained only for modules that still need an iframe.
      */
     iframeBase: string;
     /**
@@ -48,75 +45,34 @@ export interface ModuleRegistration {
 }
 
 /**
- * 1skills static manifest — mirrors the structure produced by
- * `useSidebarModel()` in 1skills' `app/capability-registry/sidebar.ts`.
- * Counts are null because we don't have them on the host; the live
- * manifest endpoint fills them in.
+ * HarnessKit static manifest. The embedded panel owns its navigation, while
+ * this manifest supplies the host with a stable entry route and product name.
  */
-const SKILLS_STATIC_MANIFEST: ModuleManifest = {
-    moduleId: 'skills',
+const EXTENSIONS_STATIC_MANIFEST: ModuleManifest = {
+    moduleId: 'extensions',
     version: 1,
     entryPath: '/overview',
-    topLinks: [{ key: 'overview', to: '/overview', label: 'module.skills.nav.overview', iconKey: 'overview' }],
+    topLinks: [{ key: 'overview', to: '/overview', label: 'Overview', iconKey: 'overview' }],
     groups: [
         {
-            key: 'skills',
-            label: 'module.skills.group.skills',
-            iconKey: 'skills',
+            key: 'extensions',
+            label: 'Extensions',
+            iconKey: 'extensions',
             links: [
-                { key: 'skills-use', to: '/skills/use', label: 'module.skills.link.inUse' },
-                { key: 'skills-review', to: '/skills/review', label: 'module.skills.link.review', badge: 'review' },
-                { key: 'skills-scan-config', to: '/scan-config', label: 'module.skills.link.scanConfig' },
-            ],
-        },
-        {
-            key: 'agents',
-            label: 'module.skills.group.agents',
-            iconKey: 'agents',
-            links: [
-                { key: 'agents-use', to: '/agents/use', label: 'module.skills.link.inUse' },
-                { key: 'agents-review', to: '/agents/review', label: 'module.skills.link.review', badge: 'review' },
-            ],
-        },
-        {
-            key: 'slash-commands',
-            label: 'module.skills.group.slashCommands',
-            iconKey: 'slash-commands',
-            links: [
-                { key: 'slash-commands-use', to: '/slash-commands/use', label: 'module.skills.link.inUse' },
-                {
-                    key: 'slash-commands-review',
-                    to: '/slash-commands/review',
-                    label: 'module.skills.link.review',
-                    badge: 'review',
-                },
-            ],
-        },
-        {
-            key: 'mcp',
-            label: 'module.skills.group.mcp',
-            iconKey: 'mcp',
-            links: [
-                { key: 'mcp-use', to: '/mcp/use', label: 'module.skills.link.inUse' },
-                { key: 'mcp-review', to: '/mcp/review', label: 'module.skills.link.review', badge: 'review' },
-            ],
-        },
-        {
-            key: 'marketplace',
-            label: 'module.skills.group.marketplace',
-            iconKey: 'marketplace',
-            links: [
-                { key: 'marketplace-skills', to: '/marketplace', label: 'module.skills.group.skills' },
-                { key: 'marketplace-mcp', to: '/marketplace/mcp', label: 'module.skills.group.mcp' },
-                { key: 'marketplace-clis', to: '/marketplace/clis', label: 'module.skills.link.cli' },
+                { key: 'inventory', to: '/extensions', label: 'Extensions' },
+                { key: 'agents', to: '/agents', label: 'Agents' },
+                { key: 'audit', to: '/audit', label: 'Audit' },
+                { key: 'marketplace', to: '/marketplace', label: 'Marketplace' },
+                { key: 'projects', to: '/projects', label: 'Projects' },
+                { key: 'kits', to: '/kits', label: 'Kits' },
             ],
         },
     ],
-    headerActions: [{ key: 'refresh', label: 'module.skills.action.refresh', iconKey: 'refresh' }],
+    headerActions: [{ key: 'refresh', label: 'Refresh', iconKey: 'refresh' }],
 };
 
 /**
- * The registered modules. 1skills is the only iframe-backed module today;
+ * The registered modules. HarnessKit is the embedded extension module;
  * `settings` shares the same `ModuleManifest` shape so the host can render
  * its category navigation through `<ModuleNav />` in the workspace's left
  * sidebar — the content body itself is the host-rendered `SystemSettings`
@@ -124,12 +80,11 @@ const SKILLS_STATIC_MANIFEST: ModuleManifest = {
  */
 export const MODULES: Record<ModuleId, ModuleRegistration> = {
     skills: {
-        moduleId: 'skills',
+        moduleId: 'extensions',
         ownerTab: 'skills',
-        iframeBase: '/1skills/',
-        embedElement: 'skills-panel',
-        staticManifest: SKILLS_STATIC_MANIFEST,
-        manifestUrl: '/1skills/api/manifest',
+        iframeBase: '',
+        embedElement: 'harnesskit-panel',
+        staticManifest: EXTENSIONS_STATIC_MANIFEST,
         entryPath: '/overview',
     },
     settings: {
@@ -171,7 +126,7 @@ export function getModuleByTab(tab: RightDrawerTab): ModuleRegistration | null {
  * Builds the iframe `src` for a module. Always appends `?bare=1` so the
  * module renders without its own chrome.
  *
- * @deprecated Skills & providers are now loaded as custom elements
+ * @deprecated Extensions and providers are now loaded as custom elements
  * (see `embedElement` on `ModuleRegistration`). This function is kept
  * as a fallback for any module that still uses the iframe path.
  */

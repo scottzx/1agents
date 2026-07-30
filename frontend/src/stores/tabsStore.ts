@@ -434,7 +434,7 @@ export const moduleManifests = signal<Record<string, ModuleManifest>>({});
 /**
  * Active sub-category inside the system settings page. The settings
  * module is host-rendered (no iframe) and lives in the same chrome as
- * 1skills, so we keep a separate piece of state for it rather than
+ * HarnessKit, so we keep a separate piece of state for it rather than
  * overloading `activeModulePath`.
  */
 export const activeSettingsCategory = signal<SettingsCategory>(SETTINGS_DEFAULT_CATEGORY);
@@ -887,10 +887,10 @@ export const handleModuleNavigate = (e: Event) => {
     const target = e.target as HTMLElement | null;
     if (!target) return;
     const tag = target.tagName ? target.tagName.toLowerCase() : '';
-    if (tag !== 'skills-panel' && tag !== 'cc-connect-panel') return;
-    const detail = (e as CustomEvent<{ path: string }>).detail;
-    if (!detail || typeof detail.path !== 'string' || !detail.path) return;
-    const path = detail.path;
+    if (tag !== 'harnesskit-panel' && tag !== 'cc-connect-panel') return;
+    const detail = (e as CustomEvent<{ route?: string; path?: string }>).detail;
+    const path = detail?.route || detail?.path;
+    if (typeof path !== 'string' || !path) return;
     if (path === activeModulePath.value) return;
     activeModulePath.value = path;
     syncModuleUrl(path);
@@ -905,7 +905,7 @@ const getActiveModulePanelId = (): string | null => {
     const tab = activeDrawerTab.value;
     if (tab === 'channels') return 'cc-channels-panel';
     if (tab === 'providers') return 'cc-providers-panel';
-    if (tab === 'skills') return 'skills-panel';
+    if (tab === 'skills') return 'harnesskit-panel';
     return null;
 };
 
@@ -996,7 +996,7 @@ export const buildModuleNav = ():
     // Skills renders its own top-tab navigation inside the panel (project-page
     // style), so the host suppresses the module sub-nav in the left sidebar —
     // the sidebar falls back to the workspace tree, matching project pages.
-    if (mod.moduleId === 'skills') return undefined;
+    if (mod.moduleId === 'extensions') return undefined;
     const live = moduleManifests.value[mod.moduleId];
     const manifest = live ?? mod.staticManifest;
     if (mod.moduleId === SETTINGS_MODULE_ID) {

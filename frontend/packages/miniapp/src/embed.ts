@@ -1,6 +1,6 @@
 // web-view embed URLs.
 //
-// The mini-program embeds the web's heavy module UIs (1skills, cc-connect) in a
+// The mini-program embeds the web's heavy module UIs (HarnessKit, cc-connect) in a
 // <web-view> instead of re-implementing them in Taro — the cross-host equivalent
 // of how desktop/web embed them in an iframe. The embedded page lives on the
 // backend domain, so we build an absolute URL on BACKEND_BASE and carry the
@@ -26,8 +26,8 @@ export function absoluteBackendUrl(relative: string): string {
   return withAccessToken(`${BACKEND_BASE}${relative.startsWith('/') ? '' : '/'}${relative}`);
 }
 
-/** The 1skills module embed URL — bare mode + theme/lang boot + access token. */
+/** The HarnessKit Extensions embed URL — theme/lang boot + access token. */
 export function skillsEmbedUrl(theme: string, lang: string): string {
-  const base = `${BACKEND_BASE}/1skills/?bare=1&theme=${encodeURIComponent(theme)}&lang=${encodeURIComponent(lang)}`;
+  const base = `${BACKEND_BASE}/extensions/?theme=${encodeURIComponent(theme)}&lang=${encodeURIComponent(lang)}`;
   return withAccessToken(base);
 }
