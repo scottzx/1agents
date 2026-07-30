@@ -38,7 +38,7 @@ func seedVersionedCatalog(t *testing.T) (*DB, *FeatureCatalogStore, string, Feat
 	})
 	feature := createFeatureNode(t, store, FeatureNode{
 		ID: "version-feature", ProjectID: "p1", ParentID: root.ID,
-		Kind: FeatureNodePoint, Title: "Original feature",
+		Kind: FeatureNodePoint, Title: "Original feature", Documents: []string{"docs/original.md"},
 		Description: "snapshot description", TargetMilestoneID: milestone.ID,
 	})
 	if _, _, err := store.LinkItem(
@@ -104,7 +104,8 @@ func TestFeatureCatalogVersionRoundTripAndIdempotentSafetyRestore(t *testing.T) 
 	}
 	restored, ok, err := store.Get("p1", feature.ID)
 	if err != nil || !ok || restored.Title != "Original feature" ||
-		restored.Description != "snapshot description" {
+		restored.Description != "snapshot description" || len(restored.Documents) != 1 ||
+		restored.Documents[0] != "docs/original.md" {
 		t.Fatalf("feature not restored exactly: ok=%v node=%+v err=%v", ok, restored, err)
 	}
 

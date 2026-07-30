@@ -125,7 +125,7 @@ func TestFeatureCatalogSchemaFreshDatabase(t *testing.T) {
 
 	assertTableColumns(t, db, "feature_nodes", []string{
 		"id", "project_id", "parent_id", "kind", "title", "description",
-		"target_milestone_id", "position", "created_at", "updated_at",
+		"documents_json", "target_milestone_id", "position", "created_at", "updated_at",
 	})
 	assertTableColumns(t, db, "feature_item_links", []string{
 		"feature_id", "item_id", "relation", "created_at",

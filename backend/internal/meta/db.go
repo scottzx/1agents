@@ -1008,6 +1008,7 @@ func (db *DB) ensureFeatureCatalogSchema() error {
 			kind                TEXT NOT NULL,
 			title               TEXT NOT NULL,
 			description         TEXT NOT NULL DEFAULT '',
+			documents_json      TEXT NOT NULL DEFAULT '[]',
 			target_milestone_id TEXT NOT NULL DEFAULT '',
 			position            INTEGER NOT NULL DEFAULT 0,
 			created_at          TEXT NOT NULL,
@@ -1052,6 +1053,17 @@ func (db *DB) ensureFeatureCatalogSchema() error {
 		);
 	`); err != nil {
 		return err
+	}
+	featureNodeColumns, err := db.tableColumns("feature_nodes")
+	if err != nil {
+		return err
+	}
+	if !featureNodeColumns["documents_json"] {
+		if _, err := db.sql.Exec(
+			`ALTER TABLE feature_nodes ADD COLUMN documents_json TEXT NOT NULL DEFAULT '[]'`,
+		); err != nil {
+			return fmt.Errorf("add feature_nodes.documents_json: %w", err)
+		}
 	}
 	for table, wanted := range map[string][]string{
 		"feature_catalog_versions": {

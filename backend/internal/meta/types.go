@@ -681,6 +681,7 @@ type FeatureNode struct {
 	Kind              FeatureNodeKind          `json:"kind"`
 	Title             string                   `json:"title"`
 	Description       string                   `json:"description,omitempty"`
+	Documents         []string                 `json:"documents,omitempty"`
 	TargetMilestoneID string                   `json:"targetMilestoneId,omitempty"`
 	Position          int                      `json:"position"`
 	CreatedAt         time.Time                `json:"createdAt"`

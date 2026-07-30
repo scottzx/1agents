@@ -27,6 +27,7 @@ type FeatureNodePatch struct {
 	ParentID          *string
 	Title             *string
 	Description       *string
+	Documents         *[]string
 	TargetMilestoneID *string
 	Position          *int
 }
@@ -48,6 +49,7 @@ type FeatureCatalogBatchOperation struct {
 	Kind              FeatureNodeKind     `json:"kind,omitempty"`
 	Title             *string             `json:"title,omitempty"`
 	Description       *string             `json:"description,omitempty"`
+	Documents         *[]string           `json:"documents,omitempty"`
 	TargetMilestoneID *string             `json:"targetMilestoneId,omitempty"`
 	Position          *int                `json:"position,omitempty"`
 }
@@ -70,21 +72,50 @@ func NewFeatureCatalogStore(db *DB) *FeatureCatalogStore {
 }
 
 const featureNodeCols = `id, project_id, parent_id, kind, title, description,
-	target_milestone_id, position, created_at, updated_at`
+	documents_json, target_milestone_id, position, created_at, updated_at`
 
 func scanFeatureNode(row rowScanner) (FeatureNode, error) {
 	var node FeatureNode
+	var documentsJSON string
 	var createdAt, updatedAt string
 	if err := row.Scan(
 		&node.ID, &node.ProjectID, &node.ParentID, &node.Kind, &node.Title,
-		&node.Description, &node.TargetMilestoneID, &node.Position,
+		&node.Description, &documentsJSON, &node.TargetMilestoneID, &node.Position,
 		&createdAt, &updatedAt,
 	); err != nil {
 		return FeatureNode{}, err
 	}
+	if err := json.Unmarshal([]byte(documentsJSON), &node.Documents); err != nil {
+		return FeatureNode{}, fmt.Errorf("decode feature documents: %w", err)
+	}
+	if node.Documents == nil {
+		node.Documents = []string{}
+	}
 	node.CreatedAt = strToTime(createdAt)
 	node.UpdatedAt = strToTime(updatedAt)
 	return node, nil
+}
+
+func normalizeFeatureDocuments(documents []string) []string {
+	normalized := make([]string, 0, len(documents))
+	seen := map[string]bool{}
+	for _, document := range documents {
+		document = strings.TrimSpace(document)
+		if document == "" || seen[document] {
+			continue
+		}
+		seen[document] = true
+		normalized = append(normalized, document)
+	}
+	return normalized
+}
+
+func featureDocumentsJSON(documents []string) (string, error) {
+	raw, err := json.Marshal(normalizeFeatureDocuments(documents))
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
 }
 
 func (s *FeatureCatalogStore) Get(projectID, id string) (FeatureNode, bool, error) {
@@ -540,6 +571,7 @@ func featureNodeSnapshot(node FeatureNode) map[string]any {
 	return map[string]any{
 		"id": node.ID, "parentId": node.ParentID, "kind": node.Kind,
 		"title": node.Title, "description": node.Description,
+		"documents":         node.Documents,
 		"targetMilestoneId": node.TargetMilestoneID, "position": node.Position,
 	}
 }
@@ -581,13 +613,17 @@ func createFeatureNodeTx(tx *sql.Tx, node FeatureNode, event ProjectEvent) (Feat
 	now := time.Now().UTC()
 	node.CreatedAt = now
 	node.UpdatedAt = now
+	documentsJSON, err := featureDocumentsJSON(node.Documents)
+	if err != nil {
+		return FeatureNode{}, err
+	}
 	if _, err := tx.Exec(`
 		INSERT INTO feature_nodes (
 			id, project_id, parent_id, kind, title, description,
-			target_milestone_id, position, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, -1, ?, ?)`,
+			documents_json, target_milestone_id, position, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, -1, ?, ?)`,
 		node.ID, node.ProjectID, node.ParentID, node.Kind, node.Title,
-		node.Description, node.TargetMilestoneID, timeToStr(now), timeToStr(now),
+		node.Description, documentsJSON, node.TargetMilestoneID, timeToStr(now), timeToStr(now),
 	); err != nil {
 		return FeatureNode{}, err
 	}
@@ -625,6 +661,9 @@ func updateFeatureNodeTx(tx *sql.Tx, projectID, id string, patch FeatureNodePatc
 	if patch.Description != nil {
 		current.Description = *patch.Description
 	}
+	if patch.Documents != nil {
+		current.Documents = normalizeFeatureDocuments(*patch.Documents)
+	}
 	if patch.TargetMilestoneID != nil {
 		if current.Kind != FeatureNodePoint && *patch.TargetMilestoneID != "" {
 			return FeatureNode{}, ErrFeatureInvalidKind
@@ -651,11 +690,15 @@ func updateFeatureNodeTx(tx *sql.Tx, projectID, id string, patch FeatureNodePatc
 		}
 	}
 	current.UpdatedAt = time.Now().UTC()
+	documentsJSON, err := featureDocumentsJSON(current.Documents)
+	if err != nil {
+		return FeatureNode{}, err
+	}
 	if _, err := tx.Exec(`
-		UPDATE feature_nodes SET title = ?, description = ?,
+		UPDATE feature_nodes SET title = ?, description = ?, documents_json = ?,
 			target_milestone_id = ?, updated_at = ?
 		WHERE project_id = ? AND id = ?`,
-		current.Title, current.Description, current.TargetMilestoneID,
+		current.Title, current.Description, documentsJSON, current.TargetMilestoneID,
 		timeToStr(current.UpdatedAt), projectID, id,
 	); err != nil {
 		return FeatureNode{}, err
@@ -977,13 +1020,17 @@ func (s *FeatureCatalogStore) Batch(projectID string, operations []FeatureCatalo
 			if op.Description != nil {
 				description = *op.Description
 			}
+			documents := []string{}
+			if op.Documents != nil {
+				documents = *op.Documents
+			}
 			targetMilestoneID := ""
 			if op.TargetMilestoneID != nil {
 				targetMilestoneID = *op.TargetMilestoneID
 			}
 			node, createErr := createFeatureNodeTx(tx, FeatureNode{
 				ProjectID: projectID, ParentID: parentID, Kind: op.Kind,
-				Title: title, Description: description,
+				Title: title, Description: description, Documents: documents,
 				TargetMilestoneID: targetMilestoneID, Position: position,
 			}, event)
 			if createErr != nil {
@@ -1013,7 +1060,8 @@ func (s *FeatureCatalogStore) Batch(projectID string, operations []FeatureCatalo
 			}
 			patch := FeatureNodePatch{
 				ParentID: parentID, Title: op.Title, Description: op.Description,
-				TargetMilestoneID: op.TargetMilestoneID, Position: op.Position,
+				Documents: op.Documents, TargetMilestoneID: op.TargetMilestoneID,
+				Position: op.Position,
 			}
 			if operation == "move" && patch.ParentID == nil && patch.Position == nil {
 				return nil, fmt.Errorf("operation %d: %w", i, ErrFeatureInvalidParent)
@@ -1609,6 +1657,13 @@ func (s *FeatureCatalogStore) ExportMarkdown(projectID string) (string, error) {
 			if node.Description != "" {
 				sb.WriteString(node.Description + "\n\n")
 			}
+			if len(node.Documents) > 0 {
+				sb.WriteString("**Documents**:\n")
+				for _, document := range node.Documents {
+					sb.WriteString(fmt.Sprintf("- `%s`\n", document))
+				}
+				sb.WriteString("\n")
+			}
 			if node.Progress != nil {
 				sb.WriteString(fmt.Sprintf("**Progress**: %d/%d tasks completed\n\n", node.Progress.CompletedTasks, node.Progress.TotalTasks))
 			}
@@ -1620,6 +1675,9 @@ func (s *FeatureCatalogStore) ExportMarkdown(projectID string) (string, error) {
 			sb.WriteString(fmt.Sprintf("- **%s**\n", node.Title))
 			if node.Description != "" {
 				sb.WriteString(fmt.Sprintf("  - %s\n", node.Description))
+			}
+			for _, document := range node.Documents {
+				sb.WriteString(fmt.Sprintf("  - Document: `%s`\n", document))
 			}
 
 			srcs := sources[nodeID]

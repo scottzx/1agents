@@ -41,10 +41,33 @@ func TestFeatureCatalogHandlerRoundTripAndFailures(t *testing.T) {
 		return node
 	}
 
-	root := postNode(`{"workspace_id":"` + workspaceID + `","kind":"module","title":"Root"}`)
+	root := postNode(`{"workspace_id":"` + workspaceID + `","kind":"module","title":"Root","documents":["docs/prd.md"]}`)
+	if len(root.Documents) != 1 || root.Documents[0] != "docs/prd.md" {
+		t.Fatalf("create documents = %v", root.Documents)
+	}
 	feature := postNode(`{"workspace_id":"` + workspaceID + `","parentId":"` + root.ID + `","kind":"feature","title":"Feature"}`)
 
 	rr := httptest.NewRecorder()
+	h.HandleFeatureCatalogItem(
+		rr,
+		featureRequest(
+			http.MethodPatch,
+			"/api/agent/feature-catalog/"+feature.ID,
+			`{"workspace_id":"`+workspaceID+`","documents":["README.md"," README.md ","docs/design.md"]}`,
+		),
+	)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("patch documents status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var patched meta.FeatureNode
+	if err := json.NewDecoder(rr.Body).Decode(&patched); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(patched.Documents, ","); got != "README.md,docs/design.md" {
+		t.Fatalf("patch documents = %q", got)
+	}
+
+	rr = httptest.NewRecorder()
 	h.HandleFeatureCatalogRoot(
 		rr,
 		featureRequest(http.MethodGet, "/api/agent/feature-catalog?workspace_id="+workspaceID, ""),

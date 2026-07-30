@@ -80,6 +80,7 @@ func (h *Handler) HandleFeatureCatalogRoot(w http.ResponseWriter, r *http.Reques
 			Kind              meta.FeatureNodeKind `json:"kind"`
 			Title             string               `json:"title"`
 			Description       string               `json:"description"`
+			Documents         []string             `json:"documents"`
 			TargetMilestoneID string               `json:"targetMilestoneId"`
 			Position          int                  `json:"position"`
 		}
@@ -99,7 +100,7 @@ func (h *Handler) HandleFeatureCatalogRoot(w http.ResponseWriter, r *http.Reques
 		event := mutationEvent(ctx, "feature_node", "", "create", nil, nil)
 		node, err := h.featureStore.Create(meta.FeatureNode{
 			ProjectID: projectID, ParentID: body.ParentID, Kind: body.Kind,
-			Title: body.Title, Description: body.Description,
+			Title: body.Title, Description: body.Description, Documents: body.Documents,
 			TargetMilestoneID: body.TargetMilestoneID, Position: body.Position,
 		}, event)
 		if err != nil {
@@ -385,12 +386,13 @@ func (h *Handler) handleFeatureNode(w http.ResponseWriter, r *http.Request, feat
 	switch r.Method {
 	case http.MethodPatch:
 		var body struct {
-			WorkspaceID       string  `json:"workspace_id"`
-			ParentID          *string `json:"parentId"`
-			Title             *string `json:"title"`
-			Description       *string `json:"description"`
-			TargetMilestoneID *string `json:"targetMilestoneId"`
-			Position          *int    `json:"position"`
+			WorkspaceID       string    `json:"workspace_id"`
+			ParentID          *string   `json:"parentId"`
+			Title             *string   `json:"title"`
+			Description       *string   `json:"description"`
+			Documents         *[]string `json:"documents"`
+			TargetMilestoneID *string   `json:"targetMilestoneId"`
+			Position          *int      `json:"position"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -412,7 +414,8 @@ func (h *Handler) handleFeatureNode(w http.ResponseWriter, r *http.Request, feat
 		event := mutationEvent(ctx, "feature_node", featureID, operation, nil, nil)
 		node, err := h.featureStore.Update(projectID, featureID, meta.FeatureNodePatch{
 			ParentID: body.ParentID, Title: body.Title, Description: body.Description,
-			TargetMilestoneID: body.TargetMilestoneID, Position: body.Position,
+			Documents: body.Documents, TargetMilestoneID: body.TargetMilestoneID,
+			Position: body.Position,
 		}, event)
 		if err != nil {
 			writeFeatureCatalogError(w, err)

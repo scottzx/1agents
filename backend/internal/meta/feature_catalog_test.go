@@ -138,6 +138,40 @@ func TestFeatureCatalogHierarchyValidationAndOrdering(t *testing.T) {
 	}
 }
 
+func TestFeatureCatalogDocumentsRoundTripAndNormalize(t *testing.T) {
+	_, store, _, _ := featureCatalogRig(t)
+
+	root := createFeatureNode(t, store, FeatureNode{
+		ProjectID: "p1", Kind: FeatureNodeModule, Title: "root",
+		Documents: []string{" docs/prd.md ", "/tmp/architecture.md", "docs/prd.md", ""},
+	})
+	if got, want := root.Documents, []string{"docs/prd.md", "/tmp/architecture.md"}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("created documents = %v, want %v", got, want)
+	}
+
+	documents := []string{"README.md", " docs/design.md ", "README.md"}
+	updated, err := store.Update(
+		"p1",
+		root.ID,
+		FeatureNodePatch{Documents: &documents},
+		testFeatureEvent(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := updated.Documents, []string{"README.md", "docs/design.md"}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("updated documents = %v, want %v", got, want)
+	}
+
+	catalog, err := store.List("p1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.Nodes) != 1 || fmt.Sprint(catalog.Nodes[0].Documents) != fmt.Sprint(updated.Documents) {
+		t.Fatalf("listed documents = %+v, want %v", catalog.Nodes, updated.Documents)
+	}
+}
+
 func TestFeatureCatalogLinksDeletionAndAtomicEvents(t *testing.T) {
 	db, store, path1, path2 := featureCatalogRig(t)
 	root := createFeatureNode(t, store, FeatureNode{

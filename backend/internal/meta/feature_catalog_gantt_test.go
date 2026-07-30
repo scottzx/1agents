@@ -34,7 +34,7 @@ func TestFeatureCatalogGanttAndExportContract(t *testing.T) {
 	})
 	feature := createFeatureNode(t, store, FeatureNode{
 		ProjectID: "p1", ParentID: level3.ID, Kind: FeatureNodePoint,
-		Title: "Deep feature", TargetMilestoneID: version.ID,
+		Title: "Deep feature", Documents: []string{"docs/deep-feature.md"}, TargetMilestoneID: version.ID,
 	})
 
 	startA := time.Date(2026, time.August, 4, 0, 0, 0, 0, time.UTC)
@@ -171,6 +171,7 @@ func TestFeatureCatalogGanttAndExportContract(t *testing.T) {
 		"#### Level 3",
 		"**Deep feature**",
 		"Sources: #1 Source requirement",
+		"Document: `docs/deep-feature.md`",
 		"Delivery Tasks:",
 		"Target Version: " + version.Version,
 		"Status:",

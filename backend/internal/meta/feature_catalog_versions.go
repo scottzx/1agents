@@ -29,6 +29,7 @@ type featureCatalogSnapshotNode struct {
 	Kind              FeatureNodeKind `json:"kind"`
 	Title             string          `json:"title"`
 	Description       string          `json:"description"`
+	Documents         []string        `json:"documents,omitempty"`
 	TargetMilestoneID string          `json:"targetMilestoneId"`
 	Position          int             `json:"position"`
 	CreatedAt         string          `json:"createdAt"`
@@ -264,7 +265,7 @@ func buildFeatureCatalogSnapshotTx(tx *sql.Tx, projectID string) (featureCatalog
 		}
 		snapshot.Nodes = append(snapshot.Nodes, featureCatalogSnapshotNode{
 			ID: node.ID, ParentID: node.ParentID, Kind: node.Kind,
-			Title: node.Title, Description: node.Description,
+			Title: node.Title, Description: node.Description, Documents: node.Documents,
 			TargetMilestoneID: node.TargetMilestoneID, Position: node.Position,
 			CreatedAt: timeToStr(node.CreatedAt), UpdatedAt: timeToStr(node.UpdatedAt),
 		})
@@ -674,13 +675,17 @@ func (s *FeatureCatalogStore) RestoreVersion(
 	nodeStatement, err := tx.Prepare(`
 		INSERT INTO feature_nodes (
 			id, project_id, parent_id, kind, title, description,
-			target_milestone_id, position, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+			documents_json, target_milestone_id, position, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return FeatureCatalogRestoreResult{}, err
 	}
 	defer nodeStatement.Close()
 	for _, node := range snapshot.Nodes {
+		documentsJSON, err := featureDocumentsJSON(node.Documents)
+		if err != nil {
+			return FeatureCatalogRestoreResult{}, err
+		}
 		targetMilestoneID := node.TargetMilestoneID
 		updatedAt := node.UpdatedAt
 		if targetMilestoneID != "" && !validMilestones[targetMilestoneID] {
@@ -694,7 +699,7 @@ func (s *FeatureCatalogStore) RestoreVersion(
 		}
 		if _, err := nodeStatement.Exec(
 			node.ID, projectID, node.ParentID, node.Kind, node.Title,
-			node.Description, targetMilestoneID, node.Position,
+			node.Description, documentsJSON, targetMilestoneID, node.Position,
 			node.CreatedAt, updatedAt,
 		); err != nil {
 			return FeatureCatalogRestoreResult{}, err
