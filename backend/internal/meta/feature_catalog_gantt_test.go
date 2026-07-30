@@ -129,6 +129,9 @@ func TestFeatureCatalogGanttAndExportContract(t *testing.T) {
 	if len(gantt.Milestones) != 1 || gantt.Milestones[0].Version != version.Version {
 		t.Fatalf("milestones = %+v", gantt.Milestones)
 	}
+	if gantt.Milestones[0].Name != version.Name {
+		t.Fatalf("milestone name = %q, want %q", gantt.Milestones[0].Name, version.Name)
+	}
 
 	earlier := time.Date(2026, time.August, 1, 0, 0, 0, 0, time.UTC)
 	later := time.Date(2026, time.August, 25, 0, 0, 0, 0, time.UTC)

@@ -23,6 +23,7 @@ import (
 	"github.com/scottzx/1Agents/backend/internal/cert"
 	"github.com/scottzx/1Agents/backend/internal/cli"
 	"github.com/scottzx/1Agents/backend/internal/config"
+	"github.com/scottzx/1Agents/backend/internal/harnesskitmigration"
 	"github.com/scottzx/1Agents/backend/internal/projectitems"
 	"github.com/scottzx/1Agents/backend/internal/server"
 	"github.com/scottzx/1Agents/backend/internal/supervisor"
@@ -82,6 +83,11 @@ func ensureUserAgentBinDirs() {
 }
 
 func main() {
+	if len(os.Args) > 2 && os.Args[1] == "migrate" && os.Args[2] == "harnesskit" {
+		ensureUserAgentBinDirs()
+		os.Exit(harnesskitmigration.RunCLI(os.Args[3:], os.Stdout, os.Stderr))
+	}
+
 	if len(os.Args) > 1 && os.Args[1] == "feature-catalog" {
 		os.Exit(projectitems.RunFeatureCatalogCLI(os.Args[2:]))
 	}
@@ -127,12 +133,14 @@ func main() {
 		"Internal ttyd listen address (must stay on 127.0.0.1)")
 	flag.StringVar(&cfg.TtydBinaryPath, "ttyd-bin", cfg.TtydBinaryPath,
 		"Path to the ttyd executable")
-	flag.StringVar(&cfg.SkillsAddr, "skills-addr", cfg.SkillsAddr,
-		"Internal 1skills listen address (must stay on 127.0.0.1)")
-	flag.StringVar(&cfg.SkillsBinaryPath, "skills-bin", cfg.SkillsBinaryPath,
-		"Path to the python executable to run 1skills")
-	flag.StringVar(&cfg.SkillsSourceDir, "skills-dir", cfg.SkillsSourceDir,
-		"Path to 1skills Python source tree (e.g. @1agents/skills package root)")
+	flag.StringVar(&cfg.HarnessKitMode, "harnesskit-mode", cfg.HarnessKitMode,
+		"HarnessKit mode: supervised (default) or external (development only)")
+	flag.IntVar(&cfg.HarnessKitPort, "harnesskit-port", cfg.HarnessKitPort,
+		"Internal HarnessKit port; 0 allocates a dynamic loopback port")
+	flag.StringVar(&cfg.HarnessKitBinaryPath, "harnesskit-bin", cfg.HarnessKitBinaryPath,
+		"Path to the hk executable")
+	flag.StringVar(&cfg.HarnessKitDataDir, "harnesskit-data-dir", cfg.HarnessKitDataDir,
+		"Directory for HarnessKit database and state")
 	flag.StringVar(&cfg.CoffeeAddr, "coffee-addr", cfg.CoffeeAddr,
 		"Internal Alipay coffee service listen address (must stay on 127.0.0.1)")
 	flag.StringVar(&cfg.CoffeeNodeBinaryPath, "coffee-node", cfg.CoffeeNodeBinaryPath,
@@ -208,6 +216,13 @@ func main() {
 		}
 		// Resolve ttyd binary path inside resources/bin/ttyd
 		cfg.TtydBinaryPath = filepath.Join(resourcesDir, "resources", "bin", "ttyd")
+		if cfg.HarnessKitBinaryPath == "" {
+			harnessKitBinary := "hk"
+			if runtime.GOOS == "windows" {
+				harnessKitBinary = "hk.exe"
+			}
+			cfg.HarnessKitBinaryPath = filepath.Join(resourcesDir, "resources", "bin", harnessKitBinary)
+		}
 		// Resolve static files dir inside resources/dist
 		cfg.StaticDir = filepath.Join(resourcesDir, "resources", "dist")
 		cfg.CoffeeSourceDir = filepath.Join(resourcesDir, "resources", "alipay-coffee")
@@ -304,26 +319,11 @@ func main() {
 		time.Sleep(600 * time.Millisecond)
 	}
 
-	// ── 1.2. Start skills supervisor ─────────────────────────────────────────
-	skillsHost, skillsPortStr, err := net.SplitHostPort(cfg.SkillsAddr)
-	if err != nil {
-		skillsHost = "127.0.0.1"
-		skillsPortStr = "38085"
-	}
-	var skillsBasePort int
-	fmt.Sscanf(skillsPortStr, "%d", &skillsBasePort)
-	skillsFreePort, err := findAvailablePort(skillsHost, skillsBasePort, ttydFreePort)
-	if err != nil {
-		log.Printf("[main] WARNING: Failed to find free port starting from %d for 1skills: %v. Using default.", skillsBasePort, err)
-	} else if skillsFreePort != skillsBasePort {
-		log.Printf("[main] Port %d is busy. Automatically selected free port %d for internal 1skills.", skillsBasePort, skillsFreePort)
-		cfg.SkillsAddr = net.JoinHostPort(skillsHost, fmt.Sprintf("%d", skillsFreePort))
-	} else {
-		skillsFreePort = skillsBasePort
-	}
-
-	skillsSup := supervisor.NewSkills(cfg)
-	skillsSup.Start(ctx)
+	// ── 1.2. Start HarnessKit supervisor ─────────────────────────────────────
+	// Missing or unhealthy hk degrades only the Extensions surface; the main
+	// gateway, terminal, files, chat, and task APIs continue to start.
+	harnessKitSup := supervisor.NewHarnessKit(cfg)
+	harnessKitSup.Start(ctx)
 
 	coffeeHost, coffeePortStr, err := net.SplitHostPort(cfg.CoffeeAddr)
 	if err != nil {
@@ -332,7 +332,7 @@ func main() {
 	}
 	var coffeeBasePort int
 	fmt.Sscanf(coffeePortStr, "%d", &coffeeBasePort)
-	coffeeFreePort, err := findAvailablePort(coffeeHost, coffeeBasePort, ttydFreePort, skillsFreePort)
+	coffeeFreePort, err := findAvailablePort(coffeeHost, coffeeBasePort, ttydFreePort, cfg.HarnessKitPort)
 	if err != nil {
 		log.Printf("[main] WARNING: Failed to find free port starting from %d for payment service: %v. Using default.", coffeeBasePort, err)
 	} else if coffeeFreePort != coffeeBasePort {
@@ -355,7 +355,7 @@ func main() {
 	system.StartSelfHeartbeat(ctx)
 
 	// ── 3. Start HTTP gateway ─────────────────────────────────────────────────
-	router := server.NewRouter(cfg)
+	router := server.NewRouter(cfg, harnessKitSup)
 	httpServer := &http.Server{
 		Addr:         cfg.ListenAddr,
 		Handler:      router,
@@ -382,7 +382,7 @@ func main() {
 		}
 		fmt.Printf("   🔌 CC-Connect Bridge Port : :%d (Dynamic)\n", ccconnect.BridgePort)
 		fmt.Printf("   ⚙️  CC-Connect Mgmt Port   : :%d (Dynamic)\n", ccconnect.ManagementPort)
-		fmt.Printf("   🛠️  1skills Microservice   : %s\n", cfg.SkillsAddr)
+		fmt.Printf("   🧰 HarnessKit Extensions   : %s (%s)\n", harnessKitSup.Status().State, cfg.HarnessKitMode)
 		fmt.Printf("   ☕ Alipay Coffee Service   : %s\n", cfg.CoffeeAddr)
 		fmt.Println("==================================================================")
 
@@ -486,7 +486,7 @@ func main() {
 	}
 
 	<-sup.Done()
-	<-skillsSup.Done()
+	<-harnessKitSup.Done()
 	<-acpxSup.Done()
 	log.Println("[main] Shutdown complete. Goodbye.")
 }

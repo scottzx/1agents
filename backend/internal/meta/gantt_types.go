@@ -65,6 +65,7 @@ type GanttTaskEntry struct {
 // GanttMilestone is a version marker on the Gantt chart timeline.
 type GanttMilestone struct {
 	ID         string     `json:"id"`
+	Name       string     `json:"name"`
 	Version    string     `json:"version"`
 	TargetDate *time.Time `json:"targetDate,omitempty"`
 }

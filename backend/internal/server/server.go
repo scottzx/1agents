@@ -29,6 +29,7 @@ import (
 	"github.com/scottzx/1Agents/backend/internal/fs"
 	"github.com/scottzx/1Agents/backend/internal/gateway"
 	"github.com/scottzx/1Agents/backend/internal/git"
+	"github.com/scottzx/1Agents/backend/internal/harnesskit"
 	"github.com/scottzx/1Agents/backend/internal/ingest"
 	"github.com/scottzx/1Agents/backend/internal/localtoken"
 	"github.com/scottzx/1Agents/backend/internal/meta"
@@ -55,7 +56,7 @@ import (
 //	/ws               → Reverse-proxy to ttyd WebSocket endpoint
 //	/token            → Reverse-proxy to ttyd auth-token endpoint
 //	/                 → Static file server (compiled frontend assets)
-func NewRouter(cfg *config.Config) http.Handler {
+func NewRouter(cfg *config.Config, harnessKitRuntime ...harnesskit.Runtime) http.Handler {
 	mux := http.NewServeMux()
 
 	// ── File system API ──────────────────────────────────────────────────────
@@ -78,10 +79,9 @@ func NewRouter(cfg *config.Config) http.Handler {
 
 	// ── Workspace API ────────────────────────────────────────────────────────
 	wsHandler := workspace.NewHandler(cfg.TmuxSession)
-	wsHandler.SetSkillsAddr(cfg.SkillsAddr)
-	// Seed embedded builtin skills (e.g. "pm") into the skill-manager shared store
-	// before any project create auto-attaches them.
-	workspace.EnsureBuiltinSkills()
+	if len(harnessKitRuntime) > 0 && harnessKitRuntime[0] != nil {
+		wsHandler.SetHarnessKitRuntime(harnessKitRuntime[0])
+	}
 	if err := wsHandler.EnsureDefaultWorkspace(); err != nil {
 		log.Printf("[server] ensure default workspace: %v", err)
 	}
@@ -604,24 +604,15 @@ func NewRouter(cfg *config.Config) http.Handler {
 	// Proxies /bridge/ws to the CC-Connect bridge server (dynamic port).
 	mux.Handle("/bridge/", gateway.NewBridgeProxy(ccconnect.BridgePort, ccconnect.BridgeToken))
 
-	// ── 1skills reverse proxy ────────────────────────────────────────────────
-	var skillsPort int
-	if _, portStr, err := net.SplitHostPort(cfg.SkillsAddr); err == nil {
-		fmt.Sscanf(portStr, "%d", &skillsPort)
-	} else {
-		skillsPort = 38085
-	}
-	mux.Handle("/1skills/", gateway.NewSkillsProxy(skillsPort))
-
 	// ── Module embed scripts (custom elements) ──────────────────────────────
-	// Self-contained ESM bundles (1skills / cc-connect web) that register
-	// <skills-panel> and <cc-connect-panel>. Production ships them under
+	// Self-contained ESM bundles (HarnessKit / cc-connect web) that register
+	// <harnesskit-panel> and <cc-connect-panel>. Production ships them under
 	// StaticDir/embed/ (npm @1agents/web, release tarball dist/). Dev falls
-	// back to modules/*/dist-embed after `build:embed`.
-	mux.HandleFunc("/api/embed/skills-embed.js", serveEmbedScript(
-		embedBundleCandidates(cfg.StaticDir, "skills-embed.js", []string{
-			"modules/1skills/dist-embed/skills-embed.js",
-			"../modules/1skills/dist-embed/skills-embed.js",
+	// back to the module build outputs after `build:embed`.
+	mux.HandleFunc("/api/embed/harnesskit-embed.js", serveEmbedScript(
+		embedBundleCandidates(cfg.StaticDir, "harnesskit-embed.js", []string{
+			"modules/HarnessKit/dist-embed/harnesskit-embed.js",
+			"../modules/HarnessKit/dist-embed/harnesskit-embed.js",
 		}),
 	))
 	mux.HandleFunc("/api/embed/cc-connect-embed.js", serveEmbedScript(
@@ -630,26 +621,20 @@ func NewRouter(cfg *config.Config) http.Handler {
 			"../modules/cc-connect/web/dist-embed/cc-connect-embed.js",
 		}),
 	))
+	// Standalone same-origin shell for clients that can only host a web-view
+	// (for example the mini-program). It still uses the same authenticated,
+	// fail-closed HarnessKit API boundary as the desktop custom element.
+	mux.HandleFunc("/extensions/", serveHarnessKitEmbedPage)
 
-	// ── 1skills API pass-through routes ──────────────────────────────────────
-	// The 1skills frontend is built with VITE_API_BASE=/api, so its JS makes
-	// requests to /api/skills, /api/mcp, /api/slash-commands, etc. directly on
-	// the gateway host. These routes forward those calls to the Python backend
-	// without stripping any prefix (the Python FastAPI handles /api/* natively).
-	skillsAPIProxy := gateway.NewSkillsProxy(skillsPort)
-	mux.Handle("/api/skills", skillsAPIProxy)
-	mux.Handle("/api/skills/", skillsAPIProxy)
-	mux.Handle("/api/agents", skillsAPIProxy)
-	mux.Handle("/api/agents/", skillsAPIProxy)
-	mux.Handle("/api/import/", skillsAPIProxy)
-	mux.Handle("/api/mcp/", skillsAPIProxy)
-	mux.Handle("/api/slash-commands", skillsAPIProxy)
-	mux.Handle("/api/slash-commands/", skillsAPIProxy)
-	mux.Handle("/api/marketplace/", skillsAPIProxy)
-	mux.Handle("/api/scan/", skillsAPIProxy)
-	mux.Handle("/api/settings", skillsAPIProxy)
-	mux.Handle("/api/settings/", skillsAPIProxy)
-	mux.Handle("/api/health", skillsAPIProxy)
+	// ── HarnessKit authenticated, fail-closed boundary ─────────────────────
+	// The browser never receives the daemon token or a filesystem-authoritative
+	// endpoint. Unknown and host-only HarnessKit routes are denied by the
+	// version-pinned allowlist in internal/harnesskit.
+	if len(harnessKitRuntime) > 0 && harnessKitRuntime[0] != nil {
+		harnessKitHandler := harnesskit.NewHandler(harnessKitRuntime[0])
+		mux.Handle("/api/harnesskit", harnessKitHandler)
+		mux.Handle("/api/harnesskit/", harnessKitHandler)
+	}
 
 	// ── Alipay coffee payment module ────────────────────────────────────────
 	// Both the embedded page and API stay same-origin behind the main gateway.
@@ -1877,7 +1862,7 @@ func projectConfigHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // embedBundleCandidates returns filesystem paths to try for a named embed
-// ESM file (e.g. skills-embed.js). Order:
+// ESM file (e.g. harnesskit-embed.js). Order:
 //  1. -static dir (production: @1agents/web/dist/embed/…)
 //  2. release layout next to the 1agents binary (…/dist/embed/…)
 //  3. monorepo modules/*/dist-embed (dev)
@@ -1938,10 +1923,33 @@ func serveEmbedScript(candidates []string) http.HandlerFunc {
 		fmt.Fprintf(w,
 			"embed bundle not found; tried: %s\n"+
 				"Production: ensure @1agents/web includes dist/embed/*.js (scripts/build-module-embeds.sh).\n"+
-				"Dev: run `npm run build:embed` in modules/1skills and modules/cc-connect/web, or ./scripts/build-module-embeds.sh",
+				"Dev: run `npm run build:embed` in modules/HarnessKit and modules/cc-connect/web, or ./scripts/build-module-embeds.sh",
 			strings.Join(candidates, ", "),
 		)
 	}
+}
+
+func serveHarnessKitEmbedPage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	theme := r.URL.Query().Get("theme")
+	if theme != "dark" && theme != "light" {
+		theme = "system"
+	}
+	language := r.URL.Query().Get("lang")
+	if language != "zh" {
+		language = "en"
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = fmt.Fprintf(w, `<!doctype html>
+<html lang="%s"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>1agents Extensions</title><style>html,body,harnesskit-panel{display:block;width:100%%;height:100%%;margin:0}</style>
+<script type="module" src="/api/embed/harnesskit-embed.js"></script></head>
+<body><harnesskit-panel theme="%s" language="%s"></harnesskit-panel></body></html>`,
+		language, theme, language)
 }
 
 // handleProjectLocalConfig reads/writes a project-local config blob at

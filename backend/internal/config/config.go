@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"runtime"
 	"time"
 )
@@ -48,16 +50,27 @@ type Config struct {
 	// TunnelToken stores the active session authentication token in memory.
 	TunnelToken string
 
-	// SkillsAddr is the address the 1skills FastAPI server listens on locally.
-	SkillsAddr string
+	// HarnessKitMode controls how the extension daemon is reached. "supervised"
+	// starts the bundled hk binary; "external" connects to a development daemon.
+	HarnessKitMode string
 
-	// SkillsBinaryPath is the path to the python executable to run 1skills.
-	SkillsBinaryPath string
+	// HarnessKitHost is fixed to loopback in supervised mode.
+	HarnessKitHost string
 
-	// SkillsSourceDir is the path to the 1skills Python source tree
-	// (e.g. the @1agents/skills npm package root, or modules/1skills in dev).
-	// When empty, the supervisor discovers the tree automatically.
-	SkillsSourceDir string
+	// HarnessKitPort is the daemon port. Zero asks the supervisor to allocate an
+	// available loopback port for every child start.
+	HarnessKitPort int
+
+	// HarnessKitBinaryPath is an explicit path to the hk executable. When empty,
+	// the supervisor discovers an adjacent, packaged, or development binary.
+	HarnessKitBinaryPath string
+
+	// HarnessKitDataDir is the root for HarnessKit's SQLite database and state.
+	HarnessKitDataDir string
+
+	// HarnessKitToken authenticates an external development daemon. Supervised
+	// mode ignores this value and generates a fresh in-memory token per start.
+	HarnessKitToken string
 
 	// CoffeeAddr is the loopback address for the Alipay coffee payment service.
 	CoffeeAddr string
@@ -85,18 +98,29 @@ type OTAConfig struct {
 
 // Default returns a Config populated with safe default values.
 func Default() *Config {
+	home := os.Getenv("ONEAGENTS_HOME")
+	if home == "" {
+		if resolved, err := os.UserHomeDir(); err == nil {
+			home = resolved
+		} else {
+			home = "."
+		}
+	}
+
 	cfg := &Config{
-		ListenAddr:       ":38080",
-		TtydAddr:         "127.0.0.1:37681",
-		TtydBinaryPath:   "./ttyd",
-		SkillsAddr:       "127.0.0.1:38085",
-		SkillsBinaryPath: "python3",
-		CoffeeAddr:       "127.0.0.1:38087",
+		ListenAddr:           ":38080",
+		TtydAddr:             "127.0.0.1:37681",
+		TtydBinaryPath:       "./ttyd",
+		HarnessKitMode:       "supervised",
+		HarnessKitHost:       "127.0.0.1",
+		HarnessKitPort:       0,
+		HarnessKitDataDir:    filepath.Join(home, ".1agents", "harnesskit"),
+		CoffeeAddr:           "127.0.0.1:38087",
 		CoffeeNodeBinaryPath: "node",
-		WorkDir:          "~",
-		StaticDir:        "./frontend/dist",
-		RestartDelay:     3 * time.Second,
-		MaxRestarts:      5,
+		WorkDir:              "~",
+		StaticDir:            "./frontend/dist",
+		RestartDelay:         3 * time.Second,
+		MaxRestarts:          5,
 	}
 
 	if runtime.GOOS == "windows" {

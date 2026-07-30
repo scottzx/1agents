@@ -15,6 +15,7 @@ import (
 
 	"github.com/chenhg5/cc-connect/config"
 	"github.com/chenhg5/cc-connect/core"
+	"github.com/scottzx/1Agents/backend/internal/harnesskit"
 	"github.com/scottzx/1Agents/backend/internal/meta"
 )
 
@@ -59,7 +60,7 @@ type WorkspacesConfig struct {
 
 type Handler struct {
 	tmuxSession string
-	skillsAddr  string // 1skills FastAPI addr for skill push-back; empty → defaultSkillsAddr
+	extensions  extensionClient
 }
 
 func NewHandler(tmuxSession ...string) *Handler {
@@ -70,12 +71,11 @@ func NewHandler(tmuxSession ...string) *Handler {
 	return &Handler{tmuxSession: session}
 }
 
-// SetSkillsAddr pins the 1skills service address used by PushSkill (defaults to
-// defaultSkillsAddr when unset). Called once at server startup with the resolved
-// config so the push-back forwards to the same instance the supervisor launched.
-func (h *Handler) SetSkillsAddr(addr string) {
-	if addr != "" {
-		h.skillsAddr = addr
+// SetHarnessKitRuntime wires the private, authenticated extension runtime into
+// the workspace facade. The browser never receives the endpoint or token.
+func (h *Handler) SetHarnessKitRuntime(runtime harnesskit.Runtime) {
+	if runtime != nil {
+		h.extensions = harnesskit.NewClient(runtime)
 	}
 }
 
@@ -351,13 +351,9 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Workspace
 		TemplateID string `json:"templateId"`
-		// Skills is an optional list of shared-store skill package dirs to weak-copy
-		// into <ws>/.claude/skills on creation (#360). Used by the create-assistant
-		// flow's skill picker; empty for a plain workspace.
+		// Skills and Agents are HarnessKit global extension IDs selected by the
+		// assistant-create flow. They are deployed into this project scope.
 		Skills []string `json:"skills"`
-		// Agents is an optional list of shared-store agent file names (<name>.md) to
-		// weak-copy into <ws>/.claude/agents on creation. Parallel to Skills; empty
-		// for a plain workspace.
 		Agents []string `json:"agents"`
 		// Soul is an optional curated persona preset ref (see presets/souls). When
 		// set, its markdown is seeded into <ws>/SOUL.md as the assistant's system
@@ -460,35 +456,41 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Optional skill weak-copy into <ws>/.claude/skills (#360) — the assistant
-	// create flow's skill picker. Non-fatal: a copy failure is surfaced but the
-	// workspace still exists.
+	// Optional HarnessKit project deployment. Workspace creation remains
+	// successful if an extension is unavailable; the response makes the partial
+	// failure explicit so the UI does not imply a hidden deployment.
 	if len(body.Skills) > 0 {
-		if copied, sErr := syncSkillsToWorkspace(ws.Path, body.Skills); sErr != nil {
-			log.Printf("[workspace] sync skills for project %s: %v", ws.ID, sErr)
-			resp["skillsError"] = sErr.Error()
-		} else {
-			resp["skills"] = copied
+		installed := make([]string, 0, len(body.Skills))
+		for _, extensionID := range body.Skills {
+			targetID, _, installErr := h.installExtension(r.Context(), ws, "skill", extensionID)
+			if installErr != nil {
+				log.Printf("[workspace] install HarnessKit skill %s for project %s: %v", extensionID, ws.ID, installErr)
+				resp["skillsError"] = installErr.Error()
+				break
+			}
+			installed = append(installed, targetID)
 		}
+		resp["skills"] = installed
 	}
 
-	// Always attach the builtin "pm" skill so every project ships with
-	// project-management capability out of the box (the AI PM playbook + the
-	// `1agents project-items` CLI). Idempotent and seeded at startup by
-	// EnsureBuiltinSkills; a no-op if the shared package is somehow absent.
-	if _, sErr := syncSkillsToWorkspace(ws.Path, []string{"pm"}); sErr != nil {
-		log.Printf("[workspace] attach pm skill for project %s: %v", ws.ID, sErr)
-	}
-
-	// Optional agent weak-copy into <ws>/.claude/agents — parallel to skills.
-	// Non-fatal: a copy failure is surfaced but the workspace still exists.
 	if len(body.Agents) > 0 {
-		if copied, aErr := syncAgentsToWorkspace(ws.Path, body.Agents); aErr != nil {
-			log.Printf("[workspace] sync agents for project %s: %v", ws.ID, aErr)
-			resp["agentsError"] = aErr.Error()
-		} else {
-			resp["agents"] = copied
+		installed := make([]string, 0, len(body.Agents))
+		for _, extensionID := range body.Agents {
+			targetID, status, installErr := h.installExtension(r.Context(), ws, "subagent", extensionID)
+			if installErr != nil {
+				log.Printf("[workspace] install HarnessKit subagent %s for project %s: %v", extensionID, ws.ID, installErr)
+				resp["agentsError"] = installErr.Error()
+				break
+			}
+			installed = append(installed, targetID)
+			if status.File != "" {
+				if team, teamErr := ReadTeam(ws.Path); teamErr == nil {
+					team.Members = appendUnique(team.Members, status.File)
+					_ = WriteTeam(ws.Path, team)
+				}
+			}
 		}
+		resp["agents"] = installed
 	}
 
 	// Optional persona seed — the assistant create flow's 人设 picker. The chosen
@@ -502,6 +504,14 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		} else {
 			resp["soul"] = body.Soul
 			resp["primaryAgent"] = file
+		}
+	}
+	// A seeded persona is a native subagent file, so refresh HarnessKit after
+	// all create-time filesystem writes. Registration conflict is idempotent.
+	if client, cErr := h.requireExtensionClient(); cErr == nil {
+		if scanErr := client.EnsureProject(r.Context(), ws.Path); scanErr != nil {
+			log.Printf("[workspace] HarnessKit project scan for %s: %v", ws.ID, scanErr)
+			resp["extensionsError"] = scanErr.Error()
 		}
 	}
 	writeJSON(w, resp)
@@ -590,19 +600,19 @@ func (h *Handler) WorkspaceSoul(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) WorkspaceTeam(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		wsPath, ok := h.resolveWorkspacePath(r.URL.Query().Get("id"))
-		if !ok {
+		ws, err := h.extensionWorkspace(r.URL.Query().Get("id"))
+		if err != nil {
 			http.Error(w, "workspace not found", http.StatusNotFound)
 			return
 		}
-		team, err := ReadTeam(wsPath)
+		team, err := ReadTeam(ws.Path)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		members, err := listWorkspaceAgents(wsPath, h.skillsAddr)
+		members, err := h.listProjectExtensions(r.Context(), ws, "subagent")
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeExtensionError(w, err)
 			return
 		}
 		writeJSON(w, map[string]any{"primary": team.Primary, "members": members})
@@ -645,112 +655,86 @@ func (h *Handler) WorkspaceTeam(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// WorkspaceAvailableAgents handles GET /api/workspace/available-agents?id=<wsId>:
-// the 母体 (shared store) agents the project can add as team members, each
-// flagged with whether it is already installed here.
+// WorkspaceAvailableAgents lists global HarnessKit subagents that can be
+// deployed into this project scope.
 func (h *Handler) WorkspaceAvailableAgents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	wsPath, ok := h.resolveWorkspacePath(r.URL.Query().Get("id"))
-	if !ok {
+	ws, err := h.extensionWorkspace(r.URL.Query().Get("id"))
+	if err != nil {
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
 	}
-	list, err := availableSharedAgents(wsPath)
+	list, err := h.listAvailableExtensions(r.Context(), ws, "subagent")
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeExtensionError(w, err)
 		return
 	}
 	writeJSON(w, map[string]any{"agents": list})
 }
 
-// AddAgent handles POST /api/workspace/add-agent {id, agentRef}: materializes a
-// 母体 agent into the workspace's .claude/agents (the create-time weak copy, on
-// demand). Idempotent. Registers it in team.json members.
+// AddAgent deploys a global HarnessKit subagent into the project's native Agent
+// configuration and registers its resulting file in team.json.
 func (h *Handler) AddAgent(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	var body struct {
-		ID       string `json:"id"`
-		AgentRef string `json:"agentRef"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	id, extensionID, err := decodeExtensionRequest(r)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if body.ID == "" || body.AgentRef == "" {
-		http.Error(w, "id and agentRef are required", http.StatusBadRequest)
-		return
-	}
-	wsPath, ok := h.resolveWorkspacePath(body.ID)
-	if !ok {
+	ws, err := h.extensionWorkspace(id)
+	if err != nil {
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
 	}
-	synced, err := syncAgentsToWorkspace(wsPath, []string{body.AgentRef})
+	targetID, status, err := h.installExtension(r.Context(), ws, "subagent", extensionID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeExtensionError(w, err)
 		return
 	}
-	if len(synced) == 0 {
-		http.Error(w, "agent not found in shared store", http.StatusNotFound)
-		return
-	}
-	// Register in team.json members (idempotent), so the roster reflects it even
-	// before a full re-list.
-	if team, tErr := ReadTeam(wsPath); tErr == nil {
-		for _, f := range synced {
-			present := false
-			for _, m := range team.Members {
-				if m == f {
-					present = true
-					break
-				}
-			}
-			if !present {
-				team.Members = append(team.Members, f)
-			}
+	if status.File != "" {
+		if team, teamErr := ReadTeam(ws.Path); teamErr == nil {
+			team.Members = appendUnique(team.Members, status.File)
+			_ = WriteTeam(ws.Path, team)
 		}
-		_ = WriteTeam(wsPath, team)
 	}
-	writeJSON(w, map[string]any{"ok": true, "added": synced})
+	writeJSON(w, map[string]any{"ok": true, "extensionId": targetID})
 }
 
-// RemoveAgent handles POST /api/workspace/remove-agent {id, agentRef}: deletes an
-// agent from the workspace's own .claude/agents (project-level only; the 母体 is
-// untouched) and drops it from team.json — clearing the primary if it was the one.
+// RemoveAgent deletes a project-scoped HarnessKit subagent and drops its native
+// file from team.json, clearing the primary when necessary.
 func (h *Handler) RemoveAgent(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	var body struct {
-		ID       string `json:"id"`
-		AgentRef string `json:"agentRef"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	id, extensionID, err := decodeExtensionRequest(r)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if body.ID == "" || body.AgentRef == "" {
-		http.Error(w, "id and agentRef are required", http.StatusBadRequest)
-		return
-	}
-	wsPath, ok := h.resolveWorkspacePath(body.ID)
-	if !ok {
+	ws, err := h.extensionWorkspace(id)
+	if err != nil {
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
 	}
-	if err := removeWorkspaceAgent(wsPath, body.AgentRef); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	client, ext, err := h.findProjectExtension(r.Context(), ws, "subagent", extensionID)
+	if err != nil {
+		writeExtensionError(w, err)
 		return
 	}
-	file := normalizeAgentRef(body.AgentRef)
-	if team, tErr := ReadTeam(wsPath); tErr == nil {
+	status := extensionStatus(ws.Path, ext)
+	if err := client.DeleteExtension(r.Context(), extensionID); err != nil {
+		writeExtensionError(w, err)
+		return
+	}
+	file := status.File
+	if team, tErr := ReadTeam(ws.Path); tErr == nil {
 		next := team.Members[:0]
 		for _, m := range team.Members {
 			if m != file {
@@ -761,15 +745,13 @@ func (h *Handler) RemoveAgent(w http.ResponseWriter, r *http.Request) {
 		if team.Primary == file {
 			team.Primary = ""
 		}
-		_ = WriteTeam(wsPath, team)
+		_ = WriteTeam(ws.Path, team)
 	}
-	writeJSON(w, map[string]any{"ok": true, "removed": file})
+	writeJSON(w, map[string]any{"ok": true, "extensionId": extensionID})
 }
 
-// WorkspaceSkills handles GET /api/workspace/skills?id=<wsId>: lists the skills
-// materialized in the workspace's .claude/skills, each flagged with whether the
-// local copy has drifted from the 母体 baseline (so the detail page can light up
-// a "推送到母体" affordance only where there's something to push).
+// WorkspaceSkills lists project-scoped HarnessKit skills after ensuring the
+// project is registered and its native files have been scanned.
 func (h *Handler) WorkspaceSkills(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -780,150 +762,93 @@ func (h *Handler) WorkspaceSkills(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id is required", http.StatusBadRequest)
 		return
 	}
-	cfg, err := h.loadConfig()
+	ws, err := h.extensionWorkspace(id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	var wsPath string
-	for _, ws := range cfg.Workspaces {
-		if ws.ID == id {
-			wsPath = ws.Path
-			break
-		}
-	}
-	if wsPath == "" {
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
 	}
-	skills, err := listWorkspaceSkills(wsPath, h.skillsAddr)
+	skills, err := h.listProjectExtensions(r.Context(), ws, "skill")
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeExtensionError(w, err)
 		return
 	}
 	writeJSON(w, map[string]any{"skills": skills})
 }
 
-// PushSkill handles POST /api/workspace/push-skill {id, skillRef}: the reverse of
-// the create-time weak-copy. It resolves the workspace's own edited copy
-// (<ws>/.claude/skills/<dir>) and pushes it back to the 1skills shared store
-// (母体) as the new baseline. The store no-ops when the copy is unchanged, so the
-// response's `changed` tells the caller whether the baseline actually moved.
+// PushSkill retains its route name for API continuity, but its HarnessKit
+// product semantic is "reindex project-native files". It never publishes a
+// shared version or creates a branch.
 func (h *Handler) PushSkill(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	var body struct {
-		ID       string `json:"id"`
-		SkillRef string `json:"skillRef"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	id, extensionID, err := decodeExtensionRequest(r)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if body.ID == "" || body.SkillRef == "" {
-		http.Error(w, "id and skillRef are required", http.StatusBadRequest)
-		return
-	}
-	cfg, err := h.loadConfig()
+	ws, err := h.extensionWorkspace(id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	var wsPath string
-	for _, ws := range cfg.Workspaces {
-		if ws.ID == body.ID {
-			wsPath = ws.Path
-			break
-		}
-	}
-	if wsPath == "" {
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
 	}
-	src, err := workspaceSkillDir(wsPath, body.SkillRef)
+	client, ext, err := h.findProjectExtension(r.Context(), ws, "skill", extensionID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeExtensionError(w, err)
 		return
 	}
 	if r.URL.Query().Get("preview") == "1" {
-		preview, err := previewSkillFromShared(h.skillsAddr, body.SkillRef, src)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadGateway)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(preview)
+		writeJSON(w, map[string]any{
+			"mode":        "in-place",
+			"extensionId": ext.ID,
+			"name":        ext.Name,
+			"message":     "Reindex this project extension after local edits. HarnessKit does not publish it to a shared mother branch.",
+		})
 		return
 	}
-	res, err := pushSkillToShared(h.skillsAddr, body.SkillRef, src)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
+	if err := client.ScanAndSync(r.Context()); err != nil {
+		writeExtensionError(w, err)
 		return
 	}
-	out := map[string]any{
-		"ok":      true,
-		"status":  res.Status,
-		"changed": res.Changed,
-		"created": res.Created,
-		"version": res.Version,
-		"id":      res.ID,
-	}
-	if len(res.Conflict) > 0 {
-		out["conflict"] = json.RawMessage(res.Conflict)
-	}
-	writeJSON(w, out)
+	writeJSON(w, map[string]any{"ok": true, "status": "indexed", "extensionId": extensionID})
 }
 
-// PullSkill handles POST /api/workspace/pull-skill {id, skillRef}: fast-forwards
-// the workspace's own copy (<ws>/.claude/skills/<dir>) to the 1skills shared
-// store's (母体) current version. The store refuses (status=dirty) when the
-// workspace copy has local edits, so nothing is overwritten silently.
+// PullSkill updates a project extension from its verified HarnessKit source.
+// Extensions without update metadata receive an explicit 422 response.
 func (h *Handler) PullSkill(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	var body struct {
-		ID       string `json:"id"`
-		SkillRef string `json:"skillRef"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	id, extensionID, err := decodeExtensionRequest(r)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if body.ID == "" || body.SkillRef == "" {
-		http.Error(w, "id and skillRef are required", http.StatusBadRequest)
-		return
-	}
-	cfg, err := h.loadConfig()
+	ws, err := h.extensionWorkspace(id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	var wsPath string
-	for _, ws := range cfg.Workspaces {
-		if ws.ID == body.ID {
-			wsPath = ws.Path
-			break
-		}
-	}
-	if wsPath == "" {
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
 	}
-	pkg, err := workspaceSkillDir(wsPath, body.SkillRef)
+	client, ext, err := h.findProjectExtension(r.Context(), ws, "skill", extensionID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeExtensionError(w, err)
 		return
 	}
-	res, err := pullSkillFromShared(h.skillsAddr, body.SkillRef, pkg)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
+	status := extensionStatus(ws.Path, ext)
+	if !status.CanUpdate {
+		writeJSONStatus(w, http.StatusUnprocessableEntity, map[string]any{
+			"error":   "source_update_unavailable",
+			"message": status.UpdateReason,
+		})
 		return
 	}
-	writeJSON(w, map[string]any{"ok": true, "status": res.Status, "version": res.Version})
+	if err := client.UpdateExtension(r.Context(), extensionID); err != nil {
+		writeExtensionError(w, err)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "status": "updated", "extensionId": extensionID})
 }
 
 // workspacePathByID resolves a workspace id to its filesystem path from config.
@@ -940,102 +865,82 @@ func (h *Handler) workspacePathByID(id string) (string, error) {
 	return "", fmt.Errorf("workspace not found")
 }
 
-// AvailableSkills handles GET /api/workspace/available-skills?id=<wsId>: lists
-// the 母体 (shared store) skills the project can add — everything not already
-// under its .claude/skills. Powers the project "add skill" picker.
+// AvailableSkills lists global HarnessKit skills and whether each name is
+// already deployed into this project scope.
 func (h *Handler) AvailableSkills(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	if id == "" {
 		http.Error(w, "id is required", http.StatusBadRequest)
 		return
 	}
-	wsPath, err := h.workspacePathByID(id)
+	ws, err := h.extensionWorkspace(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
-	list, err := availableSharedSkills(wsPath, h.skillsAddr)
+	list, err := h.listAvailableExtensions(r.Context(), ws, "skill")
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeExtensionError(w, err)
 		return
 	}
 	writeJSON(w, map[string]any{"skills": list})
 }
 
-// AddSkill handles POST /api/workspace/add-skill {id, skillRef}: materializes a
-// 母体 store skill into the workspace's .claude/skills (the create-time weak
-// copy, on demand). Idempotent — re-adding an existing skill is a no-op copy.
+// AddSkill deploys a global HarnessKit skill into the project's native Agent
+// configuration and returns the project-scoped extension ID.
 func (h *Handler) AddSkill(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	var body struct {
-		ID       string `json:"id"`
-		SkillRef string `json:"skillRef"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	id, extensionID, err := decodeExtensionRequest(r)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if body.ID == "" || body.SkillRef == "" {
-		http.Error(w, "id and skillRef are required", http.StatusBadRequest)
-		return
-	}
-	wsPath, err := h.workspacePathByID(body.ID)
+	ws, err := h.extensionWorkspace(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
-	synced, err := syncSkillsToWorkspace(wsPath, []string{body.SkillRef})
+	targetID, _, err := h.installExtension(r.Context(), ws, "skill", extensionID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeExtensionError(w, err)
 		return
 	}
-	if len(synced) == 0 {
-		http.Error(w, "skill not found in shared store", http.StatusNotFound)
-		return
-	}
-	writeJSON(w, map[string]any{"ok": true, "added": synced})
+	writeJSON(w, map[string]any{"ok": true, "extensionId": targetID})
 }
 
-// RemoveSkill handles POST /api/workspace/remove-skill {id, skillRef}: deletes a
-// skill package from the workspace's own .claude/skills. Project-level only —
-// the 母体 store is untouched.
+// RemoveSkill deletes exactly one verified project-scoped HarnessKit skill.
 func (h *Handler) RemoveSkill(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	var body struct {
-		ID       string `json:"id"`
-		SkillRef string `json:"skillRef"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	id, extensionID, err := decodeExtensionRequest(r)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if body.ID == "" || body.SkillRef == "" {
-		http.Error(w, "id and skillRef are required", http.StatusBadRequest)
-		return
-	}
-	wsPath, err := h.workspacePathByID(body.ID)
+	ws, err := h.extensionWorkspace(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
-	if err := removeWorkspaceSkill(wsPath, body.SkillRef); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	client, _, err := h.findProjectExtension(r.Context(), ws, "skill", extensionID)
+	if err != nil {
+		writeExtensionError(w, err)
 		return
 	}
-	writeJSON(w, map[string]any{"ok": true})
+	if err := client.DeleteExtension(r.Context(), extensionID); err != nil {
+		writeExtensionError(w, err)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "extensionId": extensionID})
 }
 
-// WorkspaceAgents handles GET /api/workspace/agents?id=<wsId>: lists the agents
-// materialized in the workspace's .claude/agents (single <name>.md files), each
-// flagged with whether the local copy has drifted from the 母体 baseline (so the
-// detail page can light up a "推送到母体" affordance only where there's something
-// to push). Mirror of WorkspaceSkills.
+// WorkspaceAgents lists project-scoped HarnessKit subagents. Team selection
+// still uses their native file names, while mutations use stable extension IDs.
 func (h *Handler) WorkspaceAgents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1046,80 +951,46 @@ func (h *Handler) WorkspaceAgents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id is required", http.StatusBadRequest)
 		return
 	}
-	cfg, err := h.loadConfig()
+	ws, err := h.extensionWorkspace(id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	var wsPath string
-	for _, ws := range cfg.Workspaces {
-		if ws.ID == id {
-			wsPath = ws.Path
-			break
-		}
-	}
-	if wsPath == "" {
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
 	}
-	agents, err := listWorkspaceAgents(wsPath, h.skillsAddr)
+	agents, err := h.listProjectExtensions(r.Context(), ws, "subagent")
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeExtensionError(w, err)
 		return
 	}
 	writeJSON(w, map[string]any{"agents": agents})
 }
 
-// PushAgent handles POST /api/workspace/push-agent {id, agentRef}: the reverse of
-// the create-time weak-copy. It resolves the workspace's own edited copy
-// (<ws>/.claude/agents/<name>.md) and pushes it back to the 1skills shared store
-// (母体) as the new baseline. The store no-ops when the copy is unchanged, so the
-// response's `changed` tells the caller whether the baseline actually moved.
-// Mirror of PushSkill.
+// PushAgent retains its route name for API continuity; it reindexes native
+// project subagent files and does not publish shared history.
 func (h *Handler) PushAgent(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	var body struct {
-		ID       string `json:"id"`
-		AgentRef string `json:"agentRef"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	id, extensionID, err := decodeExtensionRequest(r)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if body.ID == "" || body.AgentRef == "" {
-		http.Error(w, "id and agentRef are required", http.StatusBadRequest)
-		return
-	}
-	cfg, err := h.loadConfig()
+	ws, err := h.extensionWorkspace(id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	var wsPath string
-	for _, ws := range cfg.Workspaces {
-		if ws.ID == body.ID {
-			wsPath = ws.Path
-			break
-		}
-	}
-	if wsPath == "" {
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
 	}
-	src, err := workspaceAgentFile(wsPath, body.AgentRef)
+	client, _, err := h.findProjectExtension(r.Context(), ws, "subagent", extensionID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeExtensionError(w, err)
 		return
 	}
-	changed, created, err := pushAgentToShared(h.skillsAddr, body.AgentRef, src)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
+	if err := client.ScanAndSync(r.Context()); err != nil {
+		writeExtensionError(w, err)
 		return
 	}
-	writeJSON(w, map[string]any{"ok": true, "changed": changed, "created": created})
+	writeJSON(w, map[string]any{"ok": true, "status": "indexed", "extensionId": extensionID})
 }
 
 // Update handles POST /api/workspace/update

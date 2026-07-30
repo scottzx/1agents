@@ -1251,7 +1251,7 @@ func (s *FeatureCatalogStore) GanttView(projectID string) (GanttData, error) {
 
 	// 4: Load milestones
 	msRows, err := s.db.sql.Query(`
-		SELECT id, version, target_date
+		SELECT id, name, version, target_date
 		FROM milestones
 		WHERE project_id = ? AND version != ''
 		ORDER BY position, created_at, id`, projectID)
@@ -1264,7 +1264,7 @@ func (s *FeatureCatalogStore) GanttView(projectID string) (GanttData, error) {
 	for msRows.Next() {
 		var ms GanttMilestone
 		var targetDate sql.NullString
-		if err := msRows.Scan(&ms.ID, &ms.Version, &targetDate); err != nil {
+		if err := msRows.Scan(&ms.ID, &ms.Name, &ms.Version, &targetDate); err != nil {
 			return GanttData{}, err
 		}
 		if targetDate.Valid {
