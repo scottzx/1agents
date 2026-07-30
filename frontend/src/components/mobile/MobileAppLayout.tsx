@@ -911,7 +911,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                     {moduleNav ? (
                                         <div class="mobile-skills-list-view">
                                             <div class="mobile-menu-header">
-                                                <h2>{t('sidebar.skills', language) || '技能中心'}</h2>
+                                                <h2>{t('sidebar.skills', language) || '百宝箱'}</h2>
                                                 <p>为您的协作终端扩展并配置 AI Agent 技能</p>
                                             </div>
 
@@ -1008,21 +1008,15 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                         <div class="mobile-subview-title">{t('sidebar.skills', language)}</div>
                                     </div>
                                     <div class="mobile-subview-content" style="overflow: hidden;">
-                                        <harnesskit-panel
-                                            id="harnesskit-panel"
-                                            initial-route={
-                                                (activeMobileTab === 'skills' && tabsStore.activeModulePath.value) ||
+                                        <iframe
+                                            id="harnesskit-iframe"
+                                            src={
+                                                `/api/harnesskit/#${(activeMobileTab === 'skills' && tabsStore.activeModulePath.value) ||
                                                 this.state.mountedSkillsPath ||
-                                                '/overview'
+                                                '/overview'}`
                                             }
-                                            route={
-                                                (activeMobileTab === 'skills' && tabsStore.activeModulePath.value) ||
-                                                this.state.mountedSkillsPath ||
-                                                '/overview'
-                                            }
-                                            theme={theme}
-                                            language={language}
-                                            style="width: 100%; height: 100%; display: flex; flex-direction: column;"
+                                            allow="clipboard-read; clipboard-write"
+                                            style="width: 100%; height: 100%; border: none; display: block;"
                                         />
                                     </div>
                                 </div>
@@ -1261,7 +1255,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                 <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
                             </svg>
-                            {t('sidebar.skills', language) || '技能管理'}
+                            {t('sidebar.skills', language) || '百宝箱'}
                         </button>
                         <button
                             class={`mobile-tab-btn ${activeMobileTab === 'more' ? 'active' : ''}`}

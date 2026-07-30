@@ -139,19 +139,11 @@ export async function connectDevice(p: DeviceProfile): Promise<{ socket: Socket;
         throw new Error('请先登录中转账户后再连接设备');
     }
 
-    // 客户端第一道门(中转握手还会再验 subscription_required / expired)
+    // 预检订阅状态(静默尝试，不阻断设备连接:订阅过期仍允许连接设备加载本地历史消息)
     try {
-        const sub = await getSubscription();
-        if (sub.status === 'expired') {
-            throw new Error('订阅已过期，请续订后再连接设备');
-        }
-        if (sub.status !== 'active') {
-            throw new Error('需要有效订阅才能连接设备');
-        }
-    } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        // 明确的业务错误直接抛出;网络/解析错误则交给中转握手兜底
-        if (/订阅|尚未创建|NoRelayAccount/.test(msg)) throw e instanceof Error ? e : new Error(msg);
+        await getSubscription();
+    } catch {
+        /* 网络或解析错误不影响设备连接 */
     }
 
     const serverUrl = (p.serverUrl || '').replace(/\/+$/, '');

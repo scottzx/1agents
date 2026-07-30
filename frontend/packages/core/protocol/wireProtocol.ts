@@ -56,6 +56,8 @@ export interface BridgeEventPayload {
     requestId?: string;
     turnId?: string;
     sequence?: number;
+    journalSequence?: number;
+    acceptedNew?: boolean;
     status?: string;
     stopReason?: string;
     finalAnswer?: string;
@@ -66,8 +68,13 @@ export interface BridgeEventPayload {
     turnProtocolVersion?: number;
     active?: TurnStatePayload;
     queued?: TurnStatePayload[];
+    /** Complete 1ACP Journal projection; consumed by Go, ignored by the UI. */
+    turns?: TurnStatePayload[];
     /** Session id on cross-session events (session_deleted, session_forked, …). */
     sessionId?: string;
+    /** Agent session UUID on session_ready (e.g. Claude/Grok session file ID). */
+    agentSessionId?: string;
+    acpSessionId?: string;
     message?: string;
     code?: string;
     toolName?: string;
@@ -111,12 +118,18 @@ export interface TurnStatePayload {
 
 // ── Outbound: actions the client sends ──────────────────────────────────────
 
-export function getHistoryAction(args: { sessionId: string; agentType: string; acpSessionId?: string }) {
+export function getHistoryAction(args: {
+    sessionId: string;
+    agentType: string;
+    acpSessionId?: string;
+    workspacePath?: string;
+}) {
     return {
         action: 'get_history',
         sessionId: args.sessionId,
         agentType: args.agentType,
         acpSessionId: args.acpSessionId,
+        workspacePath: args.workspacePath,
     };
 }
 

@@ -82,8 +82,7 @@ export const MODULES: Record<ModuleId, ModuleRegistration> = {
     skills: {
         moduleId: 'extensions',
         ownerTab: 'skills',
-        iframeBase: '',
-        embedElement: 'harnesskit-panel',
+        iframeBase: '/api/harnesskit',
         staticManifest: EXTENSIONS_STATIC_MANIFEST,
         entryPath: '/overview',
     },

@@ -268,8 +268,13 @@ export function RelayOnboarding({ onReady }: { onReady?: () => void }) {
                             </div>
                             <div class="bento-zone-body">
                                 <div class="bento-card-desc">
-                                    需要有效订阅才能配对设备。可领取 3 天体验,或用激活码激活。
+                                    新对话与 AI 执行需要有效订阅。查看本地历史消息不影响。
                                 </div>
+                            </div>
+                            <div class="bento-zone-footer sub-card-actions">
+                                <button class="sys-settings-btn primary" onClick={() => (step.value = 3)}>
+                                    下一步:连接设备 (查看本地历史)
+                                </button>
                             </div>
                         </div>
 

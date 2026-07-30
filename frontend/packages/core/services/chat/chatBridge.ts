@@ -446,6 +446,7 @@ export class ChatBridgeManager {
                         sessionId: session.id,
                         agentType: session.agentType,
                         acpSessionId: session.acpSessionId,
+                        workspacePath: session.workspaceId,
                     })
                 )
             );
@@ -464,7 +465,7 @@ export class ChatBridgeManager {
             console.log('[ChatBridgeManager] Received event:', event, payload);
 
             switch (event) {
-                case 'session_ready':
+                case 'session_ready': {
                     // Flip the gate so the Composer / mode toggle unblock.
                     // `state.typing` is intentionally untouched — the
                     // bridge signals per-turn activity with `done` / `error`,
@@ -472,6 +473,10 @@ export class ChatBridgeManager {
                     state.reconnectAttempt = 0;
                     state.ready = true;
                     state.everReady = true;
+                    const agentSessionId = payload.agentSessionId || payload.acpSessionId;
+                    if (agentSessionId) {
+                        session.acpSessionId = agentSessionId;
+                    }
                     this.notify(state);
                     // onopen may have requested history before ensure_session
                     // finished (no active handle/cwd yet → empty transcript).
@@ -479,6 +484,7 @@ export class ChatBridgeManager {
                     // the user hits header refresh.
                     this.reloadHistory(session, state);
                     break;
+                }
                 case 'session_meta': {
                     // Authoritative capability snapshot sent after every
                     // session_ready. Modes and commands are live-only state
@@ -1342,6 +1348,7 @@ export class ChatBridgeManager {
                         sessionId: session.id,
                         agentType: session.agentType,
                         acpSessionId: session.acpSessionId,
+                        workspacePath: session.workspaceId,
                     })
                 )
             );
