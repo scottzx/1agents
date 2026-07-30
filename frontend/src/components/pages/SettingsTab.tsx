@@ -92,7 +92,7 @@ export function SettingsTab({ workspaceId, language }: { workspaceId: string; la
                     <span class="settings-capability-copy">
                         <strong>启用功能蓝图</strong>
                         <span>
-                            按一级、二级、三级模块和功能点规划项目范围，并关联需求、任务和版本里程碑。关闭后仅隐藏入口，不删除已有数据。
+                            按最多九级模块和功能点规划项目范围，并关联需求、任务和版本里程碑。关闭后仅隐藏入口，不删除已有数据。
                         </span>
                     </span>
                 </label>

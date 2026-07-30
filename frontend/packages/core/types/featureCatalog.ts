@@ -56,6 +56,44 @@ export interface FeatureCatalog {
     links: FeatureItemLink[];
 }
 
+export type FeatureCatalogVersionKind = 'manual' | 'pre_restore';
+
+export interface FeatureCatalogVersion {
+    id: string;
+    alias: string;
+    kind: FeatureCatalogVersionKind;
+    schemaVersion: number;
+    nodeCount: number;
+    linkCount: number;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface FeatureCatalogVersionPage {
+    items: FeatureCatalogVersion[];
+    nextCursor?: string;
+    hasMore: boolean;
+}
+
+export interface FeatureCatalogRestoreWarning {
+    featureId: string;
+    referenceId: string;
+    kind: 'source_link' | 'delivery_link' | 'target_milestone';
+    action: 'skipped' | 'cleared';
+}
+
+export interface FeatureCatalogRestoreResult {
+    requestId: string;
+    targetVersion: FeatureCatalogVersion;
+    safetyVersion: FeatureCatalogVersion;
+    restoredNodeCount: number;
+    restoredLinkCount: number;
+    skippedLinkCount: number;
+    clearedTargetMilestoneCount: number;
+    warnings: FeatureCatalogRestoreWarning[];
+    warningsTruncated: boolean;
+}
+
 export interface CreateFeatureNodeInput {
     parentId?: string;
     kind: FeatureNodeKind;

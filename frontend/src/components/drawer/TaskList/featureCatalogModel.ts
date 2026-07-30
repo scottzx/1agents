@@ -12,6 +12,20 @@ export interface FeatureTreeNode {
     children: FeatureTreeNode[];
 }
 
+export const MAX_FEATURE_MODULE_DEPTH = 9;
+
+export type FeatureDropPlacement = 'before' | 'inside' | 'after' | 'root';
+
+export interface FeatureDropTarget {
+    targetId?: string;
+    placement: FeatureDropPlacement;
+}
+
+export interface FeatureDropMove {
+    parentId?: string;
+    position: number;
+}
+
 function compareNodes(a: FeatureNode, b: FeatureNode): number {
     return a.position - b.position || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
 }
@@ -107,7 +121,7 @@ export function linkedFeatureEntries(
         .sort((a, b) => a.path.join('/').localeCompare(b.path.join('/')));
 }
 
-function moduleDepth(node: FeatureNode, byId: Map<string, FeatureNode>): number {
+export function featureModuleDepth(node: FeatureNode, byId: Map<string, FeatureNode>): number {
     let depth = node.kind === 'module' ? 1 : 0;
     let parentId = node.parentId ?? '';
     const seen = new Set<string>([node.id]);
@@ -121,7 +135,7 @@ function moduleDepth(node: FeatureNode, byId: Map<string, FeatureNode>): number 
     return depth;
 }
 
-function descendantIds(id: string, nodes: FeatureNode[]): Set<string> {
+export function featureDescendantIds(id: string, nodes: FeatureNode[]): Set<string> {
     const descendants = new Set<string>();
     let changed = true;
     while (changed) {
@@ -138,10 +152,10 @@ function descendantIds(id: string, nodes: FeatureNode[]): Set<string> {
     return descendants;
 }
 
-function moduleSubtreeHeight(id: string, nodes: FeatureNode[]): number {
+export function featureModuleSubtreeHeight(id: string, nodes: FeatureNode[]): number {
     const children = nodes.filter(node => node.parentId === id && node.kind === 'module');
     if (children.length === 0) return 1;
-    return 1 + Math.max(...children.map(child => moduleSubtreeHeight(child.id, nodes)));
+    return 1 + Math.max(...children.map(child => featureModuleSubtreeHeight(child.id, nodes)));
 }
 
 export function validFeatureParents(
@@ -151,14 +165,14 @@ export function validFeatureParents(
 ): FeatureNode[] {
     const byId = new Map(nodes.map(node => [node.id, node]));
     const orderedNodes = flattenFeatureTree(buildFeatureTree(nodes)).map(entry => entry.node);
-    const excluded = editingNode ? descendantIds(editingNode.id, nodes) : new Set<string>();
+    const excluded = editingNode ? featureDescendantIds(editingNode.id, nodes) : new Set<string>();
     if (editingNode) excluded.add(editingNode.id);
-    const subtreeHeight = editingNode?.kind === 'module' ? moduleSubtreeHeight(editingNode.id, nodes) : 1;
+    const subtreeHeight = editingNode?.kind === 'module' ? featureModuleSubtreeHeight(editingNode.id, nodes) : 1;
 
     return orderedNodes.filter(node => {
         if (node.kind !== 'module' || excluded.has(node.id)) return false;
         if (kind === 'feature') return true;
-        return moduleDepth(node, byId) + subtreeHeight <= 3;
+        return featureModuleDepth(node, byId) + subtreeHeight <= MAX_FEATURE_MODULE_DEPTH;
     });
 }
 
@@ -166,11 +180,63 @@ export function siblingNodes(nodes: FeatureNode[], parentId?: string): FeatureNo
     return nodes.filter(node => (node.parentId ?? '') === (parentId ?? '')).sort(compareNodes);
 }
 
+export function resolveFeatureDrop(
+    nodes: FeatureNode[],
+    draggedId: string,
+    target: FeatureDropTarget
+): FeatureDropMove | null {
+    const byId = new Map(nodes.map(node => [node.id, node]));
+    const dragged = byId.get(draggedId);
+    if (!dragged) return null;
+
+    let parentId = '';
+    let position = 0;
+    if (target.placement === 'root') {
+        if (target.targetId || dragged.kind !== 'module') return null;
+        const roots = siblingNodes(nodes, '').filter(node => node.id !== dragged.id);
+        position = roots.length;
+    } else {
+        const targetNode = target.targetId ? byId.get(target.targetId) : undefined;
+        if (!targetNode || targetNode.id === dragged.id) return null;
+        if (target.placement === 'inside') {
+            if (targetNode.kind !== 'module') return null;
+            parentId = targetNode.id;
+            position = siblingNodes(nodes, parentId).filter(node => node.id !== dragged.id).length;
+        } else {
+            parentId = targetNode.parentId ?? '';
+            if (!parentId && dragged.kind === 'feature') return null;
+            const siblings = siblingNodes(nodes, parentId).filter(node => node.id !== dragged.id);
+            const targetIndex = siblings.findIndex(node => node.id === targetNode.id);
+            if (targetIndex < 0) return null;
+            position = targetIndex + (target.placement === 'after' ? 1 : 0);
+        }
+    }
+
+    if (dragged.kind === 'feature' && !parentId) return null;
+    if (dragged.kind === 'module') {
+        const descendants = featureDescendantIds(dragged.id, nodes);
+        if (parentId === dragged.id || descendants.has(parentId)) return null;
+        const parentDepth = parentId ? featureModuleDepth(byId.get(parentId)!, byId) : 0;
+        if (parentId && byId.get(parentId)?.kind !== 'module') return null;
+        if (parentDepth + featureModuleSubtreeHeight(dragged.id, nodes) > MAX_FEATURE_MODULE_DEPTH) {
+            return null;
+        }
+    } else if (byId.get(parentId)?.kind !== 'module') {
+        return null;
+    }
+
+    const currentParent = dragged.parentId ?? '';
+    const currentSiblings = siblingNodes(nodes, currentParent);
+    const currentPosition = currentSiblings.findIndex(node => node.id === dragged.id);
+    if (currentParent === parentId && currentPosition === position) return null;
+    return { parentId: parentId || undefined, position };
+}
+
 export function formatFeatureError(error: unknown): string {
     const raw = error instanceof Error ? error.message : String(error);
     const message = raw.trim();
     if (message.includes('has_children')) return '该模块仍有子节点，请先移动或删除子节点。';
-    if (message.includes('depth exceeds three')) return '模块最多支持三级，请选择更高层级的父模块。';
+    if (message.includes('depth exceeds nine')) return '模块最多支持九级，请选择更高层级的父模块。';
     if (message.includes('tree cycle')) return '不能把模块移动到自身或其后代之下。';
     if (message.includes('invalid feature parent')) return '父节点无效；功能点只能挂在模块下。';
     if (message.includes('invalid feature node kind')) return '节点类型无效。';

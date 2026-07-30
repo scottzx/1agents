@@ -2,6 +2,9 @@ import { apiFetch } from './apiClient';
 import type {
     CreateFeatureNodeInput,
     FeatureCatalog,
+    FeatureCatalogRestoreResult,
+    FeatureCatalogVersion,
+    FeatureCatalogVersionPage,
     FeatureItemLink,
     FeatureItemRelation,
     FeatureMilestoneSyncPreview,
@@ -113,5 +116,56 @@ export const featureCatalogService = {
             await apiFetch(`/agent/feature-catalog/export?workspace_id=${q(workspaceId)}&format=${q(format)}`)
         );
         return res.blob();
+    },
+
+    async listVersions(workspaceId: string, cursor?: string): Promise<FeatureCatalogVersionPage> {
+        const suffix = cursor ? `&cursor=${q(cursor)}` : '';
+        const res = await ok(await apiFetch(`/agent/feature-catalog/versions?workspace_id=${q(workspaceId)}${suffix}`));
+        return res.json();
+    },
+
+    async createVersion(workspaceId: string, alias = ''): Promise<FeatureCatalogVersion> {
+        const res = await ok(
+            await apiFetch('/agent/feature-catalog/versions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspace_id: workspaceId, alias }),
+            })
+        );
+        return res.json();
+    },
+
+    async renameVersion(workspaceId: string, versionId: string, alias: string): Promise<FeatureCatalogVersion> {
+        const res = await ok(
+            await apiFetch(`/agent/feature-catalog/versions/${q(versionId)}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspace_id: workspaceId, alias }),
+            })
+        );
+        return res.json();
+    },
+
+    async deleteVersion(workspaceId: string, versionId: string): Promise<void> {
+        await ok(
+            await apiFetch(`/agent/feature-catalog/versions/${q(versionId)}?workspace_id=${q(workspaceId)}`, {
+                method: 'DELETE',
+            })
+        );
+    },
+
+    async restoreVersion(
+        workspaceId: string,
+        versionId: string,
+        requestId: string
+    ): Promise<FeatureCatalogRestoreResult> {
+        const res = await ok(
+            await apiFetch(`/agent/feature-catalog/versions/${q(versionId)}/restore`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspace_id: workspaceId, requestId }),
+            })
+        );
+        return res.json();
     },
 };

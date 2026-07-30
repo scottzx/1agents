@@ -10,6 +10,8 @@ import {
     flattenFeatureTree,
     formatFeatureError,
     linkedFeatureEntries,
+    MAX_FEATURE_MODULE_DEPTH,
+    resolveFeatureDrop,
     siblingNodes,
     validFeatureParents,
 } from './featureCatalogModel';
@@ -36,7 +38,7 @@ const nodes = [
     node('profile', '个人资料', 'feature', 'root', 1),
 ];
 
-test('builds complete three-level paths and keeps server sibling order', () => {
+test('builds complete recursive paths and keeps server sibling order', () => {
     const flat = flattenFeatureTree(buildFeatureTree(nodes));
     const login = flat.find(entry => entry.node.id === 'login');
     const sms = flat.find(entry => entry.node.id === 'sms');
@@ -69,7 +71,7 @@ test('features can use any module parent but can never become parents', () => {
     );
 });
 
-test('module moves exclude descendants and placements deeper than level three', () => {
+test('module moves exclude descendants and placements deeper than level nine', () => {
     const root = nodes.find(item => item.id === 'root')!;
     const account = nodes.find(item => item.id === 'account')!;
     const login = nodes.find(item => item.id === 'login')!;
@@ -85,14 +87,80 @@ test('module moves exclude descendants and placements deeper than level three', 
     );
 });
 
+test('allows nine module levels, keeps feature leaves at level nine, and rejects deeper module parents', () => {
+    const deepNodes: FeatureNode[] = [];
+    for (let depth = 1; depth <= MAX_FEATURE_MODULE_DEPTH; depth++) {
+        deepNodes.push(node(`m${depth}`, `模块 ${depth}`, 'module', depth === 1 ? '' : `m${depth - 1}`));
+    }
+    deepNodes.push(node('leaf', '功能点', 'feature', 'm9'));
+
+    assert.equal(
+        flattenFeatureTree(buildFeatureTree(deepNodes)).find(entry => entry.node.id === 'leaf')?.moduleDepth,
+        9
+    );
+    assert.equal(
+        validFeatureParents('feature', deepNodes).some(parent => parent.id === 'm9'),
+        true
+    );
+    assert.equal(
+        validFeatureParents('module', deepNodes).some(parent => parent.id === 'm9'),
+        false
+    );
+});
+
+test('resolves before, inside, after, and root drops without same-parent off-by-one errors', () => {
+    const dragNodes = [
+        node('root-a', 'A', 'module', '', 0),
+        node('root-b', 'B', 'module', '', 1),
+        node('child-a', 'A1', 'module', 'root-a', 0),
+        node('feature-a', '功能 A', 'feature', 'root-a', 1),
+        node('feature-b', '功能 B', 'feature', 'root-a', 2),
+    ];
+
+    assert.deepEqual(resolveFeatureDrop(dragNodes, 'root-a', { targetId: 'root-b', placement: 'after' }), {
+        parentId: undefined,
+        position: 1,
+    });
+    assert.deepEqual(resolveFeatureDrop(dragNodes, 'root-a', { targetId: 'root-b', placement: 'inside' }), {
+        parentId: 'root-b',
+        position: 0,
+    });
+    assert.deepEqual(resolveFeatureDrop(dragNodes, 'feature-a', { targetId: 'feature-b', placement: 'after' }), {
+        parentId: 'root-a',
+        position: 2,
+    });
+    assert.deepEqual(resolveFeatureDrop(dragNodes, 'child-a', { placement: 'root' }), {
+        parentId: undefined,
+        position: 2,
+    });
+    assert.equal(resolveFeatureDrop(dragNodes, 'feature-a', { placement: 'root' }), null);
+    assert.equal(resolveFeatureDrop(dragNodes, 'root-a', { targetId: 'child-a', placement: 'inside' }), null);
+});
+
+test('rejects a drop that would place a module subtree below level nine', () => {
+    const deepNodes: FeatureNode[] = [
+        node('branch', '分支', 'module'),
+        node('branch-child', '分支子模块', 'module', 'branch'),
+    ];
+    for (let depth = 1; depth <= 8; depth++) {
+        deepNodes.push(node(`target-${depth}`, `目标 ${depth}`, 'module', depth === 1 ? '' : `target-${depth - 1}`));
+    }
+
+    assert.equal(resolveFeatureDrop(deepNodes, 'branch', { targetId: 'target-8', placement: 'inside' }), null);
+    assert.deepEqual(resolveFeatureDrop(deepNodes, 'branch-child', { targetId: 'target-8', placement: 'inside' }), {
+        parentId: 'target-8',
+        position: 0,
+    });
+});
+
 test('sibling ordering and backend validation errors are deterministic', () => {
     assert.deepEqual(
         siblingNodes(nodes, 'login').map(item => item.id),
         ['sms', 'password']
     );
     assert.equal(
-        formatFeatureError(new Error('meta: feature module depth exceeds three')),
-        '模块最多支持三级，请选择更高层级的父模块。'
+        formatFeatureError(new Error('meta: feature module depth exceeds nine')),
+        '模块最多支持九级，请选择更高层级的父模块。'
     );
     assert.equal(formatFeatureError(new Error('has_children')), '该模块仍有子节点，请先移动或删除子节点。');
     assert.equal(

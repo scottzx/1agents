@@ -18,7 +18,7 @@ export function buildFeatureCatalogGeneratePrompt(existingNodeCount: number): st
     const existingTreeInstruction =
         existingNodeCount > 0
             ? `界面当前显示 ${existingNodeCount} 个蓝图节点。必须先读取完整现有树，只做增量维护；先展示拟议差异并获得我的明确确认，禁止无确认整体覆盖、批量删除或重建既有蓝图。`
-            : '界面当前为空。先读取需求池并和我确认范围；确认后可用事务化 batch 一次提交一级、二级、三级模块和功能点。';
+            : '界面当前为空。先读取需求池并和我确认范围；确认后可用事务化 batch 一次提交最多九级模块和功能点。';
 
     return [
         '请使用 pm Skill 与我一起生成或维护当前项目的功能蓝图。',
@@ -26,7 +26,7 @@ export function buildFeatureCatalogGeneratePrompt(existingNodeCount: number): st
         '随后读取项目需求/缺陷、里程碑和完整功能蓝图，不能把界面摘要当作完整数据。',
         existingTreeInstruction,
         '每个功能点都要关联已确认的顶层 requirement/bug 作为 source；缺少来源或目标版本时先向我澄清。',
-        '写入树时优先使用 feature-catalog batch/clientRef/parentRef，让一级、二级、三级模块和功能点通过一次原子提交落库；任一校验失败时不要改成逐条写入来留下半棵树。',
+        '写入树时优先使用 feature-catalog batch/clientRef/parentRef，让最多九级模块和功能点通过一次原子提交落库；任一校验失败时不要改成逐条写入来留下半棵树。',
         STRUCTURED_SUMMARY,
     ].join('\n\n');
 }

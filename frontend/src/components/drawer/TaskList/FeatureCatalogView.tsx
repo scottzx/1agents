@@ -17,11 +17,16 @@ import * as taskNav from '../../../stores/taskNavStore';
 import * as ui from '../../../stores/uiStore';
 import { buildFeatureBreakdownPrompt, buildFeatureCatalogGeneratePrompt } from './aiPMWorkflow';
 import { FeatureNodeForm } from './FeatureNodeForm';
+import { FeatureCatalogHistoryDialog } from './FeatureCatalogHistoryDialog';
 import {
     buildFeatureTree,
+    type FeatureDropPlacement,
+    type FeatureDropTarget,
     filterFeatureTree,
     flattenFeatureTree,
     formatFeatureError,
+    MAX_FEATURE_MODULE_DEPTH,
+    resolveFeatureDrop,
     siblingNodes,
     type FeatureTreeNode,
 } from './featureCatalogModel';
@@ -43,6 +48,7 @@ interface CreateState {
 }
 
 const EMPTY_CATALOG: FeatureCatalog = { nodes: [], links: [] };
+const EMPTY_COLLAPSED_IDS = new Set<string>();
 const PROGRESS_LABELS = {
     unplanned: '未拆解',
     pending: '待开始',
@@ -76,36 +82,127 @@ function progressSummary(node: FeatureNode): string {
         : `${label} · ${progress.completedTasks}/${progress.totalTasks} · ${progress.progressPercent}%`;
 }
 
+function dropPlacementForEvent(entry: FeatureTreeNode, event: DragEvent): FeatureDropPlacement {
+    const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const ratio = bounds.height > 0 ? (event.clientY - bounds.top) / bounds.height : 0.5;
+    if (entry.node.kind === 'feature') return ratio < 0.5 ? 'before' : 'after';
+    if (ratio < 0.25) return 'before';
+    if (ratio > 0.75) return 'after';
+    return 'inside';
+}
+
 function TreeRow({
     entry,
     selectedId,
     onSelect,
+    collapsedIds,
+    filtering,
+    dragDisabled,
+    draggedId,
+    dropTarget,
+    onToggleCollapsed,
+    onDragStart,
+    onDragEnd,
+    onDragOver,
+    onDragLeave,
+    onDrop,
 }: {
     entry: FeatureTreeNode;
     selectedId: string | null;
     onSelect: (id: string) => void;
+    collapsedIds: Set<string>;
+    filtering: boolean;
+    dragDisabled: boolean;
+    draggedId: string | null;
+    dropTarget: FeatureDropTarget | null;
+    onToggleCollapsed: (id: string) => void;
+    onDragStart: (id: string, event: DragEvent) => void;
+    onDragEnd: () => void;
+    onDragOver: (entry: FeatureTreeNode, event: DragEvent) => void;
+    onDragLeave: (entry: FeatureTreeNode, event: DragEvent) => void;
+    onDrop: (entry: FeatureTreeNode, event: DragEvent) => void;
 }) {
     const isFeature = entry.node.kind === 'feature';
+    const isCollapsed = !filtering && collapsedIds.has(entry.node.id);
+    const activePlacement =
+        dropTarget?.targetId === entry.node.id && dropTarget.placement !== 'root' ? dropTarget.placement : '';
+    const activateRow = (event: KeyboardEvent) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        onSelect(entry.node.id);
+    };
     return (
-        <li>
-            <button
-                type="button"
-                class={`feature-tree-row${selectedId === entry.node.id ? ' selected' : ''}`}
+        <li class={`feature-tree-item${activePlacement ? ` drop-${activePlacement}` : ''}`}>
+            <div
+                role="button"
+                tabIndex={0}
+                class={`feature-tree-row${selectedId === entry.node.id ? ' selected' : ''}${
+                    draggedId === entry.node.id ? ' dragging' : ''
+                }`}
                 style={`--feature-depth:${Math.max(0, entry.path.length - 1)}`}
                 onClick={() => onSelect(entry.node.id)}
+                onKeyDown={activateRow}
+                onDragOver={(event: DragEvent) => onDragOver(entry, event)}
+                onDragLeave={(event: DragEvent) => onDragLeave(entry, event)}
+                onDrop={(event: DragEvent) => onDrop(entry, event)}
             >
-                <span class={`feature-kind-icon ${entry.node.kind}`} aria-hidden="true">
-                    {isFeature ? '•' : '▾'}
-                </span>
+                {isFeature ? (
+                    <span class="feature-tree-toggle placeholder" aria-hidden="true">
+                        •
+                    </span>
+                ) : (
+                    <button
+                        type="button"
+                        class="feature-tree-toggle"
+                        aria-label={isCollapsed ? `展开${entry.node.title}` : `折叠${entry.node.title}`}
+                        aria-expanded={!isCollapsed}
+                        disabled={entry.children.length === 0}
+                        onClick={(event: MouseEvent) => {
+                            event.stopPropagation();
+                            onToggleCollapsed(entry.node.id);
+                        }}
+                    >
+                        {entry.children.length === 0 ? '·' : isCollapsed ? '▸' : '▾'}
+                    </button>
+                )}
+                <button
+                    type="button"
+                    class="feature-tree-drag-handle"
+                    draggable={!dragDisabled}
+                    disabled={dragDisabled}
+                    aria-label={`拖动${entry.node.title}`}
+                    title={dragDisabled ? '清除筛选后可拖动' : `拖动${entry.node.title}`}
+                    onClick={(event: MouseEvent) => event.stopPropagation()}
+                    onDragStart={(event: DragEvent) => onDragStart(entry.node.id, event)}
+                    onDragEnd={onDragEnd}
+                >
+                    ⠿
+                </button>
                 <span class="feature-tree-copy">
                     <span class="feature-tree-title">{entry.node.title}</span>
                 </span>
                 {entry.node.progress && <span class="feature-tree-progress">{progressSummary(entry.node)}</span>}
-            </button>
-            {entry.children.length > 0 && (
+            </div>
+            {entry.children.length > 0 && !isCollapsed && (
                 <ul>
                     {entry.children.map(child => (
-                        <TreeRow key={child.node.id} entry={child} selectedId={selectedId} onSelect={onSelect} />
+                        <TreeRow
+                            key={child.node.id}
+                            entry={child}
+                            selectedId={selectedId}
+                            onSelect={onSelect}
+                            collapsedIds={collapsedIds}
+                            filtering={filtering}
+                            dragDisabled={dragDisabled}
+                            draggedId={draggedId}
+                            dropTarget={dropTarget}
+                            onToggleCollapsed={onToggleCollapsed}
+                            onDragStart={onDragStart}
+                            onDragEnd={onDragEnd}
+                            onDragOver={onDragOver}
+                            onDragLeave={onDragLeave}
+                            onDrop={onDrop}
+                        />
                     ))}
                 </ul>
             )}
@@ -137,12 +234,19 @@ export function FeatureCatalogView({
     const [editing, setEditing] = useState(false);
     const [query, setQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState<'all' | 'unplanned' | 'risk'>('all');
+    const [collapsedByProject, setCollapsedByProject] = useState<Map<string, Set<string>>>(() => new Map());
+    const [draggedId, setDraggedId] = useState<string | null>(null);
+    const [dropTarget, setDropTarget] = useState<FeatureDropTarget | null>(null);
+    const [historyOpen, setHistoryOpen] = useState(false);
 
     const tree = useMemo(() => buildFeatureTree(catalog.nodes), [catalog.nodes]);
     const flatTree = useMemo(() => flattenFeatureTree(tree), [tree]);
     const entryById = useMemo(() => new Map(flatTree.map(entry => [entry.node.id, entry])), [flatTree]);
     const selectedEntry = selectedId ? entryById.get(selectedId) : undefined;
     const selectedNode = selectedEntry?.node;
+    const filtersActive = query.trim() !== '' || statusFilter !== 'all' || !!versionFilterMilestoneId;
+    const collapsedIds = collapsedByProject.get(workspaceId) ?? EMPTY_COLLAPSED_IDS;
+    const dragDisabled = busy || filtersActive || ui.isMobile.value;
     const filteredTree = useMemo(() => {
         const cleanQuery = query.trim().toLocaleLowerCase();
         if (!cleanQuery && statusFilter === 'all' && !versionFilterMilestoneId) return tree;
@@ -162,6 +266,23 @@ export function FeatureCatalogView({
         });
     }, [query, statusFilter, tree, versionFilterMilestoneId]);
     const versionFilterMilestone = milestones.find(milestone => milestone.id === versionFilterMilestoneId);
+
+    useEffect(() => {
+        const validIDs = new Set(catalog.nodes.filter(node => node.kind === 'module').map(node => node.id));
+        setCollapsedByProject(current => {
+            const existing = current.get(workspaceId);
+            if (!existing || [...existing].every(id => validIDs.has(id))) return current;
+            const next = new Map(current);
+            next.set(workspaceId, new Set([...existing].filter(id => validIDs.has(id))));
+            return next;
+        });
+    }, [catalog.nodes, workspaceId]);
+
+    useEffect(() => {
+        if (!filtersActive && !busy) return;
+        setDraggedId(null);
+        setDropTarget(null);
+    }, [filtersActive, busy, workspaceId]);
 
     const loadCatalog = useCallback(async () => {
         const next = await featureCatalogService.get(workspaceId);
@@ -183,6 +304,8 @@ export function FeatureCatalogView({
         setEditing(false);
         setQuery('');
         setStatusFilter('all');
+        setDraggedId(null);
+        setDropTarget(null);
         setLoading(true);
         setError('');
         featureCatalogService
@@ -259,6 +382,10 @@ export function FeatureCatalogView({
         }
     };
 
+    const handleHistoryRestored = async () => {
+        await loadCatalog();
+    };
+
     const runMutation = useCallback(
         async (mutation: () => Promise<void>, successMessage: string) => {
             setBusy(true);
@@ -276,6 +403,155 @@ export function FeatureCatalogView({
             }
         },
         [loadCatalog, reportError]
+    );
+
+    const toggleCollapsed = useCallback(
+        (id: string) => {
+            setCollapsedByProject(current => {
+                const next = new Map(current);
+                const projectIDs = new Set(next.get(workspaceId) ?? []);
+                if (projectIDs.has(id)) projectIDs.delete(id);
+                else projectIDs.add(id);
+                next.set(workspaceId, projectIDs);
+                return next;
+            });
+        },
+        [workspaceId]
+    );
+
+    const clearDrag = useCallback(() => {
+        setDraggedId(null);
+        setDropTarget(null);
+    }, []);
+
+    const handleDragStart = useCallback(
+        (id: string, event: DragEvent) => {
+            if (dragDisabled) {
+                event.preventDefault();
+                return;
+            }
+            event.stopPropagation();
+            event.dataTransfer?.setData('text/plain', id);
+            if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+            setDraggedId(id);
+            setDropTarget(null);
+        },
+        [dragDisabled]
+    );
+
+    const handleDragOver = useCallback(
+        (entry: FeatureTreeNode, event: DragEvent) => {
+            event.stopPropagation();
+            if (!draggedId || dragDisabled) {
+                setDropTarget(null);
+                return;
+            }
+            const target: FeatureDropTarget = {
+                targetId: entry.node.id,
+                placement: dropPlacementForEvent(entry, event),
+            };
+            if (!resolveFeatureDrop(catalog.nodes, draggedId, target)) {
+                setDropTarget(null);
+                return;
+            }
+            event.preventDefault();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+            setDropTarget(target);
+        },
+        [catalog.nodes, dragDisabled, draggedId]
+    );
+
+    const handleDragLeave = useCallback((entry: FeatureTreeNode, event: DragEvent) => {
+        event.stopPropagation();
+        const nextTarget = event.relatedTarget;
+        if (nextTarget instanceof Node && (event.currentTarget as HTMLElement).contains(nextTarget)) return;
+        setDropTarget(current => (current?.targetId === entry.node.id ? null : current));
+    }, []);
+
+    const moveByDrop = useCallback(
+        async (target: FeatureDropTarget) => {
+            if (!draggedId) return;
+            const move = resolveFeatureDrop(catalog.nodes, draggedId, target);
+            if (!move) {
+                clearDrag();
+                return;
+            }
+            setBusy(true);
+            setError('');
+            try {
+                await featureCatalogService.update(workspaceId, draggedId, move);
+            } catch (cause) {
+                const message = `移动失败：${formatFeatureError(cause)}`;
+                setError(message);
+                ui.showToast(message);
+                setBusy(false);
+                clearDrag();
+                return;
+            }
+            if (target.placement === 'inside' && target.targetId) {
+                setCollapsedByProject(current => {
+                    const existing = current.get(workspaceId);
+                    if (!existing?.has(target.targetId!)) return current;
+                    const next = new Map(current);
+                    const projectIDs = new Set(existing);
+                    projectIDs.delete(target.targetId!);
+                    next.set(workspaceId, projectIDs);
+                    return next;
+                });
+            }
+            try {
+                await loadCatalog();
+                ui.showToast('节点已移动。');
+            } catch {
+                const message = '移动已保存，但目录刷新失败。请重新加载目录。';
+                setError(message);
+                ui.showToast(message);
+            } finally {
+                setBusy(false);
+                clearDrag();
+            }
+        },
+        [catalog.nodes, clearDrag, draggedId, loadCatalog, workspaceId]
+    );
+
+    const handleDrop = useCallback(
+        (entry: FeatureTreeNode, event: DragEvent) => {
+            event.stopPropagation();
+            const target: FeatureDropTarget = {
+                targetId: entry.node.id,
+                placement: dropPlacementForEvent(entry, event),
+            };
+            if (!draggedId || dragDisabled || !resolveFeatureDrop(catalog.nodes, draggedId, target)) return;
+            event.preventDefault();
+            void moveByDrop(target);
+        },
+        [catalog.nodes, dragDisabled, draggedId, moveByDrop]
+    );
+
+    const handleRootDragOver = useCallback(
+        (event: DragEvent) => {
+            event.stopPropagation();
+            const target: FeatureDropTarget = { placement: 'root' };
+            if (!draggedId || dragDisabled || !resolveFeatureDrop(catalog.nodes, draggedId, target)) {
+                setDropTarget(null);
+                return;
+            }
+            event.preventDefault();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+            setDropTarget(target);
+        },
+        [catalog.nodes, dragDisabled, draggedId]
+    );
+
+    const handleRootDrop = useCallback(
+        (event: DragEvent) => {
+            event.stopPropagation();
+            const target: FeatureDropTarget = { placement: 'root' };
+            if (!draggedId || dragDisabled || !resolveFeatureDrop(catalog.nodes, draggedId, target)) return;
+            event.preventDefault();
+            void moveByDrop(target);
+        },
+        [catalog.nodes, dragDisabled, draggedId, moveByDrop]
     );
 
     const openCreate = (kind: FeatureNodeKind, parentId = '') => {
@@ -382,19 +658,31 @@ export function FeatureCatalogView({
 
     if (catalog.nodes.length === 0 && !createState) {
         return (
-            <div class="feature-catalog-empty">
-                <span class="feature-empty-icon">◇</span>
-                <h3>尚未建立功能蓝图</h3>
-                <p>从需求和架构设计出发，整理一级、二级、三级模块及功能点，再将功能点分解为可执行任务。</p>
-                {error && <div class="feature-form-error">{error}</div>}
-                <div class="feature-empty-actions">
-                    <button type="button" class="feature-btn primary" onClick={generateWithPM}>
-                        与 AI PM 一起生成
-                    </button>
-                    <button type="button" class="feature-btn secondary" onClick={() => openCreate('module')}>
-                        手动新增一级模块
-                    </button>
+            <div class="feature-catalog-shell">
+                <div class="feature-catalog-empty">
+                    <span class="feature-empty-icon">◇</span>
+                    <h3>尚未建立功能蓝图</h3>
+                    <p>从需求和架构设计出发，整理最多九级模块及功能点，再将功能点分解为可执行任务。</p>
+                    {error && <div class="feature-form-error">{error}</div>}
+                    <div class="feature-empty-actions">
+                        <button type="button" class="feature-btn primary" onClick={generateWithPM}>
+                            与 AI PM 一起生成
+                        </button>
+                        <button type="button" class="feature-btn secondary" onClick={() => openCreate('module')}>
+                            手动新增一级模块
+                        </button>
+                        <button type="button" class="feature-btn secondary" onClick={() => setHistoryOpen(true)}>
+                            历史版本
+                        </button>
+                    </div>
+                    <div class="feature-root-drop disabled">空蓝图的一级目录落点</div>
                 </div>
+                <FeatureCatalogHistoryDialog
+                    workspaceId={workspaceId}
+                    open={historyOpen}
+                    onClose={() => setHistoryOpen(false)}
+                    onRestored={handleHistoryRestored}
+                />
             </div>
         );
     }
@@ -564,6 +852,9 @@ export function FeatureCatalogView({
                     <p>管理产品由哪些模块与功能构成，以及它们从哪里来、由什么任务交付。</p>
                 </div>
                 <div class="feature-pane-actions">
+                    <button type="button" class="feature-btn secondary" onClick={() => setHistoryOpen(true)}>
+                        历史版本
+                    </button>
                     <button type="button" class="feature-btn secondary" onClick={generateWithPM}>
                         与 AI PM 一起整理
                     </button>
@@ -631,8 +922,20 @@ export function FeatureCatalogView({
                             </button>
                         </div>
                     </div>
-                    <div class="feature-tree-count">{catalog.nodes.length} 个节点</div>
-                    {error && !selectedNode && <div class="feature-form-error">{error}</div>}
+                    <div class="feature-tree-count">
+                        <span>{catalog.nodes.length} 个节点</span>
+                        {filtersActive && <span>筛选中，拖拽已暂停</span>}
+                    </div>
+                    {error && (
+                        <div class="feature-tree-error" role="alert">
+                            <span>{error}</span>
+                            {error.includes('刷新失败') && (
+                                <button type="button" disabled={busy} onClick={() => void loadCatalog()}>
+                                    重新加载
+                                </button>
+                            )}
+                        </div>
+                    )}
                     {filteredTree.length > 0 ? (
                         <ul class="feature-tree">
                             {filteredTree.map(entry => (
@@ -641,11 +944,43 @@ export function FeatureCatalogView({
                                     entry={entry}
                                     selectedId={selectedId}
                                     onSelect={selectNode}
+                                    collapsedIds={collapsedIds}
+                                    filtering={filtersActive}
+                                    dragDisabled={dragDisabled}
+                                    draggedId={draggedId}
+                                    dropTarget={dropTarget}
+                                    onToggleCollapsed={toggleCollapsed}
+                                    onDragStart={handleDragStart}
+                                    onDragEnd={clearDrag}
+                                    onDragOver={handleDragOver}
+                                    onDragLeave={handleDragLeave}
+                                    onDrop={handleDrop}
                                 />
                             ))}
                         </ul>
                     ) : (
                         <div class="feature-tree-empty">没有符合当前条件的节点。</div>
+                    )}
+                    {catalog.nodes.length > 0 && (
+                        <div
+                            class={`feature-root-drop${dropTarget?.placement === 'root' ? ' active' : ''}${
+                                dragDisabled ? ' disabled' : ''
+                            }`}
+                            onDragOver={handleRootDragOver}
+                            onDragLeave={(event: DragEvent) => {
+                                const nextTarget = event.relatedTarget;
+                                if (
+                                    nextTarget instanceof Node &&
+                                    (event.currentTarget as HTMLElement).contains(nextTarget)
+                                ) {
+                                    return;
+                                }
+                                setDropTarget(current => (current?.placement === 'root' ? null : current));
+                            }}
+                            onDrop={handleRootDrop}
+                        >
+                            将模块拖到这里，移回一级目录
+                        </div>
                     )}
                 </section>
 
@@ -796,7 +1131,7 @@ export function FeatureCatalogView({
                                     {selectedNode.kind === 'module' && (
                                         <Fragment>
                                             <div class="feature-add-row">
-                                                {selectedEntry.moduleDepth < 3 && (
+                                                {selectedEntry.moduleDepth < MAX_FEATURE_MODULE_DEPTH && (
                                                     <button
                                                         type="button"
                                                         class="feature-btn secondary"
@@ -986,6 +1321,12 @@ export function FeatureCatalogView({
                     </div>
                 </div>
             )}
+            <FeatureCatalogHistoryDialog
+                workspaceId={workspaceId}
+                open={historyOpen}
+                onClose={() => setHistoryOpen(false)}
+                onRestored={handleHistoryRestored}
+            />
         </div>
     );
 }

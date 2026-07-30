@@ -11,7 +11,7 @@ test('catalog generation prompt gates writes and preserves an existing tree', ()
     assert.match(prompt, /读取完整现有树/);
     assert.match(prompt, /明确确认/);
     assert.match(prompt, /禁止无确认整体覆盖/);
-    assert.match(prompt, /一级、二级、三级模块和功能点/);
+    assert.match(prompt, /最多九级模块和功能点/);
     assert.match(prompt, /结构化变更摘要/);
 });
 
