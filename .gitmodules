@@ -25,3 +25,6 @@
 [submodule "modules/HarnessKit"]
 	path = modules/HarnessKit
 	url = https://github.com/scottzx/HarnessKit.git
+[submodule "modules/AgentTeams"]
+	path = modules/AgentTeams
+	url = https://github.com/agentscope-ai/AgentTeams.git
