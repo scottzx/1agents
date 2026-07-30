@@ -9,7 +9,7 @@ npm install -g @1agents/1agents
 # 国内镜像
 npm install -g @1agents/1agents --registry=https://registry.npmmirror.com
 
-# 模块运行时（1skills venv / happy deps / 二进制校验）
+# 模块运行时（HarnessKit / happy deps / 二进制校验）
 1agents install all
 1agents install --check
 ```
@@ -29,11 +29,11 @@ npm install -g @1agents/1agents --registry=https://registry.npmmirror.com
 
 装 `@1agents/1agents` 时 registry 会拉（同版本）：
 
-- **deps：** `@1agents/web`、`@1agents/skills`、`@1agents/cc-connect`（+ 当前平台子包）、`@1agents/cc-switch`（+ 当前平台子包）、`@1agents/acp-bridge`（→ `@1agents/acpx` fork runtime）
-- **optional：** `@1agents/core-<plat>`（`1agents` + `ttyd`）、`@1agents/happy`
+- **deps：** `@1agents/web`、`@1agents/cc-connect`（+ 当前平台子包）、`@1agents/cc-switch`（+ 当前平台子包）、`@1agents/acp-bridge`（→ `@1agents/acpx` fork runtime）
+- **optional：** `@1agents/core-<plat>`（`1agents` + `ttyd` + `hk`）、`@1agents/happy`
 
 `cloudflared` 不进依赖图（`-tunnel` 时按需）。  
-1skills 仅 `@1agents/skills`：本机 **uv 优先 / pip 回退**（`1agents install skills`）。
+HarnessKit 的 `hk` 随平台 core 包分发，不再需要 Python/venv。
 
 ## 使用
 
@@ -43,7 +43,7 @@ npm install -g @1agents/1agents --registry=https://registry.npmmirror.com
 1agents -ssl
 1agents -tunnel
 1agents install all
-1agents install skills
+1agents install harnesskit
 1agents install happy
 1agents install --check
 ```

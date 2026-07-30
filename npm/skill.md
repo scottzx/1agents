@@ -91,7 +91,7 @@ homepage: "https://github.com/scottzx/1Agents"
 - **Node.js ≥ 22**
 - **网络**：访问 **npm registry**（可用国内镜像）；**不需要**访问 GitHub 才能装 core
 - **macOS / Linux**：`tmux`
-- **本机 Python ≥ 3.11**（`@1agents/skills`：优先 **uv**，否则 **pip** + venv）
+- **HarnessKit**：随 `@1agents/core-<plat>` 分发 `hk` 二进制，不依赖本机 Python
 - **可选**：`cloudflared`（`-tunnel`）；`@1agents/happy`（optional，缺失不挡核心）
 - **Chat ACP**：`@1agents/acp-bridge` → `@1agents/acpx`（1agents fork，含 Grok ask_user / exit_plan；装 cli 时一并安装）
 - **禁止当作默认路径**：薄安装器 + 从 GitHub Release 下 `1agents-*.tar.gz`（已废弃）
@@ -155,17 +155,17 @@ added 1 package in 30s
 
 ### §1.1b 模块运行时 `1agents install`
 
-`npm install` 只拉包文件。模块环境（1skills venv、happy deps、二进制校验）用 CLI：
+`npm install` 只拉包文件。模块环境（HarnessKit/Happy 与二进制校验）用 CLI：
 
 ```bash
 1agents install all          # 全部模块
-1agents install skills       # 仅 1skills Python venv（uv 优先 / pip+venv）
+1agents install harnesskit   # 校验随 core 分发的 hk
 1agents install happy        # 仅 happy-cli 依赖
 1agents install core         # 校验 core 二进制
 1agents install --check      # 只诊断
 ```
 
-期望：`--check` 输出 MODULE / STATUS 表；有 Python 时 `install skills` 后 skills 为 `ok`。
+期望：`--check` 输出 MODULE / STATUS 表；`harnesskit` 与 `core` 均为 `ok`。
 
 ### §1.2 验证安装
 

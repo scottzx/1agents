@@ -78,7 +78,6 @@ certs/
 # Legacy root npm runtime (never commit)
 npm/dist/
 npm/bin/
-npm/1skills/
 npm/.runtime-meta.json
 npm/node_modules/
 npm/.npmrc-publish

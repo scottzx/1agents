@@ -58,7 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          # 1skills + cc-connect web sources needed for embed ESM bundles
+          # HarnessKit + cc-connect web sources needed for embed ESM bundles
           submodules: recursive
 
       - name: Cache Frontend Build Assets
@@ -68,9 +68,9 @@ jobs:
           path: |
             frontend/dist
             modules/ttyd/src/html.h
-          # Include embed entrypoints so skills/cc-connect panel UI rebuilds when they change.
+          # Include embed entrypoints so HarnessKit/cc-connect panel UI rebuilds when they change.
           # Bump version in the key so each release tag gets a versioned bundle.
-          key: frontend-assets-${{ runner.os }}-${{ needs.prepare.outputs.tag }}-${{ hashFiles('frontend/package.json', 'frontend/yarn.lock', 'frontend/gulpfile.js', 'frontend/webpack.config.js', 'frontend/tsconfig.json', 'frontend/src/**', 'scripts/build-module-embeds.sh', 'modules/1skills/package.json', 'modules/1skills/vite.embed.config.ts', 'modules/1skills/frontend/src/embed.tsx', 'modules/cc-connect/web/package.json', 'modules/cc-connect/web/vite.embed.config.ts', 'modules/cc-connect/web/src/embed.tsx') }}
+          key: frontend-assets-${{ runner.os }}-${{ needs.prepare.outputs.tag }}-${{ hashFiles('frontend/package.json', 'frontend/yarn.lock', 'frontend/gulpfile.js', 'frontend/webpack.config.js', 'frontend/tsconfig.json', 'frontend/src/**', 'scripts/build-module-embeds.sh', 'modules/HarnessKit/package.json', 'modules/HarnessKit/package-lock.json', 'modules/HarnessKit/vite.config.ts', 'modules/HarnessKit/src/embed.tsx', 'modules/HarnessKit/src/embed/**', 'modules/cc-connect/web/package.json', 'modules/cc-connect/web/vite.embed.config.ts', 'modules/cc-connect/web/src/embed.tsx') }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -105,14 +105,17 @@ jobs:
       # Always ensure they exist (covers cache hits that predate this step).
       - name: Build and stage module embeds
         run: |
-          if [ ! -f frontend/dist/embed/skills-embed.js ] || [ ! -f frontend/dist/embed/cc-connect-embed.js ]; then
+          if [ ! -f frontend/dist/embed/harnesskit-embed.js ] || [ ! -f frontend/dist/embed/cc-connect-embed.js ]; then
             FORCE_EMBED_REBUILD=1 ./scripts/build-module-embeds.sh
           else
             echo "embed bundles already present under frontend/dist/embed/"
             ls -la frontend/dist/embed/
           fi
-          test -s frontend/dist/embed/skills-embed.js
+          test -s frontend/dist/embed/harnesskit-embed.js
           test -s frontend/dist/embed/cc-connect-embed.js
+
+      - name: Audit HarnessKit frontend artifacts
+        run: ./scripts/check-harnesskit-artifacts.sh frontend/dist
 
       - name: Upload frontend/dist
         uses: actions/upload-artifact@v7
@@ -125,10 +128,6 @@ jobs:
         with:
           name: html-header
           path: modules/ttyd/src/html.h
-
-  # 1skills: host Python only (no PyInstaller). Release ships modules/1skills
-  # Python sources via scripts/package-1skills-python.sh; SkillsSupervisor
-  # bootstraps a venv with the host python3 on first launch.
 
   build-linux:
     runs-on: ${{ matrix.runner }}
@@ -253,7 +252,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: cargo-${{ matrix.rust_target }}-${{ hashFiles('modules/cc-switch-cli/src-tauri/Cargo.lock') }}
+          key: cargo-${{ matrix.rust_target }}-${{ hashFiles('modules/cc-switch-cli/src-tauri/Cargo.lock', 'modules/HarnessKit/Cargo.lock') }}
           restore-keys: |
             cargo-${{ matrix.rust_target }}-
 
@@ -266,6 +265,15 @@ jobs:
           mkdir -p build
           cp modules/cc-switch-cli/src-tauri/target/${{ matrix.rust_target }}/release/cc-switch build/cc-switch
 
+      - name: Build HarnessKit CLI
+        run: |
+          cargo build \
+            --manifest-path modules/HarnessKit/Cargo.toml \
+            --release \
+            --target ${{ matrix.rust_target }} \
+            -p hk-cli
+          cp modules/HarnessKit/target/${{ matrix.rust_target }}/release/hk build/hk
+
       # cloudflared is optional: tunnel supervisor downloads it on demand
       # (PATH → ~/.1agents/bin → GitHub releases). Not shipped in the archive.
 
@@ -273,29 +281,28 @@ jobs:
         run: ./scripts/build-happy-bundle.sh
         # Default: omit happy-cli node_modules (installed at npm postinstall / first launch)
 
-      - name: Package 1skills Python source (host Python)
-        run: ./scripts/package-1skills-python.sh build/1skills
-
       - name: Package Release Archive (optional non-npm bypass)
         run: |
-          mkdir -p release-pkg/bin
+          mkdir -p release-pkg/bin release-pkg/config
           cp build/1agents release-pkg/bin/
           cp build/ttyd release-pkg/bin/
           cp build/cc-connect release-pkg/bin/
           cp build/cc-switch release-pkg/bin/
+          cp build/hk release-pkg/bin/
           cp build/happy release-pkg/bin/
           cp -r build/happy-cli release-pkg/bin/happy-cli
           cp -r build/adapter release-pkg/bin/adapter
-          cp -r build/1skills release-pkg/1skills
           cp -r html-dist release-pkg/dist
+          cp config/agent-extension-map.json release-pkg/config/
+          ./scripts/stage-harnesskit-compliance.sh release-pkg/licenses
           tar -czf 1agents-${{ needs.prepare.outputs.tag }}-linux-${{ matrix.arch }}.tar.gz -C release-pkg .
+          ./scripts/check-harnesskit-artifacts.sh 1agents-${{ needs.prepare.outputs.tag }}-linux-${{ matrix.arch }}.tar.gz
 
       - name: Fill npm packages for this platform
         env:
           NPM_PLAT: ${{ matrix.arch == 'amd64' && 'linux-x64' || 'linux-arm64' }}
           CORE_BIN_DIR: ${{ github.workspace }}/build
           WEB_DIST: ${{ github.workspace }}/html-dist
-          SKILLS_SRC: ${{ github.workspace }}/build/1skills
           HAPPY_OUT: ${{ github.workspace }}/build
         run: ./scripts/npm-fill-packages.sh
 
@@ -314,7 +321,6 @@ jobs:
             npm/packages/cc-connect-${{ matrix.arch == 'amd64' && 'linux-x64' || 'linux-arm64' }}
             npm/packages/cc-switch-${{ matrix.arch == 'amd64' && 'linux-x64' || 'linux-arm64' }}
             npm/packages/web
-            npm/packages/skills
             npm/packages/happy
             npm/packages/acpx
             npm/packages/acp-bridge
@@ -419,7 +425,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: cargo-darwin-arm64-${{ hashFiles('modules/cc-switch-cli/src-tauri/Cargo.lock') }}
+          key: cargo-darwin-arm64-${{ hashFiles('modules/cc-switch-cli/src-tauri/Cargo.lock', 'modules/HarnessKit/Cargo.lock') }}
           restore-keys: |
             cargo-darwin-arm64-
 
@@ -430,32 +436,39 @@ jobs:
             --release
           cp modules/cc-switch-cli/src-tauri/target/release/cc-switch build-ttyd/cc-switch
 
+      - name: Build HarnessKit CLI
+        run: |
+          cargo build \
+            --manifest-path modules/HarnessKit/Cargo.toml \
+            --release \
+            -p hk-cli
+          cp modules/HarnessKit/target/release/hk build-ttyd/hk
+
       - name: Build happy bundle
         run: ./scripts/build-happy-bundle.sh "$PWD/build-ttyd"
 
-      - name: Package 1skills Python source (host Python)
-        run: ./scripts/package-1skills-python.sh build-ttyd/1skills
-
       - name: Package Release Archive (optional non-npm bypass)
         run: |
-          mkdir -p release-pkg/bin
+          mkdir -p release-pkg/bin release-pkg/config
           cp build-ttyd/1agents release-pkg/bin/
           cp build-ttyd/ttyd release-pkg/bin/
           cp build-ttyd/cc-connect release-pkg/bin/
           cp build-ttyd/cc-switch release-pkg/bin/
+          cp build-ttyd/hk release-pkg/bin/
           cp build-ttyd/happy release-pkg/bin/
           cp -r build-ttyd/happy-cli release-pkg/bin/happy-cli
           cp -r build-ttyd/adapter release-pkg/bin/adapter
-          cp -r build-ttyd/1skills release-pkg/1skills
           cp -r html-dist release-pkg/dist
+          cp config/agent-extension-map.json release-pkg/config/
+          ./scripts/stage-harnesskit-compliance.sh release-pkg/licenses
           tar -czf 1agents-${{ needs.prepare.outputs.tag }}-darwin-arm64.tar.gz -C release-pkg .
+          ./scripts/check-harnesskit-artifacts.sh 1agents-${{ needs.prepare.outputs.tag }}-darwin-arm64.tar.gz
 
       - name: Fill npm packages (darwin-arm64)
         env:
           NPM_PLAT: darwin-arm64
           CORE_BIN_DIR: ${{ github.workspace }}/build-ttyd
           WEB_DIST: ${{ github.workspace }}/html-dist
-          SKILLS_SRC: ${{ github.workspace }}/build-ttyd/1skills
           HAPPY_OUT: ${{ github.workspace }}/build-ttyd
         run: ./scripts/npm-fill-packages.sh
 
@@ -474,7 +487,6 @@ jobs:
             npm/packages/cc-connect-darwin-arm64
             npm/packages/cc-switch-darwin-arm64
             npm/packages/web
-            npm/packages/skills
             npm/packages/happy
             npm/packages/acpx
             npm/packages/acp-bridge
@@ -616,7 +628,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: cargo-desktop-${{ matrix.os_name }}-${{ hashFiles('modules/cc-switch-cli/src-tauri/Cargo.lock') }}
+          key: cargo-desktop-${{ matrix.os_name }}-${{ hashFiles('modules/cc-switch-cli/src-tauri/Cargo.lock', 'modules/HarnessKit/Cargo.lock') }}
           restore-keys: |
             cargo-desktop-${{ matrix.os_name }}-
 
@@ -637,24 +649,27 @@ jobs:
             --release
           cp modules/cc-switch-cli/src-tauri/target/release/cc-switch.exe build/cc-switch.exe
 
+      - name: Build HarnessKit CLI
+        shell: bash
+        run: |
+          cargo build \
+            --manifest-path modules/HarnessKit/Cargo.toml \
+            --release \
+            -p hk-cli
+          if [ "${{ matrix.os_name }}" = "windows" ]; then
+            cp modules/HarnessKit/target/release/hk.exe build/hk.exe
+          else
+            cp modules/HarnessKit/target/release/hk build/hk
+          fi
+
       - name: Build happy bundle
         shell: bash
         # Desktop may be offline at first run; pre-install happy-cli deps into the bundle.
         run: BUNDLE_NODE_MODULES=1 ./scripts/build-happy-bundle.sh
 
-      - name: Package 1skills Python source (host Python)
-        shell: bash
-        run: ./scripts/package-1skills-python.sh build/1skills
-
       - name: Setup Tauri resources
         shell: bash
-        run: |
-          ./scripts/setup-resources.sh
-          # Ship 1skills Python source for host-Python SkillsSupervisor (no PyInstaller).
-          if [ -d build/1skills ]; then
-            rm -rf src-tauri/resources/1skills
-            cp -r build/1skills src-tauri/resources/1skills
-          fi
+        run: ./scripts/setup-resources.sh
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -704,7 +719,7 @@ jobs:
                   ;;
               esac
             done < <(find artifacts -type f -path '*/bin/1agents' -o -type f -path '*/bin/cc-connect' -o -type f -path '*/bin/cc-switch')
-            for shared in web skills happy acpx acp-bridge cli cc-connect cc-switch; do
+            for shared in web happy acpx acp-bridge cli cc-connect cc-switch; do
               found=$(find artifacts -type d -name "$shared" | head -1 || true)
               if [ -n "$found" ] && [ -f "$found/package.json" ]; then
                 rm -rf "npm/packages/$shared"
@@ -722,12 +737,11 @@ jobs:
             NPM_PLAT="$plat" \
               CORE_BIN_DIR="$tmp/bin" \
               WEB_DIST="$tmp/dist" \
-              SKILLS_SRC="$tmp/1skills" \
               HAPPY_OUT="$tmp/bin" \
               ./scripts/npm-fill-packages.sh
             # happy-cli may live under bin/happy-cli in tarball
             if [ -d "$tmp/bin/happy-cli" ]; then
-              HAPPY_OUT="$tmp/bin" NPM_PLAT="$plat" CORE_BIN_DIR="$tmp/bin" WEB_DIST="$tmp/dist" SKILLS_SRC="$tmp/1skills" \
+              HAPPY_OUT="$tmp/bin" NPM_PLAT="$plat" CORE_BIN_DIR="$tmp/bin" WEB_DIST="$tmp/dist" \
                 ./scripts/npm-fill-packages.sh
             fi
             rm -rf "$tmp"

@@ -1,7 +1,7 @@
 {
   "name": "@1agents/core-linux-x64",
   "version": "0.0.0-dev",
-  "description": "Core 1agents + ttyd binaries (linux-x64)",
+  "description": "Core 1agents + ttyd + HarnessKit binaries (linux-x64)",
   "license": "MIT",
   "os": [
     "linux"
@@ -11,6 +11,8 @@
   ],
   "files": [
     "bin/",
+    "config/",
+    "licenses/",
     "package.json",
     "README.md"
   ],

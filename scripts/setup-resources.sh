@@ -12,11 +12,13 @@ RESOURCE_DIR="src-tauri/resources"
 BIN_DIR="$RESOURCE_DIR/bin"
 NODE_DIR="$RESOURCE_DIR/runtime/node/bin"
 TOOLS_DIR="$RESOURCE_DIR/bundled_tools"
+CONFIG_DIR="$RESOURCE_DIR/config"
 
 # 1. Create target directory structure
 mkdir -p "$BIN_DIR"
 mkdir -p "$NODE_DIR"
 mkdir -p "$TOOLS_DIR"
+mkdir -p "$CONFIG_DIR"
 
 # 2. Copy host Node.js binary to resources
 echo "=== Locating and copying Node.js runtime ==="
@@ -49,7 +51,7 @@ if [ -f "build/1agents.exe" ] || [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "c
     EXE_SUFFIX=".exe"
 fi
 
-if [ ! -f "build/1agents$EXE_SUFFIX" ] || [ ! -f "build/ttyd$EXE_SUFFIX" ] || [ ! -f "build/cc-connect$EXE_SUFFIX" ] || [ ! -f "build/cc-switch$EXE_SUFFIX" ]; then
+if [ ! -f "build/1agents$EXE_SUFFIX" ] || [ ! -f "build/ttyd$EXE_SUFFIX" ] || [ ! -f "build/cc-connect$EXE_SUFFIX" ] || [ ! -f "build/cc-switch$EXE_SUFFIX" ] || [ ! -f "build/hk$EXE_SUFFIX" ]; then
     echo "WARNING: Precompiled binaries not found in build/. Running build first..."
     make all
 fi
@@ -58,22 +60,11 @@ cp "build/1agents$EXE_SUFFIX" "$BIN_DIR/1agents$EXE_SUFFIX"
 cp "build/ttyd$EXE_SUFFIX" "$BIN_DIR/ttyd$EXE_SUFFIX"
 cp "build/cc-connect$EXE_SUFFIX" "$BIN_DIR/cc-connect$EXE_SUFFIX"
 cp "build/cc-switch$EXE_SUFFIX" "$BIN_DIR/cc-switch$EXE_SUFFIX"
+cp "build/hk$EXE_SUFFIX" "$BIN_DIR/hk$EXE_SUFFIX"
+cp "config/agent-extension-map.json" "$CONFIG_DIR/agent-extension-map.json"
+./scripts/stage-harnesskit-compliance.sh "$RESOURCE_DIR/licenses"
 
-chmod +x "$BIN_DIR/1agents$EXE_SUFFIX" "$BIN_DIR/ttyd$EXE_SUFFIX" "$BIN_DIR/cc-connect$EXE_SUFFIX" "$BIN_DIR/cc-switch$EXE_SUFFIX"
-
-# 1skills: host Python only. Prefer staged Python source (build/1skills) over a
-# legacy PyInstaller skill-manager binary. SkillsSupervisor bootstraps a venv.
-if [ -d "build/1skills/skill_manager" ]; then
-    echo "=== Copying 1skills Python source (host Python) ==="
-    rm -rf "$RESOURCE_DIR/1skills"
-    cp -r "build/1skills" "$RESOURCE_DIR/1skills"
-elif [ -f "build/skill-manager" ]; then
-    cp "build/skill-manager" "$BIN_DIR/skill-manager"
-    chmod +x "$BIN_DIR/skill-manager"
-    echo "Copied legacy skill-manager binary."
-else
-    echo "WARNING: no build/1skills source or skill-manager binary. Skills need host Python + modules/1skills."
-fi
+chmod +x "$BIN_DIR/1agents$EXE_SUFFIX" "$BIN_DIR/ttyd$EXE_SUFFIX" "$BIN_DIR/cc-connect$EXE_SUFFIX" "$BIN_DIR/cc-switch$EXE_SUFFIX" "$BIN_DIR/hk$EXE_SUFFIX"
 
 # Copy the happy bundle (relay/C2 sidecar + RPC adapter) if built.
 # build-happy-bundle.sh produces build/happy-cli, build/adapter, build/happy.
@@ -104,10 +95,8 @@ if [ "$(uname)" = "Darwin" ]; then
     codesign --force --deep --sign - "$BIN_DIR/ttyd"
     codesign --force --deep --sign - "$BIN_DIR/cc-connect"
     codesign --force --deep --sign - "$BIN_DIR/cc-switch"
+    codesign --force --deep --sign - "$BIN_DIR/hk"
     codesign --force --deep --sign - "$NODE_DIR/node"
-    if [ -f "$BIN_DIR/skill-manager" ]; then
-        codesign --force --deep --sign - "$BIN_DIR/skill-manager"
-    fi
 fi
 
 # 5. Copy frontend assets
@@ -119,5 +108,7 @@ fi
 
 rm -rf "$RESOURCE_DIR/dist"
 cp -r frontend/dist "$RESOURCE_DIR/dist"
+
+./scripts/check-harnesskit-artifacts.sh "$RESOURCE_DIR"
 
 echo "=== Resources setup completed successfully ==="

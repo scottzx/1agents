@@ -60,10 +60,6 @@ function resolveWebDist() {
   return dist;
 }
 
-function resolveSkillsRoot() {
-  return resolvePackageRoot("@1agents/skills");
-}
-
 function tryResolveHappy() {
   try {
     const path = require("path");
@@ -84,6 +80,5 @@ module.exports = {
   corePackageName,
   resolveCoreBin,
   resolveWebDist,
-  resolveSkillsRoot,
   tryResolveHappy,
 };

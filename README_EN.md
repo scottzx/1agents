@@ -99,7 +99,7 @@ The goal is to move AI beyond "help me with this step" and into the collaboratio
 - Assistant pages manage Assistant workspaces.
 - Assistant detail includes sessions, team, tasks, files, channels, and settings.
 - Team and skill pages manage skills attached to a project or assistant.
-- Integrated 1skills panel manages Skills, Agents, Slash Commands, MCP, and Marketplace entries.
+- A controlled HarnessKit fork provides one Extensions surface for Skills, Subagents, Commands, MCP, Hooks, Plugins, CLIs, and Kits.
 - Agent Catalog shows available agent types and install commands.
 
 ### App Extensions
@@ -154,7 +154,7 @@ backend/               1agents Go backend service
 modules/ttyd/          Web terminal service
 modules/cc-connect/    Messaging platform and agent bridge
 modules/cc-switch-cli/ Agent provider / model configuration switching sidecar
-modules/1skills/       Skills, Agents, Slash Commands, MCP, and Marketplace management
+modules/HarnessKit/    Controlled fork for extension inventory, audit, marketplace, adapters, and Kits
 modules/1acp/          Agent Client Protocol adapters, examples, and conformance tests
 modules/happy-cli/     Happy agent CLI and local launcher packaging source
 modules/gstack/        Built-in engineering skills, QA, release, and browser automation workflows
@@ -163,7 +163,7 @@ build/                 Local build outputs
 docs/                  Product, design, and architecture docs
 ```
 
-The repository is organized as a main product plus replaceable execution components and distributable modules: the frontend and backend provide the 1agents workbench; `ttyd` provides terminal capability; `cc-connect`, `cc-switch`, `happy`, `1skills`, and `1acp` provide agent integration, skill marketplace, protocol adapters, and CLI sidecars; the npm distribution splits core / web / skills / cc-connect / cc-switch into platform or feature packages.
+The repository is organized as a main product plus replaceable execution components and distributable modules: the frontend and backend provide the 1agents workbench; `ttyd` provides terminal capability; `cc-connect`, `cc-switch`, `happy`, `HarnessKit`, and `1acp` provide agent integration, extension management, protocol adapters, and CLI sidecars; npm splits core / web / cc-connect / cc-switch into platform or feature packages.
 
 Related docs:
 
@@ -206,7 +206,7 @@ Requirements:
 
 **Distribution (important):**
 
-- **Multi-package** under `@1agents/*`. `@1agents/1agents` is the entry; **`@1agents/core-<plat>` ships binaries directly on the npm registry** (no GitHub download during install).
+- **Multi-package** under `@1agents/*`. `@1agents/1agents` is the entry; **`@1agents/core-<plat>` ships `1agents`, `ttyd`, and `hk` directly on the npm registry** (no GitHub download during install).
 - Design: [`docs/features/npm-package-split/prd.md`](docs/features/npm-package-split/prd.md).
 - Legacy `@scottzx/1agents` and the “thin installer + GitHub tarball” flow are **deprecated**.
 
@@ -324,7 +324,7 @@ Released under the [MIT License](LICENSE).
 
 - [cc-switch](https://github.com/farion1231/cc-switch) (MIT)
 - [cc-switch-cli](https://github.com/SaladDay/cc-switch-cli) (MIT)
-- [skill-manager](https://github.com/mode-io/skill-manager) (MIT)
+- [HarnessKit](https://github.com/RealZST/HarnessKit) (Apache-2.0; 1agents uses a controlled fork)
 - [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) (BSD-3)
 - [BurntSushi/toml](https://github.com/BurntSushi/toml) (MIT)
 - [creack/pty](https://github.com/creack/pty) (MIT)

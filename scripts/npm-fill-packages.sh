@@ -8,9 +8,8 @@
 #
 # Env:
 #   NPM_PLAT          linux-x64 | linux-arm64 | darwin-arm64  (required)
-#   CORE_BIN_DIR      dir containing 1agents, ttyd, cc-connect, cc-switch
+#   CORE_BIN_DIR      dir containing 1agents, ttyd, hk, cc-connect, cc-switch
 #   WEB_DIST          frontend dist dir
-#   SKILLS_SRC        output of package-1skills-python.sh (optional)
 #   HAPPY_OUT         dir with happy-cli/ + adapter/ from build-happy-bundle (optional)
 set -euo pipefail
 
@@ -34,9 +33,15 @@ copy_bin() {
   echo "  + $dest_dir/$name"
 }
 
-# core: 1agents + ttyd
+# core: 1agents + ttyd + HarnessKit
 copy_bin "$CORE_BIN_DIR/1agents" "$PKG/core-$PLAT/bin" "1agents"
 copy_bin "$CORE_BIN_DIR/ttyd" "$PKG/core-$PLAT/bin" "ttyd"
+copy_bin "$CORE_BIN_DIR/hk" "$PKG/core-$PLAT/bin" "hk"
+mkdir -p "$PKG/core-$PLAT/config"
+cp "$ROOT/config/agent-extension-map.json" "$PKG/core-$PLAT/config/agent-extension-map.json"
+echo "  + $PKG/core-$PLAT/config/agent-extension-map.json"
+"$ROOT/scripts/stage-harnesskit-compliance.sh" "$PKG/core-$PLAT/licenses"
+echo "  + $PKG/core-$PLAT/licenses"
 
 # cc-connect / cc-switch platform packages
 copy_bin "$CORE_BIN_DIR/cc-connect" "$PKG/cc-connect-$PLAT/bin" "cc-connect"
@@ -57,18 +62,7 @@ else
   echo "WARNING: WEB_DIST missing: $WEB_DIST"
 fi
 
-# skills (once)
-if [ -n "${SKILLS_SRC:-}" ] && [ -d "$SKILLS_SRC/skill_manager" ]; then
-  rm -rf "$PKG/skills/skill_manager" "$PKG/skills/frontend"
-  cp -R "$SKILLS_SRC/skill_manager" "$PKG/skills/skill_manager"
-  [ -f "$SKILLS_SRC/requirements.txt" ] && cp "$SKILLS_SRC/requirements.txt" "$PKG/skills/"
-  [ -f "$SKILLS_SRC/pyproject.toml" ] && cp "$SKILLS_SRC/pyproject.toml" "$PKG/skills/"
-  [ -f "$SKILLS_SRC/README.txt" ] && cp "$SKILLS_SRC/README.txt" "$PKG/skills/"
-  if [ -d "$SKILLS_SRC/frontend" ]; then
-    cp -R "$SKILLS_SRC/frontend" "$PKG/skills/frontend"
-  fi
-  echo "  + skills from $SKILLS_SRC"
-fi
+"$ROOT/scripts/check-harnesskit-artifacts.sh" "$PKG/core-$PLAT" "$PKG/web"
 
 # happy (once)
 if [ -n "${HAPPY_OUT:-}" ] && [ -d "$HAPPY_OUT/happy-cli" ]; then

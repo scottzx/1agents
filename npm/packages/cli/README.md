@@ -7,9 +7,9 @@ npm install -g @1agents/1agents
 # domestic mirror
 npm install -g @1agents/1agents --registry=https://registry.npmmirror.com
 
-# bootstrap module runtimes (1skills venv, happy deps, binary resolve, …)
+# validate bundled runtimes and install optional module dependencies
 1agents install all
-1agents install skills
+1agents install harnesskit
 1agents install happy
 1agents install --check
 ```
@@ -17,7 +17,7 @@ npm install -g @1agents/1agents --registry=https://registry.npmmirror.com
 | Step | Meaning |
 |------|---------|
 | `npm install -g @1agents/1agents` | Pull package files from the npm registry |
-| `1agents install …` | Host runtime setup (venv / deps / resolve), idempotent |
+| `1agents install …` | Runtime validation and optional dependency setup, idempotent |
 
 Platform binaries ship in `@1agents/core-<plat>` **directly on the npm registry**.
 This package only resolves local `node_modules` paths — it does **not** download GitHub Release tarballs.

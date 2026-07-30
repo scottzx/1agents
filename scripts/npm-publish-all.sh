@@ -69,7 +69,7 @@ done
 
 # 2) content + meta
 # acpx (forked ACP runtime) must publish before acp-bridge (depends on @1agents/acpx)
-for p in web skills happy acpx acp-bridge cc-connect cc-switch; do
+for p in web happy acpx acp-bridge cc-connect cc-switch; do
   if [ "$p" = "acpx" ] && [ ! -f "$PKG/acpx/dist/runtime.js" ]; then
     echo "ERROR: npm/packages/acpx/dist/runtime.js missing — run npm-fill-packages.sh (builds modules/1acp)" >&2
     exit 1

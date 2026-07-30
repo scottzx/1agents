@@ -26,22 +26,26 @@ FRONTEND_SRCS := $(shell find frontend/src frontend/packages modules/1acp -type 
 TTYD_SRCS     := $(shell find modules/ttyd/src -type f 2>/dev/null)
 CONNECT_SRCS  := $(shell find modules/cc-connect -type f 2>/dev/null)
 SWITCH_SRCS   := $(shell find modules/cc-switch-cli/src-tauri/src -type f 2>/dev/null)
+HARNESSKIT_SRCS := $(shell find modules/HarnessKit/crates -type f 2>/dev/null) modules/HarnessKit/Cargo.toml modules/HarnessKit/Cargo.lock
 COFFEE_SRCS   := $(shell find modules/alipay-coffee/src modules/alipay-coffee/public -type f 2>/dev/null) modules/alipay-coffee/package.json modules/alipay-coffee/package-lock.json
 
-.PHONY: all frontend ttyd cc-connect cc-connect-noweb cc-switch happy coffee backend agent package release-notes clean help install-hooks submodules submodule-cc-connect submodule-cc-switch submodule-happy-cli
+.PHONY: all frontend ttyd cc-connect cc-connect-noweb cc-switch harnesskit harnesskit-compliance harnesskit-sbom happy coffee backend agent package release-notes clean help install-hooks submodules submodule-cc-connect submodule-cc-switch submodule-happy-cli submodule-harnesskit
 
 help:
 	@echo "Unified Build and Packaging System for Remote Agents"
 	@echo "Host: $(HOSTNAME) ($(OS)/$(ARCH))"
 	@echo ""
 	@echo "Available targets:"
-	@echo "  make all               - Build all components (frontend, ttyd, cc-connect, cc-switch, backend)"
-	@echo "  make submodules        - Init/update all git submodules (cc-connect, cc-switch-cli, 1acp, 1skills)"
+	@echo "  make all               - Build all components (frontend, ttyd, cc-connect, cc-switch, HarnessKit, backend)"
+	@echo "  make submodules        - Init/update all git submodules"
 	@echo "  make frontend          - Build frontend assets (frontend/) and generate modules/ttyd/src/html.h"
 	@echo "  make ttyd              - Compile native ttyd C server natively on the current host"
 	@echo "  make cc-connect        - Compile cc-connect Go daemon (with web assets)"
 	@echo "  make cc-connect-noweb  - Compile cc-connect Go daemon (WITHOUT rebuilding web assets)"
 	@echo "  make cc-switch         - Compile cc-switch Rust CLI sidecar"
+	@echo "  make harnesskit        - Compile the controlled HarnessKit hk CLI/web daemon"
+	@echo "  make harnesskit-compliance - Verify protected HarnessKit artwork is absent"
+	@echo "  make harnesskit-sbom   - Generate the locked HarnessKit SPDX dependency SBOM"
 	@echo "  make happy             - Build the happy-cli Node submodule + build/happy launcher"
 	@echo "  make coffee            - Stage the Alipay coffee payment Node.js service"
 	@echo "  make backend           - Compile 1agents Go server (backend) with version ldflags"
@@ -50,7 +54,7 @@ help:
 	@echo "  make clean             - Clean all intermediate and build outputs across components"
 	@echo "  make install-hooks     - Install git hooks (auto-push submodules + create PRs on git push)"
 
-all: frontend ttyd cc-connect cc-switch happy coffee backend
+all: frontend ttyd cc-connect cc-switch harnesskit happy coffee backend
 
 # --- Git submodules ---------------------------------------------------------
 submodules:
@@ -69,12 +73,16 @@ submodule-happy-cli:
 	@echo "=== Ensuring happy-cli submodule is checked out..."
 	git submodule update --init modules/happy-cli
 
+submodule-harnesskit:
+	@echo "=== Ensuring controlled HarnessKit submodule is checked out..."
+	git submodule update --init modules/HarnessKit
+
 frontend: frontend/dist/index.html
 
 frontend/dist/index.html: $(FRONTEND_SRCS)
 	@echo "=== Building Frontend (frontend/)..."
 	cd frontend && corepack enable && yarn install && yarn build
-	@echo "=== Staging module embeds (skills + cc-connect) into frontend/dist/embed..."
+	@echo "=== Staging module embeds (HarnessKit + cc-connect) into frontend/dist/embed..."
 	./scripts/build-module-embeds.sh
 
 ttyd: build/ttyd
@@ -126,6 +134,24 @@ build/cc-switch: $(SWITCH_SRCS)
 		codesign --force --deep --sign - build/cc-switch ; \
 	fi
 
+harnesskit: build/hk
+
+build/hk: $(HARNESSKIT_SRCS)
+	@echo "=== Building HarnessKit hk daemon/CLI..."
+	cargo build --manifest-path modules/HarnessKit/Cargo.toml --release -p hk-cli
+	@mkdir -p build
+	cp modules/HarnessKit/target/release/hk build/hk
+	@if [ "$(OS_LOWER)" = "darwin" ]; then \
+		echo "=== Ad-hoc signing build/hk ===" ; \
+		codesign --force --deep --sign - build/hk ; \
+	fi
+
+harnesskit-compliance:
+	./scripts/check-harnesskit-artifacts.sh $(if $(wildcard frontend/dist),frontend/dist)
+
+harnesskit-sbom:
+	node ./scripts/generate-harnesskit-sbom.mjs build/compliance/harnesskit.spdx.json
+
 happy: build/happy
 
 build/happy:
@@ -151,20 +177,25 @@ build/1agents: $(BACKEND_SRCS)
 
 agent: backend
 
-package: all
+package: all harnesskit-sbom
 	@echo "=== Packaging 1agents for $(OS_LOWER)-$(ARCH_LOWER) on $(HOSTNAME)..."
 	@rm -rf dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)
-	@mkdir -p dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin
+	@mkdir -p dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin \
+		dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/config
 	cp build/1agents dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/
 	cp build/ttyd dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/
 	cp build/cc-connect dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/
 	cp build/cc-switch dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/
+	cp build/hk dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/
 	cp build/happy dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/
 	cp -r build/happy-cli dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/happy-cli
 	cp -r build/adapter dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/adapter
 	cp -r build/alipay-coffee dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/alipay-coffee
 	cp -r frontend/dist dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/dist
+	cp config/agent-extension-map.json dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/config/
+	./scripts/stage-harnesskit-compliance.sh dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/licenses
 	cd dist && tar -czf 1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME).tar.gz 1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)
+	./scripts/check-harnesskit-artifacts.sh dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME).tar.gz
 	@echo "=== Created package: dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME).tar.gz"
 
 # --- Release feature-intro HTML page (issue #145) ---------------------------
@@ -194,6 +225,7 @@ clean:
 	$(MAKE) -C modules/cc-connect clean
 	rm -rf src-tauri/resources src-tauri/target
 	cargo clean --manifest-path modules/cc-switch-cli/src-tauri/Cargo.toml
+	cargo clean --manifest-path modules/HarnessKit/Cargo.toml
 
 .PHONY: tauri-resources tauri-dev tauri-build
 

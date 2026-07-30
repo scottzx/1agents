@@ -6,7 +6,7 @@
  * on the local npm tree. Does NOT download GitHub Release archives.
  *
  * Subcommands handled in this JS shim:
- *   install [all|module] [--check]  — module runtime bootstrap (venv, happy deps, …)
+ *   install [all|module] [--check]  — module runtime/bootstrap diagnostics
  *   start|stop|status|logs          — daemon lifecycle
  * Everything else is forwarded to the core `1agents` binary.
  */
@@ -20,7 +20,6 @@ const {
   mapPlatform,
   resolveCoreBin,
   resolveWebDist,
-  resolveSkillsRoot,
 } = require("./lib/platform");
 const { runInstall } = require("./lib/install");
 
@@ -36,10 +35,12 @@ function resolvePaths() {
 
   let agentPath;
   let ttydPath;
+  let harnessKitPath;
   let staticPath;
   try {
     agentPath = resolveCoreBin("1agents");
     ttydPath = resolveCoreBin("ttyd");
+    harnessKitPath = resolveCoreBin("hk");
     staticPath = resolveWebDist();
   } catch (err) {
     console.error(`❌ [1agents] ${err.message}`);
@@ -50,29 +51,19 @@ function resolvePaths() {
     process.exit(1);
   }
 
-  // Soft-fail: core can run without skills; supervisor logs and skips the service.
-  let skillsPath = null;
-  try {
-    skillsPath = resolveSkillsRoot();
-  } catch (err) {
-    console.warn(`⚠️  [1agents] @1agents/skills not found: ${err.message}`);
-    console.warn(
-      "   Skills service will be unavailable. Install with: npm i -g @1agents/skills"
-    );
-  }
-
   if (process.platform !== "win32") {
     try {
       fs.chmodSync(agentPath, 0o755);
       fs.chmodSync(ttydPath, 0o755);
+      fs.chmodSync(harnessKitPath, 0o755);
     } catch (_) {}
   }
 
-  return { agentPath, ttydPath, staticPath, skillsPath };
+  return { agentPath, ttydPath, harnessKitPath, staticPath };
 }
 
-/** Inject default binary/static/skills paths unless the user already set them. */
-function buildCoreArgs(userArgs, { ttydPath, staticPath, skillsPath }) {
+/** Inject bundled binary/static paths unless the user already set them. */
+function buildCoreArgs(userArgs, { ttydPath, harnessKitPath, staticPath }) {
   const finalArgs = [];
   if (!userArgs.some((a) => a.startsWith("-ttyd-bin"))) {
     finalArgs.push("-ttyd-bin", ttydPath);
@@ -80,8 +71,8 @@ function buildCoreArgs(userArgs, { ttydPath, staticPath, skillsPath }) {
   if (!userArgs.some((a) => a.startsWith("-static"))) {
     finalArgs.push("-static", staticPath);
   }
-  if (skillsPath && !userArgs.some((a) => a.startsWith("-skills-dir"))) {
-    finalArgs.push("-skills-dir", skillsPath);
+  if (!userArgs.some((a) => a.startsWith("-harnesskit-bin"))) {
+    finalArgs.push("-harnesskit-bin", harnessKitPath);
   }
   return finalArgs;
 }
@@ -104,8 +95,17 @@ async function main() {
   const isDaemon = ["start", "stop", "status", "logs"].includes(command);
 
   if (!isDaemon) {
-    const finalArgs = buildCoreArgs(userArgs, paths);
-    finalArgs.push(...userArgs);
+    // Core-owned subcommands dispatch before Go's daemon flag parser. Keep the
+    // subcommand in argv[1]; prepending -ttyd-bin/-static would hide it.
+    const directSubcommands = new Set([
+      "migrate",
+      "project-items",
+      "mcp-tasks",
+      "feature-catalog",
+    ]);
+    const finalArgs = directSubcommands.has(command)
+      ? [...userArgs]
+      : [...buildCoreArgs(userArgs, paths), ...userArgs];
     try {
       execFileSync(agentPath, finalArgs, { stdio: "inherit" });
     } catch (err) {

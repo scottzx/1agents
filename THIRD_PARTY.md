@@ -20,9 +20,12 @@ Two tracks:
 |---|---|---|---|---|
 | **superpowers** (Jesse Vincent / obra) | `modules/superpowers` | MIT | https://github.com/obra/superpowers | skills (process methodologies) |
 | **gstack** (Garry Tan) | `modules/gstack` | MIT | https://github.com/garrytan/gstack | role (`cso`) + skill (`design-shotgun`) |
+| **HarnessKit** (RealZST) | `modules/HarnessKit` | Apache-2.0 | https://github.com/RealZST/HarnessKit | controlled product fork for extension management |
 
-Both projects are MIT-licensed; their full license texts ship with the submodules
-(`modules/superpowers/LICENSE`, `modules/gstack/LICENSE`).
+The full license texts ship with the respective submodules. HarnessKit's fork
+baseline, patch ownership, upstream sync policy, and protected-artwork exclusions
+are documented in `modules/HarnessKit/UPSTREAM.md` and
+`modules/HarnessKit/ASSET-LICENSES.md`.
 
 ## Notes
 

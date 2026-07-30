@@ -6,12 +6,11 @@
  * Bootstraps module runtimes on the host after npm has placed packages.
  * Semantics:
  *   npm install -g @1agents/1agents  → package files in node_modules
- *   1agents install …                → venv / deps / resolve checks (idempotent)
+ *   1agents install …                → runtime/dependency checks (idempotent)
  */
 
 const { spawnSync } = require("child_process");
 const fs = require("fs");
-const os = require("os");
 const path = require("path");
 
 const {
@@ -19,69 +18,9 @@ const {
   corePackageName,
   resolveCoreBin,
   resolveWebDist,
-  resolveSkillsRoot,
   tryResolveHappy,
   resolvePackageRoot,
 } = require("./platform");
-
-// ── paths ──────────────────────────────────────────────────────────────
-
-function oneAgentsHome() {
-  return process.env.ONEAGENTS_HOME || os.homedir();
-}
-
-/** Managed venv for npm-installed skills (source under node_modules is often read-only). */
-function managedSkillsVenvDir() {
-  return path.join(oneAgentsHome(), ".1agents", "1skills", ".venv");
-}
-
-function venvPython(venvDir) {
-  return process.platform === "win32"
-    ? path.join(venvDir, "Scripts", "python.exe")
-    : path.join(venvDir, "bin", "python");
-}
-
-function isExecutable(p) {
-  try {
-    const st = fs.statSync(p);
-    if (!st.isFile()) return false;
-    if (process.platform === "win32") return true;
-    return (st.mode & 0o111) !== 0;
-  } catch {
-    return false;
-  }
-}
-
-function commandExists(cmd) {
-  try {
-    const which = process.platform === "win32" ? "where" : "which";
-    const r = spawnSync(which, [cmd], { encoding: "utf8" });
-    return r.status === 0;
-  } catch {
-    return false;
-  }
-}
-
-function isSkillsSource(dir) {
-  if (!dir) return false;
-  try {
-    return (
-      fs.statSync(path.join(dir, "skill_manager")).isDirectory() &&
-      fs.existsSync(path.join(dir, "requirements.txt"))
-    );
-  } catch {
-    return false;
-  }
-}
-
-function dirIsWritable(dir) {
-  try {
-    fs.accessSync(dir, fs.constants.W_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 // ── result helpers ─────────────────────────────────────────────────────
 
@@ -151,157 +90,47 @@ function installWeb(checkOnly) {
   );
 }
 
-function skillsVenvPath(skillsRoot) {
-  if (skillsRoot && dirIsWritable(skillsRoot)) {
-    return path.join(skillsRoot, ".venv");
-  }
-  return managedSkillsVenvDir();
-}
-
-function checkSkills() {
-  let root;
+function checkHarnessKit() {
   try {
-    root = resolveSkillsRoot();
-  } catch (err) {
-    return result(
-      "skills",
-      "skills (1skills Python venv)",
-      true,
-      "missing",
-      err.message || String(err)
-    );
-  }
-  if (!isSkillsSource(root)) {
-    return result(
-      "skills",
-      "skills (1skills Python venv)",
-      true,
-      "missing",
-      `@1agents/skills at ${root} is not a valid source (need skill_manager/ + requirements.txt)`
-    );
-  }
-  const venvDir = skillsVenvPath(root);
-  const py = venvPython(venvDir);
-  if (isExecutable(py)) {
-    return result("skills", "skills (1skills Python venv)", true, "ok", `venv ${venvDir}`);
-  }
-  return result(
-    "skills",
-    "skills (1skills Python venv)",
-    true,
-    "missing",
-    `source ok at ${root}; venv missing at ${venvDir}`
-  );
-}
-
-function bootstrapSkillsVenv(skillsRoot) {
-  const venvDir = skillsVenvPath(skillsRoot);
-  const req = path.join(skillsRoot, "requirements.txt");
-  fs.mkdirSync(path.dirname(venvDir), { recursive: true });
-
-  if (commandExists("uv")) {
-    console.log(`[@1agents/1agents] skills: uv venv → ${venvDir}`);
-    let r = spawnSync("uv", ["venv", venvDir], { stdio: "inherit" });
-    if (r.status !== 0) {
-      throw new Error(`uv venv failed (exit ${r.status})`);
-    }
-    const py = venvPython(venvDir);
-    console.log(`[@1agents/1agents] skills: uv pip install -r requirements.txt`);
-    r = spawnSync("uv", ["pip", "install", "--python", py, "-r", req], {
-      cwd: skillsRoot,
-      stdio: "inherit",
-    });
-    if (r.status !== 0) {
-      throw new Error(`uv pip install failed (exit ${r.status})`);
-    }
-    return venvDir;
-  }
-
-  const pythonBin = process.env.ONEAGENTS_PYTHON || "python3";
-  if (!commandExists(pythonBin) && process.platform !== "win32") {
-    // Windows often has `py` launcher
-    if (process.platform === "win32" && commandExists("py")) {
-      // fall through with py -3
-    } else {
-      throw new Error(
-        `host Python not found (${pythonBin}) and uv not installed — install Python >= 3.11 or uv`
-      );
-    }
-  }
-
-  console.log(`[@1agents/1agents] skills: ${pythonBin} -m venv → ${venvDir}`);
-  let r;
-  if (process.platform === "win32" && !commandExists(pythonBin) && commandExists("py")) {
-    r = spawnSync("py", ["-3", "-m", "venv", venvDir], { stdio: "inherit" });
-  } else {
-    r = spawnSync(pythonBin, ["-m", "venv", venvDir], { stdio: "inherit" });
-  }
-  if (r.status !== 0) {
-    throw new Error(`python -m venv failed (exit ${r.status})`);
-  }
-  const py = venvPython(venvDir);
-  console.log(`[@1agents/1agents] skills: pip install -r requirements.txt`);
-  r = spawnSync(py, ["-m", "pip", "install", "--upgrade", "pip"], { stdio: "inherit" });
-  // pip upgrade failure is non-fatal
-  r = spawnSync(py, ["-m", "pip", "install", "-r", req], {
-    cwd: skillsRoot,
-    stdio: "inherit",
-  });
-  if (r.status !== 0) {
-    throw new Error(`pip install failed (exit ${r.status})`);
-  }
-  return venvDir;
-}
-
-function installSkills(checkOnly) {
-  const checked = checkSkills();
-  if (checked.status === "ok") return checked;
-  if (checkOnly) return checked;
-
-  let root;
-  try {
-    root = resolveSkillsRoot();
-  } catch (err) {
-    return result(
-      "skills",
-      "skills (1skills Python venv)",
-      true,
-      "error",
-      err.message || String(err)
-    );
-  }
-  if (!isSkillsSource(root)) {
-    return result(
-      "skills",
-      "skills (1skills Python venv)",
-      true,
-      "error",
-      `invalid skills source at ${root}`
-    );
-  }
-
-  try {
-    const venvDir = bootstrapSkillsVenv(root);
-    const py = venvPython(venvDir);
-    if (!isExecutable(py)) {
+    const binary = resolveCoreBin("hk");
+    const version = spawnSync(binary, ["--version"], { encoding: "utf8" });
+    if (version.status !== 0) {
       return result(
-        "skills",
-        "skills (1skills Python venv)",
+        "harnesskit",
+        "HarnessKit extension daemon",
         true,
         "error",
-        `bootstrap finished but python missing at ${py}`
+        `${binary} --version failed (exit ${version.status})`
       );
     }
-    return result("skills", "skills (1skills Python venv)", true, "ok", `venv ${venvDir}`);
+    return result(
+      "harnesskit",
+      "HarnessKit extension daemon",
+      true,
+      "ok",
+      `${binary}: ${(version.stdout || version.stderr || "").trim()}`
+    );
   } catch (err) {
     return result(
-      "skills",
-      "skills (1skills Python venv)",
+      "harnesskit",
+      "HarnessKit extension daemon",
       true,
-      "error",
+      "missing",
       err.message || String(err)
     );
   }
+}
+
+function installHarnessKit(checkOnly) {
+  const checked = checkHarnessKit();
+  if (checked.status === "ok" || checkOnly) return checked;
+  return result(
+    "harnesskit",
+    "HarnessKit extension daemon",
+    true,
+    "error",
+    `${checked.detail}\n  Fix: reinstall ${corePackageName()} at the same version as @1agents/1agents`
+  );
 }
 
 function checkHappy() {
@@ -474,7 +303,12 @@ function installAcpBridge(checkOnly) {
 const MODULES = {
   core: { id: "core", label: "core", required: true, run: installCore },
   web: { id: "web", label: "web", required: true, run: installWeb },
-  skills: { id: "skills", label: "skills", required: true, run: installSkills },
+  harnesskit: {
+    id: "harnesskit",
+    label: "harnesskit",
+    required: true,
+    run: installHarnessKit,
+  },
   "cc-connect": {
     id: "cc-connect",
     label: "cc-connect",
@@ -490,7 +324,7 @@ const MODULES = {
   happy: { id: "happy", label: "happy", required: false, run: installHappy },
 };
 
-const INSTALL_ORDER = ["core", "web", "skills", "cc-connect", "acp-bridge", "happy"];
+const INSTALL_ORDER = ["core", "web", "harnesskit", "cc-connect", "acp-bridge", "happy"];
 
 // ── CLI surface ────────────────────────────────────────────────────────
 
@@ -508,7 +342,7 @@ After:  npm install -g @1agents/1agents
 Run:    1agents install all
 
 npm install  → package files
-1agents install → host runtimes (venv, happy deps, binary resolve)`);
+1agents install → runtime validation and optional dependency setup`);
 }
 
 function printTable(results) {
@@ -595,8 +429,7 @@ function runInstall(args) {
   printTable(results);
 
   // Hard exit only for packages that block core workbench start.
-  // skills/happy may fail without Python / optional deps — core still usable.
-  const HARD_EXIT = new Set(["core", "web", "cc-connect", "acp-bridge"]);
+  const HARD_EXIT = new Set(["core", "web", "harnesskit", "cc-connect", "acp-bridge"]);
   const hardFail = results.some(
     (r) => HARD_EXIT.has(r.id) && (r.status === "error" || r.status === "missing")
   );
@@ -622,7 +455,6 @@ module.exports = {
   runInstall,
   MODULES,
   INSTALL_ORDER,
-  managedSkillsVenvDir,
-  checkSkills,
-  installSkills,
+  checkHarnessKit,
+  installHarnessKit,
 };

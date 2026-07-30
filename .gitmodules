@@ -4,9 +4,6 @@
 [submodule "modules/cc-switch-cli"]
 	path = modules/cc-switch-cli
 	url = https://github.com/SaladDay/cc-switch-cli
-[submodule "modules/1skills"]
-	path = modules/1skills
-	url = https://github.com/scottzx/1skills
 [submodule "modules/1acp"]
 	path = modules/1acp
 	url = https://github.com/scottzx/1acp.git
@@ -22,6 +19,9 @@
 [submodule "modules/grok-build"]
 	path = modules/grok-build
 	url = https://github.com/xai-org/grok-build
+[submodule "modules/1skills"]
+	path = modules/1skills
+	url = https://github.com/scottzx/1skills.git
 [submodule "modules/HarnessKit"]
 	path = modules/HarnessKit
-	url = https://github.com/RealZST/HarnessKit.git
+	url = https://github.com/scottzx/HarnessKit.git

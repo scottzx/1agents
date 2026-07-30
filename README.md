@@ -96,7 +96,7 @@
 - 助理页管理 Assistant 工作区。
 - 助理详情包含会话、团队、任务、文件、渠道和设置。
 - 团队与技能页用于管理项目/助理关联的技能配置。
-- 集成 1skills 面板，用于管理 Skills、Agents、Slash Commands、MCP 和 Marketplace。
+- 集成受控 HarnessKit Fork，用统一 Extensions 面板管理 Skills、Subagents、Commands、MCP、Hooks、Plugins、CLI 和 Kits。
 - Agent Catalog 展示可用 Agent 类型和安装命令。
 
 ### 插件式应用
@@ -151,7 +151,7 @@ backend/               1agents Go 后端服务
 modules/ttyd/          Web 终端服务
 modules/cc-connect/    消息平台和 Agent 桥接
 modules/cc-switch-cli/ Agent provider / 模型配置切换 sidecar
-modules/1skills/       Skills、Agents、Slash Commands、MCP 和 Marketplace 管理
+modules/HarnessKit/    受控 Fork；Extensions 清单、审计、市场、Agent Adapter 和 Kits
 modules/1acp/          Agent Client Protocol 适配、示例和一致性测试
 modules/happy-cli/     Happy agent CLI 及本地 launcher 打包来源
 modules/gstack/        项目内置工程技能、QA、发布和浏览器自动化工作流
@@ -160,7 +160,7 @@ build/                 本地构建产物
 docs/                  产品、设计和架构文档
 ```
 
-仓库按“主产品 + 可替换执行组件 + 可分发模块”组织：前端和后端提供 1agents 主工作台；`ttyd` 提供终端能力；`cc-connect`、`cc-switch`、`happy`、`1skills`、`1acp` 等子模块提供 Agent 接入、技能市场、协议适配和 CLI sidecar；npm 分发层会把 core / web / skills / cc-connect / cc-switch 等拆成平台包或功能包发布。
+仓库按“主产品 + 可替换执行组件 + 可分发模块”组织：前端和后端提供 1agents 主工作台；`ttyd` 提供终端能力；`cc-connect`、`cc-switch`、`happy`、`HarnessKit`、`1acp` 等子模块提供 Agent 接入、扩展管理、协议适配和 CLI sidecar；npm 分发层会把 core / web / cc-connect / cc-switch 等拆成平台包或功能包发布。
 
 更多设计文档：
 
@@ -204,10 +204,10 @@ npm install -g @1agents/1agents --registry=https://registry.npmmirror.com
 
 **分发方式（重要）：**
 
-- 采用 **多包拆分**：`@1agents/1agents` 为入口；**`@1agents/core-<plat>` 等平台包直接上传 npm，包内即二进制**（`1agents` + `ttyd`）。
-- 安装时从 **npm registry** 拉取当前架构的 core / web / skills / cc-connect / cc-switch 等，**不需要**再访问 GitHub 下载大包。
+- 采用 **多包拆分**：`@1agents/1agents` 为入口；**`@1agents/core-<plat>` 等平台包直接上传 npm，包内即二进制**（`1agents` + `ttyd` + `hk`）。
+- 安装时从 **npm registry** 拉取当前架构的 core / web / cc-connect / cc-switch 等，**不需要**再访问 GitHub 下载大包。
 - 设计说明见 [`docs/features/npm-package-split/prd.md`](docs/features/npm-package-split/prd.md)。
-- `cloudflared` 可选（`-tunnel` 时按需）；1skills 随 `@1agents/skills` 安装，本机 **uv 优先 / pip 回退**。
+- `cloudflared` 可选（`-tunnel` 时按需）；HarnessKit 的 `hk` 随 core 平台包分发，不依赖本机 Python。
 
 > 历史包名 `@scottzx/1agents` 与「薄安装器 + GitHub Release 下载」方案 **已废弃**，请改用 `@1agents/1agents`。
 
@@ -325,7 +325,7 @@ make submodules
 
 - [cc-switch](https://github.com/farion1231/cc-switch) (MIT)
 - [cc-switch-cli](https://github.com/SaladDay/cc-switch-cli) (MIT)
-- [skill-manager](https://github.com/mode-io/skill-manager) (MIT)
+- [HarnessKit](https://github.com/RealZST/HarnessKit) (Apache-2.0；1agents 使用受控 Fork)
 - [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) (BSD-3)
 - [BurntSushi/toml](https://github.com/BurntSushi/toml) (MIT)
 - [creack/pty](https://github.com/creack/pty) (MIT)

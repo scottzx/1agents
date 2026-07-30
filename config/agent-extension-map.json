@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "mappings": [
+    {"oneAgents": "claudecode", "harnessKit": "claude", "deployment": true},
+    {"oneAgents": "codex", "harnessKit": "codex", "deployment": true},
+    {"oneAgents": "grok-build", "harnessKit": "grok", "deployment": true},
+    {"oneAgents": "gemini", "harnessKit": "gemini", "deployment": true},
+    {"oneAgents": "cursor", "harnessKit": "cursor", "deployment": true},
+    {"oneAgents": "opencode", "harnessKit": "opencode", "deployment": true},
+    {"oneAgents": "pi", "harnessKit": "omp", "deployment": true},
+    {"oneAgents": "antigravity", "harnessKit": "antigravity", "deployment": true},
+    {"oneAgents": "openclaw", "harnessKit": "openclaw", "deployment": true},
+    {"oneAgents": "hermes", "harnessKit": "hermes", "deployment": true},
+    {
+      "oneAgents": "acp",
+      "harnessKit": null,
+      "deployment": false,
+      "reason": "No verified native extension contract."
+    },
+    {
+      "oneAgents": "devin",
+      "harnessKit": null,
+      "deployment": false,
+      "reason": "No verified native extension contract."
+    },
+    {
+      "oneAgents": "iflow",
+      "harnessKit": null,
+      "deployment": false,
+      "reason": "No verified native extension contract."
+    },
+    {
+      "oneAgents": "kimi",
+      "harnessKit": null,
+      "deployment": false,
+      "reason": "No verified native extension contract."
+    },
+    {
+      "oneAgents": "qoder",
+      "harnessKit": null,
+      "deployment": false,
+      "reason": "No verified native extension contract."
+    },
+    {
+      "oneAgents": "tmux",
+      "harnessKit": null,
+      "deployment": false,
+      "reason": "Execution transport, not an extension-capable Agent."
+    },
+    {
+      "oneAgents": "openhands",
+      "harnessKit": null,
+      "deployment": false,
+      "reason": "No verified native extension contract."
+    },
+    {
+      "oneAgents": "trae",
+      "harnessKit": null,
+      "deployment": false,
+      "reason": "No verified native extension contract."
+    }
+  ]
+}

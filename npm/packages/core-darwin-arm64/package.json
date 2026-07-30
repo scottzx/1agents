@@ -1,7 +1,7 @@
 {
   "name": "@1agents/core-darwin-arm64",
   "version": "0.0.0-dev",
-  "description": "Core 1agents + ttyd binaries (darwin-arm64)",
+  "description": "Core 1agents + ttyd + HarnessKit binaries (darwin-arm64)",
   "license": "MIT",
   "os": [
     "darwin"
@@ -11,6 +11,8 @@
   ],
   "files": [
     "bin/",
+    "config/",
+    "licenses/",
     "package.json",
     "README.md"
   ],
