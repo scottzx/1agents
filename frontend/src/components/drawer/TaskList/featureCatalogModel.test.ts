@@ -4,6 +4,7 @@ import test from 'node:test';
 import type { FeatureCatalog, FeatureNode } from '@1agents/core/types/featureCatalog';
 import {
     buildFeatureTree,
+    collapsibleFeatureModuleIds,
     deliveryModulePathsByItem,
     featureModulePathsForItem,
     filterFeatureTree,
@@ -11,6 +12,7 @@ import {
     formatFeatureError,
     linkedFeatureEntries,
     MAX_FEATURE_MODULE_DEPTH,
+    normalizeCollapsedFeatureIds,
     resolveFeatureDrop,
     siblingNodes,
     validFeatureParents,
@@ -48,6 +50,20 @@ test('builds complete recursive paths and keeps server sibling order', () => {
     assert.equal(login?.moduleDepth, 3);
     assert.deepEqual(sms?.path, ['用户与权限', '账号', '登录', '短信登录']);
     assert.ok((flat.indexOf(sms!) ?? -1) < (flat.indexOf(password!) ?? -1));
+});
+
+test('computes deterministic collapse sets for all and requested tree depths', () => {
+    const tree = buildFeatureTree(nodes);
+
+    assert.deepEqual(collapsibleFeatureModuleIds(tree), ['root', 'account', 'login']);
+    assert.deepEqual(collapsibleFeatureModuleIds(tree, 2), ['account', 'login']);
+    assert.deepEqual(collapsibleFeatureModuleIds(tree, 3), ['login']);
+    assert.deepEqual(collapsibleFeatureModuleIds(tree, 4), []);
+});
+
+test('normalizes persisted collapse ids from local storage', () => {
+    assert.deepEqual(normalizeCollapsedFeatureIds(['root', 'account', 'root', '', 12, null]), ['root', 'account']);
+    assert.deepEqual(normalizeCollapsedFeatureIds({ root: true }), []);
 });
 
 test('filters a feature tree without losing the ancestors that provide context', () => {

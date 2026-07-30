@@ -20,6 +20,11 @@ export const zhCN: Record<string, string> = {
     'common.new': '+ 新建',
     'common.closeTab': '关闭标签页',
     'common.openBrowserTab': '打开新浏览器标签页',
+    'feature.actions.moveUp': '上移',
+    'feature.actions.moveDown': '下移',
+    'feature.actions.addModule': '添加子模块',
+    'feature.actions.addFeature': '添加功能点',
+    'feature.actions.moveCard': '移动卡片',
 
     // ── Workspace statuses (types.ts) ─────────────────────────────────────
     'workspace.status.active': '进行中',
@@ -1963,6 +1968,11 @@ export const enUS: Record<string, string> = {
     'common.new': '+ New',
     'common.closeTab': 'Close tab',
     'common.openBrowserTab': 'Open new browser tab',
+    'feature.actions.moveUp': 'Move up',
+    'feature.actions.moveDown': 'Move down',
+    'feature.actions.addModule': 'Add child module',
+    'feature.actions.addFeature': 'Add feature point',
+    'feature.actions.moveCard': 'Move card',
 
     // ── Workspace statuses (types.ts) ─────────────────────────────────────
     'workspace.status.active': 'Active',

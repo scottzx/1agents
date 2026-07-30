@@ -88,6 +88,28 @@ export const featureCatalogService = {
         );
     },
 
+    async moveItem(
+        workspaceId: string,
+        fromFeatureId: string,
+        toFeatureId: string,
+        itemId: string,
+        relation: FeatureItemRelation
+    ): Promise<void> {
+        await ok(
+            await apiFetch('/agent/feature-catalog/batch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    workspace_id: workspaceId,
+                    operations: [
+                        { op: 'link', featureId: toFeatureId, itemId, relation },
+                        { op: 'unlink', featureId: fromFeatureId, itemId, relation },
+                    ],
+                }),
+            })
+        );
+    },
+
     async milestoneDiff(workspaceId: string, featureId: string): Promise<FeatureMilestoneSyncPreview> {
         const res = await ok(
             await apiFetch(`/agent/feature-catalog/${q(featureId)}/milestone-diff?workspace_id=${q(workspaceId)}`)

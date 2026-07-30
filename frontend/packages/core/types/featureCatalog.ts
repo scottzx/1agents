@@ -27,6 +27,7 @@ export interface FeatureNode {
     kind: FeatureNodeKind;
     title: string;
     description?: string;
+    documents?: string[];
     targetMilestoneId?: string;
     position: number;
     createdAt: string;
@@ -99,6 +100,7 @@ export interface CreateFeatureNodeInput {
     kind: FeatureNodeKind;
     title: string;
     description?: string;
+    documents?: string[];
     targetMilestoneId?: string;
     position?: number;
 }
@@ -107,6 +109,7 @@ export interface UpdateFeatureNodeInput {
     parentId?: string;
     title?: string;
     description?: string;
+    documents?: string[];
     targetMilestoneId?: string;
     position?: number;
 }

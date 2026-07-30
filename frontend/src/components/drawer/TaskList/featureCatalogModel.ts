@@ -65,6 +65,20 @@ export function flattenFeatureTree(tree: FeatureTreeNode[]): FeatureTreeNode[] {
     return result;
 }
 
+/** Module ids that must be collapsed to keep the tree visible through the
+ * requested level. Level-one modules remain open for "collapse to 2", while
+ * level-two modules close over their deeper descendants. */
+export function collapsibleFeatureModuleIds(tree: FeatureTreeNode[], minimumDepth = 1): string[] {
+    return flattenFeatureTree(tree)
+        .filter(entry => entry.node.kind === 'module' && entry.children.length > 0 && entry.moduleDepth >= minimumDepth)
+        .map(entry => entry.node.id);
+}
+
+export function normalizeCollapsedFeatureIds(value: unknown): string[] {
+    if (!Array.isArray(value)) return [];
+    return [...new Set(value.filter((id): id is string => typeof id === 'string' && id !== ''))];
+}
+
 /** Keep matching nodes together with every ancestor required to preserve the
  * catalog hierarchy. This powers search, status lenses, and version-context
  * jumps without flattening results into a second navigation model. */

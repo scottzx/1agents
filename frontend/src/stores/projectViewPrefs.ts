@@ -56,6 +56,8 @@ export interface ViewPrefs {
     groupBy: string;
     collapsed: string[];
     showHierarchy: boolean;
+    // Feature catalog tree nodes collapsed in this workspace.
+    featureCatalogCollapsed: string[];
     // Per-surface DataGrid prefs. Surface ids are free-form strings; today
     // the two consumers pass 'tasks' and 'sessions'.
     grids?: {
@@ -76,6 +78,7 @@ export const DEFAULT_PREFS: ViewPrefs = {
     groupBy: 'none',
     collapsed: [],
     showHierarchy: true,
+    featureCatalogCollapsed: [],
 };
 
 const STORAGE_KEY = '1agents-project-view-prefs';

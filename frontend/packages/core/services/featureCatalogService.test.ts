@@ -65,3 +65,47 @@ test('feature catalog history service maps all five version endpoints and restor
         globalThis.fetch = originalFetch;
     }
 });
+
+test('feature catalog item move uses one atomic batch request', async () => {
+    const originalFetch = globalThis.fetch;
+    let request: { url: string; method: string; body: Record<string, unknown> } | undefined;
+    backendTarget.value = { mode: 'direct' };
+    setActiveDevice(null);
+    globalThis.fetch = async (input, init) => {
+        request = {
+            url: String(input),
+            method: init?.method ?? 'GET',
+            body: JSON.parse(String(init?.body)),
+        };
+        return new Response(JSON.stringify({ results: [] }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+        });
+    };
+    try {
+        await featureCatalogService.moveItem('project-1', 'feature-a', 'feature-b', 'task-1', 'delivery');
+        assert.deepEqual(request, {
+            url: '/api/agent/feature-catalog/batch',
+            method: 'POST',
+            body: {
+                workspace_id: 'project-1',
+                operations: [
+                    {
+                        op: 'link',
+                        featureId: 'feature-b',
+                        itemId: 'task-1',
+                        relation: 'delivery',
+                    },
+                    {
+                        op: 'unlink',
+                        featureId: 'feature-a',
+                        itemId: 'task-1',
+                        relation: 'delivery',
+                    },
+                ],
+            },
+        });
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+});

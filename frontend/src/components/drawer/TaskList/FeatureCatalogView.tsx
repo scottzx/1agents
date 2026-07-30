@@ -1,5 +1,5 @@
 import { Fragment, h } from 'preact';
-import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import { featureCatalogService } from '@1agents/core/services/featureCatalogService';
 import type {
@@ -14,18 +14,24 @@ import type {
 import type { Milestone, ProjectItem } from './types';
 import * as sessionStore from '../../../stores/sessionStore';
 import * as taskNav from '../../../stores/taskNavStore';
+import * as tabsStore from '../../../stores/tabsStore';
 import * as ui from '../../../stores/uiStore';
+import * as viewPrefs from '../../../stores/projectViewPrefs';
+import { FsRowActionsMenu, type FsRowAction } from '../FsRowActionsMenu';
 import { buildFeatureBreakdownPrompt, buildFeatureCatalogGeneratePrompt } from './aiPMWorkflow';
 import { FeatureNodeForm } from './FeatureNodeForm';
 import { FeatureCatalogHistoryDialog } from './FeatureCatalogHistoryDialog';
+import { TaskPreviewDrawer } from './TaskPreviewDrawer';
 import {
     buildFeatureTree,
+    collapsibleFeatureModuleIds,
     type FeatureDropPlacement,
     type FeatureDropTarget,
     filterFeatureTree,
     flattenFeatureTree,
     formatFeatureError,
     MAX_FEATURE_MODULE_DEPTH,
+    normalizeCollapsedFeatureIds,
     resolveFeatureDrop,
     siblingNodes,
     type FeatureTreeNode,
@@ -47,8 +53,22 @@ interface CreateState {
     parentId: string;
 }
 
+interface MoveLinkState {
+    item: ProjectItem;
+    relation: FeatureItemRelation;
+    fromFeatureId: string;
+}
+
 const EMPTY_CATALOG: FeatureCatalog = { nodes: [], links: [] };
-const EMPTY_COLLAPSED_IDS = new Set<string>();
+const FEATURE_ACTION_ICONS = {
+    rename: <span aria-hidden="true">✎</span>,
+    up: <span aria-hidden="true">↑</span>,
+    down: <span aria-hidden="true">↓</span>,
+    module: <span aria-hidden="true">▣</span>,
+    feature: <span aria-hidden="true">•</span>,
+    move: <span aria-hidden="true">↪</span>,
+    remove: <span aria-hidden="true">×</span>,
+} as const;
 const PROGRESS_LABELS = {
     unplanned: '未拆解',
     pending: '待开始',
@@ -91,6 +111,15 @@ function dropPlacementForEvent(entry: FeatureTreeNode, event: DragEvent): Featur
     return 'inside';
 }
 
+function featureDocumentName(path: string): string {
+    return path.split(/[\\/]/).filter(Boolean).at(-1) || path;
+}
+
+function closeParentDetails(event: MouseEvent): void {
+    const details = (event.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null;
+    if (details) details.open = false;
+}
+
 function TreeRow({
     entry,
     selectedId,
@@ -106,6 +135,11 @@ function TreeRow({
     onDragOver,
     onDragLeave,
     onDrop,
+    nodes,
+    onRename,
+    onMove,
+    onCreateChild,
+    onDelete,
 }: {
     entry: FeatureTreeNode;
     selectedId: string | null;
@@ -121,11 +155,65 @@ function TreeRow({
     onDragOver: (entry: FeatureTreeNode, event: DragEvent) => void;
     onDragLeave: (entry: FeatureTreeNode, event: DragEvent) => void;
     onDrop: (entry: FeatureTreeNode, event: DragEvent) => void;
+    nodes: FeatureNode[];
+    onRename: (node: FeatureNode) => void;
+    onMove: (node: FeatureNode, offset: -1 | 1) => void;
+    onCreateChild: (kind: FeatureNodeKind, parent: FeatureNode) => void;
+    onDelete: (node: FeatureNode) => void;
 }) {
     const isFeature = entry.node.kind === 'feature';
     const isCollapsed = !filtering && collapsedIds.has(entry.node.id);
+    const siblings = siblingNodes(nodes, entry.node.parentId);
+    const siblingIndex = siblings.findIndex(node => node.id === entry.node.id);
     const activePlacement =
         dropTarget?.targetId === entry.node.id && dropTarget.placement !== 'root' ? dropTarget.placement : '';
+    const actions: FsRowAction[] = [
+        {
+            id: 'rename',
+            labelKey: 'common.rename',
+            icon: FEATURE_ACTION_ICONS.rename,
+            onSelect: () => onRename(entry.node),
+        },
+    ];
+    if (siblingIndex > 0) {
+        actions.push({
+            id: 'move-up',
+            labelKey: 'feature.actions.moveUp',
+            icon: FEATURE_ACTION_ICONS.up,
+            onSelect: () => onMove(entry.node, -1),
+        });
+    }
+    if (siblingIndex >= 0 && siblingIndex < siblings.length - 1) {
+        actions.push({
+            id: 'move-down',
+            labelKey: 'feature.actions.moveDown',
+            icon: FEATURE_ACTION_ICONS.down,
+            onSelect: () => onMove(entry.node, 1),
+        });
+    }
+    if (entry.node.kind === 'module') {
+        if (entry.moduleDepth < MAX_FEATURE_MODULE_DEPTH) {
+            actions.push({
+                id: 'add-module',
+                labelKey: 'feature.actions.addModule',
+                icon: FEATURE_ACTION_ICONS.module,
+                onSelect: () => onCreateChild('module', entry.node),
+            });
+        }
+        actions.push({
+            id: 'add-feature',
+            labelKey: 'feature.actions.addFeature',
+            icon: FEATURE_ACTION_ICONS.feature,
+            onSelect: () => onCreateChild('feature', entry.node),
+        });
+    }
+    actions.push({
+        id: 'delete',
+        labelKey: 'common.delete',
+        icon: FEATURE_ACTION_ICONS.remove,
+        danger: true,
+        onSelect: () => onDelete(entry.node),
+    });
     const activateRow = (event: KeyboardEvent) => {
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
@@ -140,8 +228,18 @@ function TreeRow({
                     draggedId === entry.node.id ? ' dragging' : ''
                 }`}
                 style={`--feature-depth:${Math.max(0, entry.path.length - 1)}`}
+                draggable={!dragDisabled}
                 onClick={() => onSelect(entry.node.id)}
                 onKeyDown={activateRow}
+                onDragStart={(event: DragEvent) => {
+                    const target = event.target;
+                    if (target instanceof Element && target.closest('button')) {
+                        event.preventDefault();
+                        return;
+                    }
+                    onDragStart(entry.node.id, event);
+                }}
+                onDragEnd={onDragEnd}
                 onDragOver={(event: DragEvent) => onDragOver(entry, event)}
                 onDragLeave={(event: DragEvent) => onDragLeave(entry, event)}
                 onDrop={(event: DragEvent) => onDrop(entry, event)}
@@ -165,23 +263,18 @@ function TreeRow({
                         {entry.children.length === 0 ? '·' : isCollapsed ? '▸' : '▾'}
                     </button>
                 )}
-                <button
-                    type="button"
-                    class="feature-tree-drag-handle"
-                    draggable={!dragDisabled}
-                    disabled={dragDisabled}
-                    aria-label={`拖动${entry.node.title}`}
-                    title={dragDisabled ? '清除筛选后可拖动' : `拖动${entry.node.title}`}
-                    onClick={(event: MouseEvent) => event.stopPropagation()}
-                    onDragStart={(event: DragEvent) => onDragStart(entry.node.id, event)}
-                    onDragEnd={onDragEnd}
-                >
-                    ⠿
-                </button>
                 <span class="feature-tree-copy">
                     <span class="feature-tree-title">{entry.node.title}</span>
                 </span>
                 {entry.node.progress && <span class="feature-tree-progress">{progressSummary(entry.node)}</span>}
+                <span class="feature-tree-actions" onClick={(event: MouseEvent) => event.stopPropagation()}>
+                    <FsRowActionsMenu
+                        entry={{ path: entry.node.id }}
+                        items={actions}
+                        language={ui.language.value}
+                        triggerClassName="feature-tree-actions-trigger"
+                    />
+                </span>
             </div>
             {entry.children.length > 0 && !isCollapsed && (
                 <ul>
@@ -202,6 +295,11 @@ function TreeRow({
                             onDragOver={onDragOver}
                             onDragLeave={onDragLeave}
                             onDrop={onDrop}
+                            nodes={nodes}
+                            onRename={onRename}
+                            onMove={onMove}
+                            onCreateChild={onCreateChild}
+                            onDelete={onDelete}
                         />
                     ))}
                 </ul>
@@ -234,10 +332,18 @@ export function FeatureCatalogView({
     const [editing, setEditing] = useState(false);
     const [query, setQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState<'all' | 'unplanned' | 'risk'>('all');
-    const [collapsedByProject, setCollapsedByProject] = useState<Map<string, Set<string>>>(() => new Map());
     const [draggedId, setDraggedId] = useState<string | null>(null);
     const [dropTarget, setDropTarget] = useState<FeatureDropTarget | null>(null);
     const [historyOpen, setHistoryOpen] = useState(false);
+    const [renameTarget, setRenameTarget] = useState<FeatureNode | null>(null);
+    const [renameValue, setRenameValue] = useState('');
+    const [documentPath, setDocumentPath] = useState('');
+    const [previewItem, setPreviewItem] = useState<ProjectItem | null>(null);
+    const [moveLink, setMoveLink] = useState<MoveLinkState | null>(null);
+    const [moveTargetId, setMoveTargetId] = useState('');
+    const [treePanePercent, setTreePanePercent] = useState(50);
+    const catalogViewRef = useRef<HTMLDivElement | null>(null);
+    const resizingTreePane = useRef(false);
 
     const tree = useMemo(() => buildFeatureTree(catalog.nodes), [catalog.nodes]);
     const flatTree = useMemo(() => flattenFeatureTree(tree), [tree]);
@@ -245,7 +351,9 @@ export function FeatureCatalogView({
     const selectedEntry = selectedId ? entryById.get(selectedId) : undefined;
     const selectedNode = selectedEntry?.node;
     const filtersActive = query.trim() !== '' || statusFilter !== 'all' || !!versionFilterMilestoneId;
-    const collapsedIds = collapsedByProject.get(workspaceId) ?? EMPTY_COLLAPSED_IDS;
+    const storedCollapsedIds = viewPrefs.getPrefs(workspaceId).featureCatalogCollapsed;
+    const persistedCollapsedIds = useMemo(() => normalizeCollapsedFeatureIds(storedCollapsedIds), [storedCollapsedIds]);
+    const collapsedIds = new Set(persistedCollapsedIds);
     const dragDisabled = busy || filtersActive || ui.isMobile.value;
     const filteredTree = useMemo(() => {
         const cleanQuery = query.trim().toLocaleLowerCase();
@@ -268,15 +376,12 @@ export function FeatureCatalogView({
     const versionFilterMilestone = milestones.find(milestone => milestone.id === versionFilterMilestoneId);
 
     useEffect(() => {
+        if (loading) return;
         const validIDs = new Set(catalog.nodes.filter(node => node.kind === 'module').map(node => node.id));
-        setCollapsedByProject(current => {
-            const existing = current.get(workspaceId);
-            if (!existing || [...existing].every(id => validIDs.has(id))) return current;
-            const next = new Map(current);
-            next.set(workspaceId, new Set([...existing].filter(id => validIDs.has(id))));
-            return next;
-        });
-    }, [catalog.nodes, workspaceId]);
+        const validCollapsedIds = persistedCollapsedIds.filter(id => validIDs.has(id));
+        if (validCollapsedIds.length === persistedCollapsedIds.length) return;
+        viewPrefs.updatePrefs(workspaceId, { featureCatalogCollapsed: validCollapsedIds });
+    }, [catalog.nodes, loading, persistedCollapsedIds, workspaceId]);
 
     useEffect(() => {
         if (!filtersActive && !busy) return;
@@ -306,6 +411,12 @@ export function FeatureCatalogView({
         setStatusFilter('all');
         setDraggedId(null);
         setDropTarget(null);
+        setRenameTarget(null);
+        setRenameValue('');
+        setDocumentPath('');
+        setPreviewItem(null);
+        setMoveLink(null);
+        setMoveTargetId('');
         setLoading(true);
         setError('');
         featureCatalogService
@@ -335,6 +446,9 @@ export function FeatureCatalogView({
         setDeliverySelection('');
         setSyncPreview(null);
         setEditing(false);
+        setDocumentPath('');
+        setMoveLink(null);
+        setMoveTargetId('');
     }, [selectedId]);
 
     useEffect(() => {
@@ -407,17 +521,35 @@ export function FeatureCatalogView({
 
     const toggleCollapsed = useCallback(
         (id: string) => {
-            setCollapsedByProject(current => {
-                const next = new Map(current);
-                const projectIDs = new Set(next.get(workspaceId) ?? []);
-                if (projectIDs.has(id)) projectIDs.delete(id);
-                else projectIDs.add(id);
-                next.set(workspaceId, projectIDs);
-                return next;
-            });
+            const projectIDs = new Set(
+                normalizeCollapsedFeatureIds(viewPrefs.getPrefs(workspaceId).featureCatalogCollapsed)
+            );
+            if (projectIDs.has(id)) projectIDs.delete(id);
+            else projectIDs.add(id);
+            viewPrefs.updatePrefs(workspaceId, { featureCatalogCollapsed: [...projectIDs] });
         },
         [workspaceId]
     );
+
+    const setCollapsedIds = useCallback(
+        (ids: Iterable<string>) => {
+            viewPrefs.updatePrefs(workspaceId, { featureCatalogCollapsed: [...ids] });
+        },
+        [workspaceId]
+    );
+
+    const collapseAll = useCallback(() => {
+        setCollapsedIds(collapsibleFeatureModuleIds(tree));
+    }, [tree, setCollapsedIds]);
+
+    const collapseToDepth = useCallback(
+        (depth: number) => {
+            setCollapsedIds(collapsibleFeatureModuleIds(tree, depth));
+        },
+        [tree, setCollapsedIds]
+    );
+
+    const expandAll = useCallback(() => setCollapsedIds([]), [setCollapsedIds]);
 
     const clearDrag = useCallback(() => {
         setDraggedId(null);
@@ -489,15 +621,12 @@ export function FeatureCatalogView({
                 return;
             }
             if (target.placement === 'inside' && target.targetId) {
-                setCollapsedByProject(current => {
-                    const existing = current.get(workspaceId);
-                    if (!existing?.has(target.targetId!)) return current;
-                    const next = new Map(current);
-                    const projectIDs = new Set(existing);
-                    projectIDs.delete(target.targetId!);
-                    next.set(workspaceId, projectIDs);
-                    return next;
-                });
+                const projectIDs = new Set(
+                    normalizeCollapsedFeatureIds(viewPrefs.getPrefs(workspaceId).featureCatalogCollapsed)
+                );
+                if (projectIDs.delete(target.targetId)) {
+                    viewPrefs.updatePrefs(workspaceId, { featureCatalogCollapsed: [...projectIDs] });
+                }
             }
             try {
                 await loadCatalog();
@@ -560,6 +689,16 @@ export function FeatureCatalogView({
         setMobileDetailOpen(true);
     };
 
+    const openCreateForParent = (kind: FeatureNodeKind, parent: FeatureNode) => {
+        setSelectedId(parent.id);
+        openCreate(kind, parent.id);
+    };
+
+    const openRename = (node: FeatureNode) => {
+        setRenameTarget(node);
+        setRenameValue(node.title);
+    };
+
     const selectNode = (id: string) => {
         setSelectedId(id);
         setCreateState(null);
@@ -590,18 +729,34 @@ export function FeatureCatalogView({
         if (ok) setEditing(false);
     };
 
-    const moveSelected = async (offset: -1 | 1) => {
-        if (!selectedNode) return;
-        const siblings = siblingNodes(catalog.nodes, selectedNode.parentId);
-        const index = siblings.findIndex(node => node.id === selectedNode.id);
+    const moveNode = async (node: FeatureNode, offset: -1 | 1) => {
+        const siblings = siblingNodes(catalog.nodes, node.parentId);
+        const index = siblings.findIndex(sibling => sibling.id === node.id);
         const target = index + offset;
         if (index < 0 || target < 0 || target >= siblings.length) return;
         await runMutation(
             async () => {
-                await featureCatalogService.update(workspaceId, selectedNode.id, { position: target });
+                await featureCatalogService.update(workspaceId, node.id, { position: target });
             },
             offset < 0 ? '已上移。' : '已下移。'
         );
+    };
+
+    const moveSelected = async (offset: -1 | 1) => {
+        if (selectedNode) await moveNode(selectedNode, offset);
+    };
+
+    const renameNode = async () => {
+        if (!renameTarget) return;
+        const title = renameValue.trim();
+        if (!title || title === renameTarget.title) {
+            setRenameTarget(null);
+            return;
+        }
+        const ok = await runMutation(async () => {
+            await featureCatalogService.update(workspaceId, renameTarget.id, { title });
+        }, '节点已重命名。');
+        if (ok) setRenameTarget(null);
     };
 
     const removeNode = async () => {
@@ -642,6 +797,76 @@ export function FeatureCatalogView({
             },
             relation === 'source' ? '来源关联已移除。' : '交付任务关联已移除。'
         );
+    };
+
+    const updateDocuments = async (documents: string[], successMessage: string) => {
+        if (!selectedNode) return false;
+        return runMutation(async () => {
+            await featureCatalogService.update(workspaceId, selectedNode.id, { documents });
+        }, successMessage);
+    };
+
+    const addDocument = async () => {
+        if (!selectedNode) return;
+        const path = documentPath.trim();
+        if (!path || selectedNode.documents?.includes(path)) return;
+        const ok = await updateDocuments([...(selectedNode.documents ?? []), path], '文档已关联。');
+        if (ok) setDocumentPath('');
+    };
+
+    const removeDocument = async (path: string) => {
+        if (!selectedNode) return;
+        await updateDocuments(
+            (selectedNode.documents ?? []).filter(document => document !== path),
+            '文档关联已移除。'
+        );
+    };
+
+    const openDocument = (path: string) => {
+        void tabsStore.openPreviewTab(path, featureDocumentName(path));
+    };
+
+    const moveLinkedItem = async () => {
+        if (!moveLink || !moveTargetId || moveTargetId === moveLink.fromFeatureId) return;
+        const ok = await runMutation(async () => {
+            await featureCatalogService.moveItem(
+                workspaceId,
+                moveLink.fromFeatureId,
+                moveTargetId,
+                moveLink.item.id,
+                moveLink.relation
+            );
+        }, '卡片已移动到新的功能点。');
+        if (ok) {
+            setMoveLink(null);
+            setMoveTargetId('');
+        }
+    };
+
+    const updateTreePaneWidth = (clientX: number) => {
+        const bounds = catalogViewRef.current?.getBoundingClientRect();
+        if (!bounds || bounds.width <= 0) return;
+        const next = Math.max(32, Math.min(68, ((clientX - bounds.left) / bounds.width) * 100));
+        setTreePanePercent(next);
+    };
+
+    const startTreePaneResize = (event: PointerEvent) => {
+        if (ui.isMobile.value) return;
+        resizingTreePane.current = true;
+        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+        updateTreePaneWidth(event.clientX);
+        event.preventDefault();
+    };
+
+    const continueTreePaneResize = (event: PointerEvent) => {
+        if (!resizingTreePane.current) return;
+        updateTreePaneWidth(event.clientX);
+    };
+
+    const stopTreePaneResize = (event: PointerEvent) => {
+        resizingTreePane.current = false;
+        const handle = event.currentTarget as HTMLElement;
+        if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
     };
 
     const generateWithPM = () => {
@@ -689,8 +914,9 @@ export function FeatureCatalogView({
 
     const siblings = selectedNode ? siblingNodes(catalog.nodes, selectedNode.parentId) : [];
     const selectedIndex = selectedNode ? siblings.findIndex(node => node.id === selectedNode.id) : -1;
-    const directChildren = selectedNode ? catalog.nodes.filter(node => node.parentId === selectedNode.id) : [];
     const linkedItems = selectedNode ? catalog.links.filter(link => link.featureId === selectedNode.id) : [];
+    const deleteTargetChildren = deleteTarget ? catalog.nodes.filter(node => node.parentId === deleteTarget.id) : [];
+    const deleteTargetLinks = deleteTarget ? catalog.links.filter(link => link.featureId === deleteTarget.id) : [];
     const itemByID = new Map(items.map(item => [item.id, item]));
     const visibleLinkedItems = linkedItems.filter(link => itemByID.has(link.itemId));
     const sourceLinks = visibleLinkedItems.filter(link => link.relation === 'source');
@@ -713,6 +939,7 @@ export function FeatureCatalogView({
                   .filter((item): item is ProjectItem => !!item && (item.milestone ?? '') !== targetMilestoneName)
             : [];
     const detailOpen = mobileDetailOpen || createState !== null;
+    const featurePointEntries = flatTree.filter(entry => entry.node.kind === 'feature');
 
     const breakdownWithPM = () => {
         if (!selectedNode || selectedNode.kind !== 'feature' || !selectedEntry) return;
@@ -782,9 +1009,24 @@ export function FeatureCatalogView({
                 <div class="feature-trace-list">
                     {links.map(link => {
                         const item = itemByID.get(link.itemId)!;
+                        const moveActions: FsRowAction[] = [
+                            {
+                                id: 'move-card',
+                                labelKey: 'feature.actions.moveCard',
+                                icon: FEATURE_ACTION_ICONS.move,
+                                onSelect: () => {
+                                    setMoveLink({
+                                        item,
+                                        relation,
+                                        fromFeatureId: selectedNode!.id,
+                                    });
+                                    setMoveTargetId('');
+                                },
+                            },
+                        ];
                         return (
                             <div key={`${link.itemId}:${relation}`} class="feature-trace-row">
-                                <span>
+                                <button type="button" class="feature-trace-main" onClick={() => setPreviewItem(item)}>
                                     <strong>
                                         {item.number ? `#${item.number} ` : ''}
                                         {item.title}
@@ -796,15 +1038,28 @@ export function FeatureCatalogView({
                                               ? '缺陷'
                                               : item.status}
                                     </small>
-                                </span>
-                                <button
-                                    type="button"
-                                    title="移除关联"
-                                    disabled={busy}
-                                    onClick={() => void unlinkItem(relation, item.id)}
-                                >
-                                    ×
                                 </button>
+                                <span
+                                    class="feature-trace-actions"
+                                    onClick={(event: MouseEvent) => event.stopPropagation()}
+                                >
+                                    <button
+                                        type="button"
+                                        class="feature-trace-remove"
+                                        title="移除关联"
+                                        aria-label={`移除“${item.title}”关联`}
+                                        disabled={busy}
+                                        onClick={() => void unlinkItem(relation, item.id)}
+                                    >
+                                        ×
+                                    </button>
+                                    <FsRowActionsMenu
+                                        entry={{ path: item.id }}
+                                        items={moveActions}
+                                        language={ui.language.value}
+                                        triggerClassName="feature-trace-more-trigger"
+                                    />
+                                </span>
                             </div>
                         );
                     })}
@@ -862,12 +1117,60 @@ export function FeatureCatalogView({
                         + 一级模块
                     </button>
                     <details class="feature-export-menu">
-                        <summary aria-label="导出功能蓝图">···</summary>
+                        <summary aria-label="更多功能蓝图操作">···</summary>
                         <div>
-                            <button type="button" disabled={busy} onClick={() => void handleExport('markdown')}>
+                            <button
+                                type="button"
+                                disabled={busy}
+                                onClick={(event: MouseEvent) => {
+                                    collapseAll();
+                                    closeParentDetails(event);
+                                }}
+                            >
+                                全部折叠
+                            </button>
+                            {[2, 3, 4, 5, 6, 7, 8].map(depth => (
+                                <button
+                                    type="button"
+                                    key={depth}
+                                    disabled={busy}
+                                    onClick={(event: MouseEvent) => {
+                                        collapseToDepth(depth);
+                                        closeParentDetails(event);
+                                    }}
+                                >
+                                    折叠到 {depth} 级
+                                </button>
+                            ))}
+                            <button
+                                type="button"
+                                disabled={busy}
+                                onClick={(event: MouseEvent) => {
+                                    expandAll();
+                                    closeParentDetails(event);
+                                }}
+                            >
+                                全部展开
+                            </button>
+                            <span class="feature-menu-separator" />
+                            <button
+                                type="button"
+                                disabled={busy}
+                                onClick={(event: MouseEvent) => {
+                                    closeParentDetails(event);
+                                    void handleExport('markdown');
+                                }}
+                            >
                                 导出 Markdown
                             </button>
-                            <button type="button" disabled={busy} onClick={() => void handleExport('json')}>
+                            <button
+                                type="button"
+                                disabled={busy}
+                                onClick={(event: MouseEvent) => {
+                                    closeParentDetails(event);
+                                    void handleExport('json');
+                                }}
+                            >
                                 导出 JSON
                             </button>
                         </div>
@@ -888,7 +1191,11 @@ export function FeatureCatalogView({
                 </div>
             )}
 
-            <div class={`feature-catalog-view${detailOpen ? ' detail-open' : ''}`}>
+            <div
+                ref={catalogViewRef}
+                class={`feature-catalog-view${detailOpen ? ' detail-open' : ''}`}
+                style={`--feature-tree-width:${treePanePercent}%`}
+            >
                 <section class="feature-catalog-tree-pane" aria-label="功能蓝图树">
                     <div class="feature-tree-tools">
                         <input
@@ -955,6 +1262,11 @@ export function FeatureCatalogView({
                                     onDragOver={handleDragOver}
                                     onDragLeave={handleDragLeave}
                                     onDrop={handleDrop}
+                                    nodes={catalog.nodes}
+                                    onRename={openRename}
+                                    onMove={(node, offset) => void moveNode(node, offset)}
+                                    onCreateChild={openCreateForParent}
+                                    onDelete={setDeleteTarget}
                                 />
                             ))}
                         </ul>
@@ -983,6 +1295,32 @@ export function FeatureCatalogView({
                         </div>
                     )}
                 </section>
+
+                <div
+                    class="feature-catalog-resizer"
+                    role="separator"
+                    aria-label="调整功能列表和功能详情宽度"
+                    aria-orientation="vertical"
+                    aria-valuemin={32}
+                    aria-valuemax={68}
+                    aria-valuenow={Math.round(treePanePercent)}
+                    tabIndex={0}
+                    onPointerDown={startTreePaneResize}
+                    onPointerMove={continueTreePaneResize}
+                    onPointerUp={stopTreePaneResize}
+                    onPointerCancel={stopTreePaneResize}
+                    onKeyDown={(event: KeyboardEvent) => {
+                        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'Home') return;
+                        event.preventDefault();
+                        if (event.key === 'Home') setTreePanePercent(50);
+                        else
+                            setTreePanePercent(current =>
+                                Math.max(32, Math.min(68, current + (event.key === 'ArrowLeft' ? -2 : 2)))
+                            );
+                    }}
+                >
+                    <span />
+                </div>
 
                 <section class="feature-catalog-detail-pane" aria-label="功能节点详情">
                     <button type="button" class="feature-mobile-back" onClick={closeMobileDetail}>
@@ -1086,6 +1424,72 @@ export function FeatureCatalogView({
                                     <p class="feature-read-description">
                                         {selectedNode.description || '尚未补充该节点的范围与边界。'}
                                     </p>
+
+                                    <section class="feature-documents" aria-label="关联文档">
+                                        <div class="feature-documents-heading">
+                                            <strong>关联文档</strong>
+                                            <span>{selectedNode.documents?.length ?? 0}</span>
+                                        </div>
+                                        {selectedNode.documents?.length ? (
+                                            <div class="feature-document-list">
+                                                {selectedNode.documents.map(path => (
+                                                    <div class="feature-document-row" key={path}>
+                                                        <button
+                                                            type="button"
+                                                            class="feature-document-open"
+                                                            title={path}
+                                                            onClick={() => openDocument(path)}
+                                                        >
+                                                            <span aria-hidden="true">▤</span>
+                                                            <span>
+                                                                <strong>{featureDocumentName(path)}</strong>
+                                                                <small>{path}</small>
+                                                            </span>
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            class="feature-document-remove"
+                                                            aria-label={`移除文档“${featureDocumentName(path)}”`}
+                                                            title="移除关联"
+                                                            disabled={busy}
+                                                            onClick={() => void removeDocument(path)}
+                                                        >
+                                                            ×
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p class="feature-documents-empty">
+                                                可关联项目根目录相对路径或绝对路径，点击后在右侧文件抽屉中预览。
+                                            </p>
+                                        )}
+                                        <div class="feature-document-add">
+                                            <input
+                                                type="text"
+                                                value={documentPath}
+                                                placeholder="例如 docs/spec.md 或 /绝对路径/spec.md"
+                                                aria-label="文档路径"
+                                                disabled={busy}
+                                                onInput={(event: Event) =>
+                                                    setDocumentPath((event.currentTarget as HTMLInputElement).value)
+                                                }
+                                                onKeyDown={(event: KeyboardEvent) => {
+                                                    if (event.key !== 'Enter') return;
+                                                    event.preventDefault();
+                                                    void addDocument();
+                                                }}
+                                            />
+                                            <button
+                                                type="button"
+                                                class="feature-btn secondary"
+                                                disabled={busy || !documentPath.trim()}
+                                                onClick={() => void addDocument()}
+                                            >
+                                                关联
+                                            </button>
+                                        </div>
+                                    </section>
 
                                     {selectedNode.progress && (
                                         <div class="feature-read-summary">
@@ -1236,6 +1640,106 @@ export function FeatureCatalogView({
                 </section>
             </div>
 
+            <TaskPreviewDrawer
+                open={previewItem !== null}
+                task={previewItem}
+                onClose={() => setPreviewItem(null)}
+                onOpenFull={taskId => taskNav.openTaskById(workspaceId, taskId)}
+            />
+            {renameTarget && (
+                <div class="ws-modal-overlay" onClick={() => !busy && setRenameTarget(null)}>
+                    <div class="ws-modal feature-rename-modal" onClick={(event: MouseEvent) => event.stopPropagation()}>
+                        <div class="ws-modal-header">
+                            <span>重命名{renameTarget.kind === 'module' ? '模块' : '功能点'}</span>
+                            <button class="ws-modal-close" onClick={() => setRenameTarget(null)} disabled={busy}>
+                                ✕
+                            </button>
+                        </div>
+                        <div class="ws-modal-body">
+                            <label>
+                                <span>名称</span>
+                                <input
+                                    type="text"
+                                    value={renameValue}
+                                    autoFocus
+                                    disabled={busy}
+                                    onInput={(event: Event) =>
+                                        setRenameValue((event.currentTarget as HTMLInputElement).value)
+                                    }
+                                    onKeyDown={(event: KeyboardEvent) => {
+                                        if (event.key === 'Escape') setRenameTarget(null);
+                                        if (event.key === 'Enter') {
+                                            event.preventDefault();
+                                            void renameNode();
+                                        }
+                                    }}
+                                />
+                            </label>
+                        </div>
+                        <div class="ws-modal-footer">
+                            <button class="ws-modal-cancel" onClick={() => setRenameTarget(null)} disabled={busy}>
+                                取消
+                            </button>
+                            <button
+                                class="ws-modal-confirm"
+                                onClick={() => void renameNode()}
+                                disabled={busy || !renameValue.trim()}
+                            >
+                                {busy ? '保存中…' : '保存'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {moveLink && (
+                <div class="ws-modal-overlay" onClick={() => !busy && setMoveLink(null)}>
+                    <div
+                        class="ws-modal feature-move-card-modal"
+                        onClick={(event: MouseEvent) => event.stopPropagation()}
+                    >
+                        <div class="ws-modal-header">
+                            <span>移动卡片</span>
+                            <button class="ws-modal-close" onClick={() => setMoveLink(null)} disabled={busy}>
+                                ✕
+                            </button>
+                        </div>
+                        <div class="ws-modal-body">
+                            <p>
+                                将“{moveLink.item.number ? `#${moveLink.item.number} ` : ''}
+                                {moveLink.item.title}”移动到：
+                            </p>
+                            <select
+                                value={moveTargetId}
+                                disabled={busy}
+                                onChange={(event: Event) =>
+                                    setMoveTargetId((event.currentTarget as HTMLSelectElement).value)
+                                }
+                            >
+                                <option value="">选择目标功能点…</option>
+                                {featurePointEntries
+                                    .filter(entry => entry.node.id !== moveLink.fromFeatureId)
+                                    .map(entry => (
+                                        <option key={entry.node.id} value={entry.node.id}>
+                                            {entry.path.join(' / ')}
+                                        </option>
+                                    ))}
+                            </select>
+                        </div>
+                        <div class="ws-modal-footer">
+                            <button class="ws-modal-cancel" onClick={() => setMoveLink(null)} disabled={busy}>
+                                取消
+                            </button>
+                            <button
+                                class="ws-modal-confirm"
+                                onClick={() => void moveLinkedItem()}
+                                disabled={busy || !moveTargetId}
+                            >
+                                {busy ? '移动中…' : '确认移动'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {deleteTarget && (
                 <div class="ws-modal-overlay" onClick={() => !busy && setDeleteTarget(null)}>
                     <div class="ws-modal feature-delete-modal" onClick={(event: MouseEvent) => event.stopPropagation()}>
@@ -1246,14 +1750,14 @@ export function FeatureCatalogView({
                             </button>
                         </div>
                         <div class="ws-modal-body">
-                            {directChildren.length > 0 ? (
+                            {deleteTargetChildren.length > 0 ? (
                                 <p>
-                                    该模块仍有 {directChildren.length}{' '}
+                                    该模块仍有 {deleteTargetChildren.length}{' '}
                                     个直接子节点，系统不会递归删除。请先返回并移动或删除子节点。
                                 </p>
-                            ) : linkedItems.length > 0 ? (
+                            ) : deleteTargetLinks.length > 0 ? (
                                 <p>
-                                    删除功能点会解除 {linkedItems.length}{' '}
+                                    删除功能点会解除 {deleteTargetLinks.length}{' '}
                                     项来源/交付关联；关联的需求、缺陷和任务不会被删除。
                                 </p>
                             ) : (
@@ -1264,7 +1768,7 @@ export function FeatureCatalogView({
                             <button class="ws-modal-cancel" onClick={() => setDeleteTarget(null)} disabled={busy}>
                                 取消
                             </button>
-                            {directChildren.length === 0 && (
+                            {deleteTargetChildren.length === 0 && (
                                 <button
                                     class="ws-modal-confirm ws-modal-confirm-danger"
                                     onClick={() => void removeNode()}
