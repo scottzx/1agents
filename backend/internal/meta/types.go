@@ -751,6 +751,52 @@ type FeatureCatalog struct {
 	Links []FeatureItemLink `json:"links"`
 }
 
+type FeatureCatalogVersionKind string
+
+const (
+	FeatureCatalogVersionManual     FeatureCatalogVersionKind = "manual"
+	FeatureCatalogVersionPreRestore FeatureCatalogVersionKind = "pre_restore"
+)
+
+// FeatureCatalogVersion is metadata only. SnapshotJSON is deliberately not
+// exposed by list or mutation APIs.
+type FeatureCatalogVersion struct {
+	ID            string                    `json:"id"`
+	ProjectID     string                    `json:"-"`
+	Alias         string                    `json:"alias"`
+	Kind          FeatureCatalogVersionKind `json:"kind"`
+	SchemaVersion int                       `json:"schemaVersion"`
+	NodeCount     int                       `json:"nodeCount"`
+	LinkCount     int                       `json:"linkCount"`
+	CreatedAt     time.Time                 `json:"createdAt"`
+	UpdatedAt     time.Time                 `json:"updatedAt"`
+}
+
+type FeatureCatalogVersionPage struct {
+	Items      []FeatureCatalogVersion `json:"items"`
+	NextCursor string                  `json:"nextCursor,omitempty"`
+	HasMore    bool                    `json:"hasMore"`
+}
+
+type FeatureCatalogRestoreWarning struct {
+	FeatureID   string `json:"featureId"`
+	ReferenceID string `json:"referenceId"`
+	Kind        string `json:"kind"`
+	Action      string `json:"action"`
+}
+
+type FeatureCatalogRestoreResult struct {
+	RequestID                   string                         `json:"requestId"`
+	TargetVersion               FeatureCatalogVersion          `json:"targetVersion"`
+	SafetyVersion               FeatureCatalogVersion          `json:"safetyVersion"`
+	RestoredNodeCount           int                            `json:"restoredNodeCount"`
+	RestoredLinkCount           int                            `json:"restoredLinkCount"`
+	SkippedLinkCount            int                            `json:"skippedLinkCount"`
+	ClearedTargetMilestoneCount int                            `json:"clearedTargetMilestoneCount"`
+	Warnings                    []FeatureCatalogRestoreWarning `json:"warnings"`
+	WarningsTruncated           bool                           `json:"warningsTruncated"`
+}
+
 // FeatureMilestoneTaskDiff describes one delivery task whose milestone differs
 // from its feature point's current target version.
 type FeatureMilestoneTaskDiff struct {

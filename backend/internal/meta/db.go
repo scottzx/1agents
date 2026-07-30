@@ -105,7 +105,7 @@ func (db *DB) Close() error { return db.sql.Close() }
 // migrations without touching the global schemaVersion counter.
 func (db *DB) SQL() *sql.DB { return db.sql }
 
-const schemaVersion = 28
+const schemaVersion = 29
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -269,6 +269,11 @@ func (db *DB) migrateSchema() error {
 	if version < 28 {
 		if _, err := db.sql.Exec(schemaV28); err != nil {
 			return fmt.Errorf("meta: apply schema v28: %w", err)
+		}
+	}
+	if version < 29 {
+		if _, err := db.sql.Exec(schemaV29); err != nil {
+			return fmt.Errorf("meta: apply schema v29: %w", err)
 		}
 	}
 	// Schema v9–v12 only add project_items columns, but the v9 branch collision
@@ -989,6 +994,11 @@ const schemaV27 = ``
 // upgrades and databases affected by user_version branch overlap are healed.
 const schemaV28 = ``
 
+// schemaV29 adds manual feature-catalog versions and the restore idempotency
+// ledger. The actual DDL is reconciled by ensureFeatureCatalogSchema so a
+// database whose user_version was advanced on another branch also heals.
+const schemaV29 = ``
+
 func (db *DB) ensureFeatureCatalogSchema() error {
 	if _, err := db.sql.Exec(`
 		CREATE TABLE IF NOT EXISTS feature_nodes (
@@ -1015,8 +1025,56 @@ func (db *DB) ensureFeatureCatalogSchema() error {
 		);
 		CREATE INDEX IF NOT EXISTS idx_feature_item_links_item
 			ON feature_item_links(item_id, relation);
+
+		CREATE TABLE IF NOT EXISTS feature_catalog_versions (
+			id             TEXT PRIMARY KEY,
+			project_id     TEXT NOT NULL,
+			alias          TEXT NOT NULL DEFAULT '',
+			kind           TEXT NOT NULL CHECK (kind IN ('manual', 'pre_restore')),
+			schema_version INTEGER NOT NULL CHECK (schema_version > 0),
+			snapshot_json  TEXT NOT NULL,
+			node_count     INTEGER NOT NULL CHECK (node_count >= 0),
+			link_count     INTEGER NOT NULL CHECK (link_count >= 0),
+			created_at     TEXT NOT NULL,
+			updated_at     TEXT NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_feature_catalog_versions_project_created
+			ON feature_catalog_versions(project_id, created_at DESC, id DESC);
+
+		CREATE TABLE IF NOT EXISTS feature_catalog_restore_requests (
+			project_id       TEXT NOT NULL,
+			request_id       TEXT NOT NULL,
+			version_id       TEXT NOT NULL,
+			safety_version_id TEXT NOT NULL,
+			result_json      TEXT NOT NULL,
+			created_at       TEXT NOT NULL,
+			PRIMARY KEY (project_id, request_id)
+		);
 	`); err != nil {
 		return err
+	}
+	for table, wanted := range map[string][]string{
+		"feature_catalog_versions": {
+			"id", "project_id", "alias", "kind", "schema_version",
+			"snapshot_json", "node_count", "link_count", "created_at", "updated_at",
+		},
+		"feature_catalog_restore_requests": {
+			"project_id", "request_id", "version_id", "safety_version_id",
+			"result_json", "created_at",
+		},
+	} {
+		columns, err := db.tableColumns(table)
+		if err != nil {
+			return err
+		}
+		if len(columns) != len(wanted) {
+			return fmt.Errorf("%s has unexpected column structure", table)
+		}
+		for _, column := range wanted {
+			if !columns[column] {
+				return fmt.Errorf("%s has unexpected column structure: missing %s", table, column)
+			}
+		}
 	}
 
 	milestoneCols, err := db.tableColumns("milestones")

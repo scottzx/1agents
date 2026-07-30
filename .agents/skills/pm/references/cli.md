@@ -99,7 +99,7 @@ reopen <id>      # = update <id> --issue-state open
 | `feature-catalog unlink <feature-id> --item ID --relation source\|delivery` | 幂等移除关联 |
 | `feature-catalog batch --json '<operations>'` | 事务化执行 create/update/move/link/unlink；任一操作失败整批回滚 |
 
-batch 的 create 可发布 `clientRef`，后续操作用 `parentRef`、`nodeRef` 或 `featureRef` 引用同批创建的 id。一次提交三级模块、功能点和 source 示例：
+batch 的 create 可发布 `clientRef`，后续操作用 `parentRef`、`nodeRef` 或 `featureRef` 引用同批创建的 id。一次提交多级模块（最多九级）、功能点和 source 示例：
 
 ```bash
 /Users/scott/Documents/01-开发项目/1agents/1agents_app/build/1agents feature-catalog batch --json '[

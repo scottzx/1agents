@@ -87,7 +87,7 @@ fi
 1. 跟用户澄清并确认**顶层需求 / 缺陷**，创建或复用 requirement / bug，记录其 id 和 `#编号`。
 2. 写蓝图前必须依次读取 `project-items list --json`、`feature-catalog list` 和 `milestones list`。现有树不为空时，先给出拟议增量：复用哪些节点、新增哪些路径、修改/移动哪些节点、source 和目标版本如何变化。
 3. **未经用户明确确认，不得整体覆盖、批量删除、批量重建、重命名或移动已有蓝图。**不能把「生成」理解为清空重做；若用户未确认结构变化，只允许新增已确认范围且不破坏既有路径的节点和关联。
-4. 新建一组树节点时使用事务化 `feature-catalog batch`。用 `clientRef` / `parentRef` 在一次提交中创建一级、二级、三级模块和功能点，并在同一批次用 `featureRef` 建立 source；任一操作失败时整批回滚，不要降级成逐条写入留下半棵树。
+4. 新建一组树节点时使用事务化 `feature-catalog batch`。用 `clientRef` / `parentRef` 在一次提交中创建最多九级模块和功能点，并在同一批次用 `featureRef` 建立 source；任一操作失败时整批回滚，不要降级成逐条写入留下半棵树。
 
 ```bash
 1agents feature-catalog batch --json '[

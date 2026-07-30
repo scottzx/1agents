@@ -92,7 +92,7 @@ type CreateMilestoneArgs struct {
 // the CLI update verb — only these keys are forwarded to the daemon.
 var updatableItemFields = []string{
 	"status", "issueState", "description", "acceptanceCriteria", "priority", "milestone", "type", "assignee", "verifier",
-	"githubAssignees", "githubRepo", "githubKind", "githubNumber", "githubNodeId", "githubUrl", "githubState", "lastSyncedAt",
+	"githubAssignees", "githubRepo", "githubKind", "githubNumber", "githubNodeId", "githubUrl", "githubState", "lastSyncedAt", "featureId",
 }
 
 // ListTasks fetches every project item in the workspace (unfiltered).

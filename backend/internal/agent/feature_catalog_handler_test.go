@@ -152,6 +152,96 @@ func TestFeatureCatalogHandlerRoundTripAndFailures(t *testing.T) {
 	}
 }
 
+func TestFeatureCatalogVersionHandlerRoutesBeforeFeatureNodeIDs(t *testing.T) {
+	h, _, workspaceID, _, _ := mutationAttributionRig(t)
+
+	rr := httptest.NewRecorder()
+	h.HandleFeatureCatalogItem(
+		rr,
+		featureRequest(
+			http.MethodPost,
+			"/api/agent/feature-catalog/versions",
+			`{"workspace_id":"`+workspaceID+`","alias":" baseline "}`,
+		),
+	)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("create version status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var version meta.FeatureCatalogVersion
+	if err := json.NewDecoder(rr.Body).Decode(&version); err != nil {
+		t.Fatal(err)
+	}
+	if version.ID == "" || version.Alias != "baseline" {
+		t.Fatalf("created version = %+v", version)
+	}
+
+	rr = httptest.NewRecorder()
+	h.HandleFeatureCatalogItem(
+		rr,
+		featureRequest(
+			http.MethodGet,
+			"/api/agent/feature-catalog/versions?workspace_id="+workspaceID,
+			"",
+		),
+	)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("list versions status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var page meta.FeatureCatalogVersionPage
+	if err := json.NewDecoder(rr.Body).Decode(&page); err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || page.Items[0].ID != version.ID {
+		t.Fatalf("version page = %+v", page)
+	}
+
+	rr = httptest.NewRecorder()
+	h.HandleFeatureCatalogItem(
+		rr,
+		featureRequest(
+			http.MethodPatch,
+			"/api/agent/feature-catalog/versions/"+version.ID,
+			`{"workspace_id":"`+workspaceID+`","alias":"renamed"}`,
+		),
+	)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("rename version status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	rr = httptest.NewRecorder()
+	h.HandleFeatureCatalogItem(
+		rr,
+		featureRequest(
+			http.MethodPost,
+			"/api/agent/feature-catalog/versions/"+version.ID+"/restore",
+			`{"workspace_id":"`+workspaceID+`","requestId":"http-restore"}`,
+		),
+	)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("restore version status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var result meta.FeatureCatalogRestoreResult
+	if err := json.NewDecoder(rr.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if result.RequestID != "http-restore" || result.SafetyVersion.ID == "" {
+		t.Fatalf("restore result = %+v", result)
+	}
+
+	rr = httptest.NewRecorder()
+	h.HandleFeatureCatalogItem(
+		rr,
+		featureRequest(
+			http.MethodDelete,
+			"/api/agent/feature-catalog/versions/"+version.ID+"?workspace_id="+workspaceID,
+			"",
+		),
+	)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("delete version status=%d body=%s", rr.Code, rr.Body.String())
+	}
+}
+
 func TestFeatureTargetMilestoneDiffSyncAndInheritedTaskCreation(t *testing.T) {
 	h, db, workspaceID, workspacePath, _ := mutationAttributionRig(t)
 	taskStore := meta.NewTaskStore(db)

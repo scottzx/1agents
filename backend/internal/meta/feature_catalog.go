@@ -13,13 +13,15 @@ import (
 var (
 	ErrFeatureInvalidKind      = errors.New("meta: invalid feature node kind")
 	ErrFeatureInvalidParent    = errors.New("meta: invalid feature parent")
-	ErrFeatureMaxDepth         = errors.New("meta: feature module depth exceeds three")
+	ErrFeatureMaxDepth         = errors.New("meta: feature module depth exceeds nine")
 	ErrFeatureCycle            = errors.New("meta: feature tree cycle")
 	ErrFeatureHasChildren      = errors.New("meta: feature node has children")
 	ErrFeatureInvalidRelation  = errors.New("meta: invalid feature item relation")
 	ErrFeatureInvalidItemType  = errors.New("meta: invalid project item type for feature relation")
 	ErrFeatureInvalidMilestone = errors.New("meta: feature target must be a semantic version milestone")
 )
+
+const MaxFeatureModuleDepth = 9
 
 type FeatureNodePatch struct {
 	ParentID          *string
@@ -461,7 +463,7 @@ func validateFeaturePlacementTx(tx *sql.Tx, node FeatureNode, parentID string) e
 				return err
 			}
 		}
-		if parentDepth+height > 3 {
+		if parentDepth+height > MaxFeatureModuleDepth {
 			return ErrFeatureMaxDepth
 		}
 	}

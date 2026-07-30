@@ -862,6 +862,7 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		// Task kernel result / summary fields (#318, #324).
 		Result  *string `json:"result,omitempty"`
 		Summary *string `json:"summary,omitempty"`
+		FeatureID *string `json:"featureId,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -932,6 +933,18 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 	if err != nil {
 		writeMutationContextError(w, err)
 		return
+	}
+
+	var newMilestoneFromFeature *string
+	if body.FeatureID != nil && *body.FeatureID != "" {
+		if h.featureStore == nil {
+			http.Error(w, "feature catalog store is unavailable", http.StatusInternalServerError)
+			return
+		}
+		m, mErr := h.featureStore.TaskMilestone(projectID, *body.FeatureID)
+		if mErr == nil && m != "" {
+			newMilestoneFromFeature = &m
+		}
 	}
 
 	// Pre-validate executor×assignee matrix before Mutate (#198).
@@ -1043,6 +1056,8 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		}
 		if body.Milestone != nil {
 			target.Milestone = *body.Milestone
+		} else if newMilestoneFromFeature != nil {
+			target.Milestone = *newMilestoneFromFeature
 		}
 		if body.Sprint != nil {
 			target.Sprint = *body.Sprint
@@ -1127,6 +1142,26 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 	if !found {
 		http.Error(w, "task not found", http.StatusNotFound)
 		return
+	}
+	if body.FeatureID != nil && *body.FeatureID != "" {
+		linkEvent := mutationEvent(
+			mutationCtx,
+			"feature_link",
+			*body.FeatureID+":"+id+":delivery",
+			"link",
+			nil,
+			nil,
+		)
+		if _, _, err := h.featureStore.LinkItem(
+			projectID,
+			*body.FeatureID,
+			id,
+			meta.FeatureItemDelivery,
+			linkEvent,
+		); err != nil {
+			writeFeatureCatalogError(w, err)
+			return
+		}
 	}
 	if body.Milestone != nil && *body.Milestone != "" {
 		_ = h.tasksStore.EnsureMilestone(existing.WorkspacePath, *body.Milestone)

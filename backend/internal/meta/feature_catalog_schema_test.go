@@ -48,6 +48,8 @@ func stripFeatureCatalogSchema(t *testing.T, path string, userVersion int) {
 	defer raw.Close()
 
 	if _, err := raw.Exec(`
+		DROP TABLE IF EXISTS feature_catalog_restore_requests;
+		DROP TABLE IF EXISTS feature_catalog_versions;
 		DROP TABLE IF EXISTS feature_item_links;
 		DROP TABLE IF EXISTS feature_nodes;
 		DROP INDEX IF EXISTS idx_milestones_project_version;
@@ -85,6 +87,39 @@ func stripFeatureCatalogSchema(t *testing.T, path string, userVersion int) {
 	}
 }
 
+func TestFeatureCatalogVersionSchemaRejectsUnexpectedExistingColumns(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "meta.db")
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`
+		DROP TABLE feature_catalog_versions;
+		CREATE TABLE feature_catalog_versions (
+			id TEXT PRIMARY KEY,
+			project_id TEXT NOT NULL,
+			unexpected TEXT NOT NULL
+		);
+	`); err != nil {
+		raw.Close()
+		t.Fatal(err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if reopened, err := Open(path); err == nil {
+		reopened.Close()
+		t.Fatal("Open unexpectedly accepted malformed feature_catalog_versions")
+	}
+}
+
 func TestFeatureCatalogSchemaFreshDatabase(t *testing.T) {
 	db := newTestDB(t)
 
@@ -95,9 +130,18 @@ func TestFeatureCatalogSchemaFreshDatabase(t *testing.T) {
 	assertTableColumns(t, db, "feature_item_links", []string{
 		"feature_id", "item_id", "relation", "created_at",
 	})
+	assertTableColumns(t, db, "feature_catalog_versions", []string{
+		"id", "project_id", "alias", "kind", "schema_version", "snapshot_json",
+		"node_count", "link_count", "created_at", "updated_at",
+	})
+	assertTableColumns(t, db, "feature_catalog_restore_requests", []string{
+		"project_id", "request_id", "version_id", "safety_version_id",
+		"result_json", "created_at",
+	})
 	assertTableColumns(t, db, "milestones", []string{"version"})
 	assertSchemaObject(t, db, "index", "idx_feature_nodes_project_parent")
 	assertSchemaObject(t, db, "index", "idx_feature_item_links_item")
+	assertSchemaObject(t, db, "index", "idx_feature_catalog_versions_project_created")
 	assertSchemaObject(t, db, "index", "idx_milestones_project_version")
 
 	var version int
@@ -187,6 +231,8 @@ func TestFeatureCatalogSchemaV27UpgradePreservesLegacyMilestone(t *testing.T) {
 	}
 	assertTableColumns(t, upgraded, "feature_nodes", []string{"id", "project_id"})
 	assertTableColumns(t, upgraded, "feature_item_links", []string{"feature_id", "item_id"})
+	assertTableColumns(t, upgraded, "feature_catalog_versions", []string{"id", "project_id", "snapshot_json"})
+	assertTableColumns(t, upgraded, "feature_catalog_restore_requests", []string{"project_id", "request_id"})
 	assertTableColumns(t, upgraded, "milestones", []string{"version"})
 
 	milestones, err := NewTaskStore(upgraded).ListMilestones(workspace)
@@ -227,6 +273,8 @@ func TestFeatureCatalogSchemaReconcilesAboveCurrentUserVersion(t *testing.T) {
 	}
 	assertTableColumns(t, reconciled, "feature_nodes", []string{"id", "project_id", "parent_id"})
 	assertTableColumns(t, reconciled, "feature_item_links", []string{"feature_id", "item_id", "relation"})
+	assertTableColumns(t, reconciled, "feature_catalog_versions", []string{"id", "project_id", "snapshot_json"})
+	assertTableColumns(t, reconciled, "feature_catalog_restore_requests", []string{"project_id", "request_id"})
 	assertTableColumns(t, reconciled, "milestones", []string{"version"})
 	assertSchemaObject(t, reconciled, "index", "idx_milestones_project_version")
 
@@ -248,4 +296,5 @@ func TestFeatureCatalogSchemaReconcilesAboveCurrentUserVersion(t *testing.T) {
 	defer reopened.Close()
 	assertSchemaObject(t, reopened, "index", "idx_feature_nodes_project_parent")
 	assertSchemaObject(t, reopened, "index", "idx_feature_item_links_item")
+	assertSchemaObject(t, reopened, "index", "idx_feature_catalog_versions_project_created")
 }

@@ -45,7 +45,10 @@ func writeFeatureCatalogError(w http.ResponseWriter, err error) {
 		errors.Is(err, meta.ErrFeatureCycle),
 		errors.Is(err, meta.ErrFeatureInvalidRelation),
 		errors.Is(err, meta.ErrFeatureInvalidItemType),
-		errors.Is(err, meta.ErrFeatureInvalidMilestone):
+		errors.Is(err, meta.ErrFeatureInvalidMilestone),
+		errors.Is(err, meta.ErrFeatureCatalogInvalidSnapshot),
+		errors.Is(err, meta.ErrFeatureCatalogInvalidVersion),
+		errors.Is(err, meta.ErrInvalidCursor):
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	default:
 		writeMutationContextError(w, err)
@@ -134,6 +137,10 @@ func (h *Handler) HandleFeatureCatalogItem(w http.ResponseWriter, r *http.Reques
 		h.handleFeatureCatalogExport(w, r)
 		return
 	}
+	if parts[0] == "versions" {
+		h.handleFeatureCatalogVersions(w, r, parts[1:])
+		return
+	}
 	featureID := parts[0]
 	if len(parts) == 1 {
 		h.handleFeatureNode(w, r, featureID)
@@ -152,6 +159,134 @@ func (h *Handler) HandleFeatureCatalogItem(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	h.handleFeatureLink(w, r, featureID, parts[2:])
+}
+
+func (h *Handler) handleFeatureCatalogVersions(w http.ResponseWriter, r *http.Request, tail []string) {
+	if len(tail) == 0 {
+		switch r.Method {
+		case http.MethodGet:
+			projectID, ok := h.featureCatalogProject(w, r.URL.Query().Get("workspace_id"))
+			if !ok {
+				return
+			}
+			page, err := h.featureStore.ListVersions(projectID, r.URL.Query().Get("cursor"))
+			if err != nil {
+				writeFeatureCatalogError(w, err)
+				return
+			}
+			writeJSON(w, page)
+		case http.MethodPost:
+			var body struct {
+				WorkspaceID string `json:"workspace_id"`
+				Alias       string `json:"alias"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				http.Error(w, "invalid request body", http.StatusBadRequest)
+				return
+			}
+			projectID, ok := h.featureCatalogProject(w, body.WorkspaceID)
+			if !ok {
+				return
+			}
+			ctx, err := h.resolveMutationContext(r, projectID)
+			if err != nil {
+				writeMutationContextError(w, err)
+				return
+			}
+			event := mutationEvent(ctx, "feature_catalog_version", "", "create", nil, nil)
+			version, err := h.featureStore.CreateVersion(projectID, body.Alias, event)
+			if err != nil {
+				writeFeatureCatalogError(w, err)
+				return
+			}
+			event.TargetID = version.ID
+			writeMutationJSON(w, version, event)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+		return
+	}
+	if len(tail) > 2 || tail[0] == "" {
+		http.Error(w, "unsupported sub-path", http.StatusNotFound)
+		return
+	}
+	versionID := tail[0]
+	if len(tail) == 2 {
+		if tail[1] != "restore" || r.Method != http.MethodPost {
+			http.Error(w, "unsupported sub-path", http.StatusNotFound)
+			return
+		}
+		var body struct {
+			WorkspaceID string `json:"workspace_id"`
+			RequestID   string `json:"requestId"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		projectID, ok := h.featureCatalogProject(w, body.WorkspaceID)
+		if !ok {
+			return
+		}
+		ctx, err := h.resolveMutationContext(r, projectID)
+		if err != nil {
+			writeMutationContextError(w, err)
+			return
+		}
+		event := mutationEvent(ctx, "feature_catalog_version", versionID, "restore", nil, nil)
+		result, err := h.featureStore.RestoreVersion(projectID, versionID, body.RequestID, event)
+		if err != nil {
+			writeFeatureCatalogError(w, err)
+			return
+		}
+		writeJSON(w, result)
+		return
+	}
+	switch r.Method {
+	case http.MethodPatch:
+		var body struct {
+			WorkspaceID string `json:"workspace_id"`
+			Alias       string `json:"alias"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		projectID, ok := h.featureCatalogProject(w, body.WorkspaceID)
+		if !ok {
+			return
+		}
+		ctx, err := h.resolveMutationContext(r, projectID)
+		if err != nil {
+			writeMutationContextError(w, err)
+			return
+		}
+		event := mutationEvent(ctx, "feature_catalog_version", versionID, "rename", nil, nil)
+		version, err := h.featureStore.RenameVersion(projectID, versionID, body.Alias, event)
+		if err != nil {
+			writeFeatureCatalogError(w, err)
+			return
+		}
+		writeMutationJSON(w, version, event)
+	case http.MethodDelete:
+		projectID, ok := h.featureCatalogProject(w, r.URL.Query().Get("workspace_id"))
+		if !ok {
+			return
+		}
+		ctx, err := h.resolveMutationContext(r, projectID)
+		if err != nil {
+			writeMutationContextError(w, err)
+			return
+		}
+		event := mutationEvent(ctx, "feature_catalog_version", versionID, "delete", nil, nil)
+		if err := h.featureStore.DeleteVersion(projectID, versionID, event); err != nil {
+			writeFeatureCatalogError(w, err)
+			return
+		}
+		writeMutationJSON(w, map[string]any{"ok": true}, event)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
 }
 
 func (h *Handler) handleFeatureCatalogBatch(w http.ResponseWriter, r *http.Request) {
@@ -364,52 +499,52 @@ func (h *Handler) handleFeatureLink(w http.ResponseWriter, r *http.Request, feat
 }
 
 func (h *Handler) handleFeatureCatalogGantt(w http.ResponseWriter, r *http.Request) {
-    if r.Method != http.MethodGet {
-        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-        return
-    }
-    projectID, ok := h.featureCatalogProject(w, r.URL.Query().Get("workspace_id"))
-    if !ok {
-        return
-    }
-    data, err := h.featureStore.GanttView(projectID)
-    if err != nil {
-        writeFeatureCatalogError(w, err)
-        return
-    }
-    writeJSON(w, data)
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	projectID, ok := h.featureCatalogProject(w, r.URL.Query().Get("workspace_id"))
+	if !ok {
+		return
+	}
+	data, err := h.featureStore.GanttView(projectID)
+	if err != nil {
+		writeFeatureCatalogError(w, err)
+		return
+	}
+	writeJSON(w, data)
 }
 
 func (h *Handler) handleFeatureCatalogExport(w http.ResponseWriter, r *http.Request) {
-    if r.Method != http.MethodGet {
-        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-        return
-    }
-    projectID, ok := h.featureCatalogProject(w, r.URL.Query().Get("workspace_id"))
-    if !ok {
-        return
-    }
-    format := r.URL.Query().Get("format")
-    switch format {
-    case "json":
-        data, err := h.featureStore.ExportJSON(projectID)
-        if err != nil {
-            writeFeatureCatalogError(w, err)
-            return
-        }
-        w.Header().Set("Content-Type", "application/json")
-        w.Header().Set("Content-Disposition", `attachment; filename="feature-catalog.json"`)
-        w.Write(data)
-    case "markdown", "md", "":
-        md, err := h.featureStore.ExportMarkdown(projectID)
-        if err != nil {
-            writeFeatureCatalogError(w, err)
-            return
-        }
-        w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-        w.Header().Set("Content-Disposition", `attachment; filename="feature-catalog.md"`)
-        w.Write([]byte(md))
-    default:
-        http.Error(w, "unsupported format: use json or markdown", http.StatusBadRequest)
-    }
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	projectID, ok := h.featureCatalogProject(w, r.URL.Query().Get("workspace_id"))
+	if !ok {
+		return
+	}
+	format := r.URL.Query().Get("format")
+	switch format {
+	case "json":
+		data, err := h.featureStore.ExportJSON(projectID)
+		if err != nil {
+			writeFeatureCatalogError(w, err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Disposition", `attachment; filename="feature-catalog.json"`)
+		w.Write(data)
+	case "markdown", "md", "":
+		md, err := h.featureStore.ExportMarkdown(projectID)
+		if err != nil {
+			writeFeatureCatalogError(w, err)
+			return
+		}
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+		w.Header().Set("Content-Disposition", `attachment; filename="feature-catalog.md"`)
+		w.Write([]byte(md))
+	default:
+		http.Error(w, "unsupported format: use json or markdown", http.StatusBadRequest)
+	}
 }

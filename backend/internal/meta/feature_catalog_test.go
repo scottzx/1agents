@@ -2,6 +2,7 @@ package meta
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -44,24 +45,26 @@ func TestFeatureCatalogHierarchyValidationAndOrdering(t *testing.T) {
 	root := createFeatureNode(t, store, FeatureNode{
 		ProjectID: "p1", Kind: FeatureNodeModule, Title: "root",
 	})
-	level2 := createFeatureNode(t, store, FeatureNode{
-		ProjectID: "p1", ParentID: root.ID, Kind: FeatureNodeModule, Title: "level 2",
-	})
-	level3 := createFeatureNode(t, store, FeatureNode{
-		ProjectID: "p1", ParentID: level2.ID, Kind: FeatureNodeModule, Title: "level 3",
-	})
+	levels := []FeatureNode{root}
+	for depth := 2; depth <= MaxFeatureModuleDepth; depth++ {
+		levels = append(levels, createFeatureNode(t, store, FeatureNode{
+			ProjectID: "p1", ParentID: levels[len(levels)-1].ID,
+			Kind: FeatureNodeModule, Title: fmt.Sprintf("level %d", depth),
+		}))
+	}
+	level2, level3, level9 := levels[1], levels[2], levels[8]
 	createFeatureNode(t, store, FeatureNode{
 		ProjectID: "p1", ParentID: root.ID, Kind: FeatureNodePoint, Title: "light feature",
 	})
 	leaf := createFeatureNode(t, store, FeatureNode{
-		ProjectID: "p1", ParentID: level3.ID, Kind: FeatureNodePoint, Title: "deep feature",
+		ProjectID: "p1", ParentID: level9.ID, Kind: FeatureNodePoint, Title: "deep feature",
 	})
 
 	_, err := store.Create(FeatureNode{
-		ProjectID: "p1", ParentID: level3.ID, Kind: FeatureNodeModule, Title: "level 4",
+		ProjectID: "p1", ParentID: level9.ID, Kind: FeatureNodeModule, Title: "level 10",
 	}, testFeatureEvent())
 	if !errors.Is(err, ErrFeatureMaxDepth) {
-		t.Fatalf("fourth module level err = %v, want ErrFeatureMaxDepth", err)
+		t.Fatalf("tenth module level err = %v, want ErrFeatureMaxDepth", err)
 	}
 	_, err = store.Create(FeatureNode{
 		ProjectID: "p1", Kind: FeatureNodePoint, Title: "root feature",
@@ -87,7 +90,6 @@ func TestFeatureCatalogHierarchyValidationAndOrdering(t *testing.T) {
 	if _, err := store.Update("p1", root.ID, FeatureNodePatch{ParentID: &parent}, testFeatureEvent()); !errors.Is(err, ErrProjectMismatch) {
 		t.Fatalf("cross-project move err = %v, want ErrProjectMismatch", err)
 	}
-
 	first := createFeatureNode(t, store, FeatureNode{
 		ProjectID: "p1", Kind: FeatureNodeModule, Title: "insert first", Position: 0,
 	})
@@ -103,6 +105,13 @@ func TestFeatureCatalogHierarchyValidationAndOrdering(t *testing.T) {
 	}
 	if rootPositions[first.ID] != 0 || rootPositions[root.ID] != 1 {
 		t.Fatalf("root positions = %v, want inserted node first", rootPositions)
+	}
+	sameProjectRoot := createFeatureNode(t, store, FeatureNode{
+		ProjectID: "p1", Kind: FeatureNodeModule, Title: "same project root",
+	})
+	parent = sameProjectRoot.ID
+	if _, err := store.Update("p1", root.ID, FeatureNodePatch{ParentID: &parent}, testFeatureEvent()); !errors.Is(err, ErrFeatureMaxDepth) {
+		t.Fatalf("deep subtree move err = %v, want ErrFeatureMaxDepth", err)
 	}
 
 	position := 0
