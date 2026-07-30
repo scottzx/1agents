@@ -70,7 +70,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ## Project Overview
 
-Remote Agent is a Web-based remote workbench integrating terminal access (xterm.js + ttyd), file management, and AI agent communication through cc-connect.
+Remote Agent is a Web-based remote workbench integrating terminal access (xterm.js + ttyd), file management, Web Chat AI session execution via 1ACP (ACPX bridge server), and multi-platform messaging via cc-connect.
 
 ### Key Dependency: Yarn 3.6.3 with node-modules Linker
 
@@ -188,8 +188,9 @@ To ensure that binaries compiled on different environments (such as Mac vs Linux
 └── modules/         # Reusable service modules
     ├── ttyd/        # C terminal server (ttyd-based)
     │   └── src/     # Main server logic
-    └── cc-connect/  # Go bridge between AI agents and messaging platforms
-        ├── agent/   # Claude Code, Codex, Cursor, Gemini, etc.
+    ├── 1acp/        # 1ACP/ACPX bridge server (runs Web Chat AI sessions like Codex, Claude, Cursor)
+    └── cc-connect/  # Go bridge between AI agents and external messaging platforms
+        ├── agent/   # Codex, Cursor, Gemini, etc. (for messaging platform bots)
         ├── platform/# Feishu, Telegram, Discord, Slack, etc.
         ├── core/    # Engine, interfaces, i18n, cards
         └── daemon/  # systemd/launchd integration

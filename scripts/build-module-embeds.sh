@@ -33,31 +33,25 @@ need_cmd node
 need_cmd npm
 
 build_harnesskit_embed() {
-  local dest="$OUT/harnesskit-embed.js"
+  local dest_dir="$OUT/harnesskit"
 
   if [ ! -d "$HARNESSKIT_SRC" ] || [ ! -f "$HARNESSKIT_SRC/package.json" ]; then
     echo "ERROR: modules/HarnessKit missing (init submodule: git submodule update --init modules/HarnessKit)" >&2
     exit 1
   fi
 
-  if [ "$FORCE" != "1" ] && [ -f "$dest" ]; then
-    echo "=== reuse existing $dest"
-  else
-    echo "=== building HarnessKit embed"
-    (
-      cd "$HARNESSKIT_SRC"
-      if [ ! -d node_modules ] || [ "$FORCE" = "1" ]; then
-        npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts
-      fi
-      HARNESSKIT_EMBED_OUT_DIR="$OUT" npm run build:embed
-    )
-  fi
+  echo "=== building HarnessKit static SPA frontend"
+  (
+    cd "$HARNESSKIT_SRC"
+    if [ ! -d node_modules ] || [ "$FORCE" = "1" ]; then
+      npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts
+    fi
+    npm run build
+  )
 
-  if [ ! -f "$dest" ]; then
-    echo "ERROR: expected $dest after build:embed" >&2
-    exit 1
-  fi
-  echo "  + $dest ($(wc -c <"$dest" | tr -d ' ') bytes)"
+  mkdir -p "$dest_dir"
+  cp -R "$HARNESSKIT_SRC/dist/"* "$dest_dir/"
+  echo "  + HarnessKit static assets staged into $dest_dir"
 }
 
 build_cc_connect_embed() {

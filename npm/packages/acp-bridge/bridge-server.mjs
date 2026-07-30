@@ -1,8 +1,14 @@
+import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { WebSocketServer } from "ws";
-import { createAcpRuntime, createRuntimeStore, createAgentRegistry } from "@1agents/acpx/runtime";
+import {
+  createAcpRuntime,
+  createRuntimeStore,
+  createAgentRegistry,
+  createTurnJournal,
+} from "@1agents/acpx/runtime";
 
 // ----------------------------------------------------
 // Configurations
@@ -60,10 +66,76 @@ const runtime = createAcpRuntime({
     }
   },
 });
+const turnJournal = createTurnJournal({ stateDir: DEFAULT_STATE_DIR });
+
+// Trigger initial background pre-warm for grok-build
+setTimeout(() => {
+  prewarmGrokSession().catch((err) => {
+    console.warn("[PRE-WARM] Initial background pre-warm caught:", err.message);
+  });
+}, 1500);
 
 // Map of active session handles and turn contexts
 // sessionId -> { handle, activeTurn }
 const activeSessions = new Map();
+
+// Phase 2 Pre-warm pool for grok-build (scoped to the most recent CWD)
+let prewarmedGrokHandle = null;
+let prewarmedGrokCwd = null;
+let lastUsedCwd = process.cwd();
+let isWarmingGrok = false;
+
+async function prewarmGrokSession(targetCwd) {
+  const cwdToUse = targetCwd || lastUsedCwd || process.cwd();
+  if (isWarmingGrok) {
+    return;
+  }
+
+  // If we already have a pre-warmed handle for this exact CWD, keep it
+  if (prewarmedGrokHandle && prewarmedGrokCwd === cwdToUse) {
+    return;
+  }
+
+  isWarmingGrok = true;
+  try {
+    // If there was an old pre-warmed handle for a different CWD, close it first
+    if (prewarmedGrokHandle && prewarmedGrokCwd !== cwdToUse) {
+      console.log(
+        `[PRE-WARM] Closing previous pre-warm handle for obsolete CWD: ${prewarmedGrokCwd}`,
+      );
+      try {
+        await runtime.close({
+          handle: prewarmedGrokHandle,
+          reason: "CWD mismatch pre-warm refresh",
+        });
+      } catch {
+        // ignore close errors
+      }
+      prewarmedGrokHandle = null;
+      prewarmedGrokCwd = null;
+    }
+
+    const prewarmKey = `prewarm_grok_${Date.now()}`;
+    console.log(
+      `[PRE-WARM] Background pre-warming grok-build session for CWD: ${cwdToUse} (${prewarmKey})...`,
+    );
+    const handle = await runtime.ensureSession({
+      sessionKey: prewarmKey,
+      agent: "grok-build",
+      mode: "persistent",
+      cwd: cwdToUse,
+    });
+    prewarmedGrokHandle = handle;
+    prewarmedGrokCwd = cwdToUse;
+    console.log(
+      `[PRE-WARM] Background grok-build pre-warm ready for CWD=${cwdToUse} (${handle.agentSessionId || handle.backendSessionId})!`,
+    );
+  } catch (err) {
+    console.warn("[PRE-WARM] Pre-warm failed:", err.message);
+  } finally {
+    isWarmingGrok = false;
+  }
+}
 
 // Per-session coalescing state for authoritative history snapshots triggered
 // by out-of-turn updates. The bridge pushes at most one snapshot every 300ms
@@ -341,7 +413,7 @@ async function defaultHistoryAdapter() {
 function pushMerged(items, next) {
   const last = items[items.length - 1];
   const mergeable = new Set(["user", "assistant_text", "thinking"]);
-  if (last && mergeable.has(last.kind) && last.kind === next.kind) {
+  if (last && mergeable.has(last.kind) && last.kind === next.kind && last.turnId === next.turnId) {
     last.text = last.text ? `${last.text}\n${next.text}` : next.text;
     return;
   }
@@ -481,8 +553,15 @@ function extractFromRuntimeRecord(record) {
   if (!record || !Array.isArray(record.messages)) {
     return items;
   }
+  const turnResults =
+    record.acpx?.turn_results && typeof record.acpx.turn_results === "object"
+      ? record.acpx.turn_results
+      : {};
+  let currentTurnId;
   for (const msg of record.messages) {
     if (msg.User && Array.isArray(msg.User.content)) {
+      currentTurnId =
+        typeof msg.User.id === "string" && turnResults[msg.User.id] ? msg.User.id : undefined;
       const parts = [];
       for (const c of msg.User.content) {
         if (c && c.Text !== undefined) {
@@ -490,7 +569,11 @@ function extractFromRuntimeRecord(record) {
         }
       }
       if (parts.length) {
-        pushMerged(items, { kind: "user", text: parts.join("\n") });
+        pushMerged(items, {
+          kind: "user",
+          text: parts.join("\n"),
+          ...(currentTurnId ? { turnId: currentTurnId } : {}),
+        });
       }
     } else if (msg.Agent && Array.isArray(msg.Agent.content)) {
       for (const c of msg.Agent.content) {
@@ -498,11 +581,19 @@ function extractFromRuntimeRecord(record) {
           continue;
         }
         if (c.Text !== undefined) {
-          pushMerged(items, { kind: "assistant_text", text: c.Text });
+          pushMerged(items, {
+            kind: "assistant_text",
+            text: c.Text,
+            ...(currentTurnId ? { turnId: currentTurnId } : {}),
+          });
         } else if (c.Thinking) {
           const text = c.Thinking.text || "";
           if (text) {
-            pushMerged(items, { kind: "thinking", text });
+            pushMerged(items, {
+              kind: "thinking",
+              text,
+              ...(currentTurnId ? { turnId: currentTurnId } : {}),
+            });
           }
         } else if (c.ToolUse) {
           items.push({
@@ -510,6 +601,7 @@ function extractFromRuntimeRecord(record) {
             toolName: c.ToolUse.name || c.ToolUse.tool_name || c.ToolUse.toolName || "tool",
             input: c.ToolUse.input ?? c.ToolUse.raw_input ?? {},
             toolCallId: c.ToolUse.id,
+            ...(currentTurnId ? { turnId: currentTurnId } : {}),
           });
         }
       }
@@ -535,6 +627,7 @@ function extractFromRuntimeRecord(record) {
             toolName: res.tool_name || res.toolName || res.name || "tool",
             content: textContent,
             isError: !!res.is_error,
+            ...(currentTurnId ? { turnId: currentTurnId } : {}),
           });
         }
       }
@@ -562,16 +655,12 @@ for (const t of [
 }
 
 async function loadRuntimeHistory(sessionId, session) {
-  if (!session) {
-    return [];
-  }
+  const recordId = session?.handle?.acpxRecordId || sessionId;
   try {
-    const record = await runtime.options.sessionStore.load(
-      session.handle.acpxRecordId || sessionId,
-    );
+    const record = await runtime.options.sessionStore.load(recordId);
     return extractFromRuntimeRecord(record);
   } catch (err) {
-    console.warn(`[acpx-server] Runtime store load failed for ${sessionId}:`, err.message);
+    console.warn(`[acpx-server] Runtime store load failed for ${recordId}:`, err.message);
     return [];
   }
 }
@@ -590,22 +679,32 @@ async function loadNativeHistory({ sessionId, agentType, acpSessionId, workspace
 }
 
 async function loadSessionHistory(sessionId, payload = {}) {
-  const session = activeSessions.get(sessionId);
+  let session = activeSessions.get(sessionId);
+  if (!session && initializingSessions.has(sessionId)) {
+    try {
+      await initializingSessions.get(sessionId);
+      session = activeSessions.get(sessionId);
+    } catch (err) {
+      console.warn(`[acpx-server] Awaiting initializing session ${sessionId} failed:`, err.message);
+    }
+  }
   const agentType = payload.agentType || session?.agentType || session?.handle?.agent;
   const acpSessionId =
     session?.handle?.agentSessionId || session?.handle?.backendSessionId || payload.acpSessionId;
-  const workspacePath = session?.handle?.cwd;
+  const workspacePath = session?.handle?.cwd || payload.workspacePath;
   const historyContext = { sessionId, agentType, acpSessionId, workspacePath };
   const prefersNativeHistory = agentType === "claude" || agentType === "claudecode";
 
+  const runtimeItems = await loadRuntimeHistory(sessionId, session);
+  if (runtimeItems.some((item) => item.turnId)) {
+    return runtimeItems;
+  }
   if (prefersNativeHistory) {
     const nativeItems = await loadNativeHistory(historyContext);
     if (nativeItems.length > 0) {
       return nativeItems;
     }
   }
-
-  const runtimeItems = await loadRuntimeHistory(sessionId, session);
   if (runtimeItems.length > 0) {
     return runtimeItems;
   }
@@ -614,6 +713,245 @@ async function loadSessionHistory(sessionId, payload = {}) {
     return await loadNativeHistory(historyContext);
   }
   return [];
+}
+
+function runtimeMessageText(content) {
+  if (!Array.isArray(content)) {
+    return "";
+  }
+  return content
+    .map((item) => (item && typeof item.Text === "string" ? item.Text : ""))
+    .filter(Boolean)
+    .join("\n");
+}
+
+function runtimeTurnContent(record, promptMessageId) {
+  let matched = false;
+  let promptText = "";
+  let finalAnswer = "";
+  for (const message of record?.messages || []) {
+    if (message?.User) {
+      if (matched) {
+        break;
+      }
+      if (message.User.id === promptMessageId) {
+        matched = true;
+        promptText = runtimeMessageText(message.User.content);
+      }
+      continue;
+    }
+    if (matched && message?.Agent) {
+      const text = runtimeMessageText(message.Agent.content);
+      if (text) {
+        finalAnswer = text;
+      }
+    }
+  }
+  return { promptText, finalAnswer };
+}
+
+function hostPromptFingerprint(text, attachments) {
+  const normalizedAttachments = Array.isArray(attachments)
+    ? attachments
+        .filter(
+          (item) => item && typeof item.mediaType === "string" && typeof item.data === "string",
+        )
+        .map((item) => ({ mediaType: item.mediaType, data: item.data }))
+    : [];
+  return createHash("sha256")
+    .update(JSON.stringify({ text, attachments: normalizedAttachments }))
+    .digest("hex");
+}
+
+async function reconcileTurnJournal(sessionId, session, recoverOutstanding) {
+  const record = await loadActiveSessionRecord(runtime, session?.handle);
+  let snapshot = await turnJournal.snapshot(sessionId);
+  const known = new Map(snapshot.turns.map((turn) => [turn.turnId, turn]));
+  const runtimeResults =
+    record?.acpx?.turn_results && typeof record.acpx.turn_results === "object"
+      ? record.acpx.turn_results
+      : {};
+
+  for (const [runtimeRequestId, result] of Object.entries(runtimeResults)) {
+    if (!result || typeof result !== "object") {
+      continue;
+    }
+    const status = result.status;
+    if (!["running", "completed", "failed", "cancelled"].includes(status)) {
+      continue;
+    }
+    const current = snapshot.turns.find(
+      (turn) =>
+        turn.turnId === runtimeRequestId ||
+        turn.clientRequestId === runtimeRequestId ||
+        turn.runtimeRequestId === runtimeRequestId,
+    );
+    const turnId = current?.turnId || runtimeRequestId;
+    const promptMessageId = result.prompt_message_id || runtimeRequestId;
+    const content = runtimeTurnContent(record, promptMessageId);
+    if (current?.status === status) {
+      continue;
+    }
+    if (
+      current &&
+      ["completed", "failed", "cancelled"].includes(current.status) &&
+      current.status !== status
+    ) {
+      continue;
+    }
+    const reconciled = await turnJournal.record({
+      sessionId,
+      turnId,
+      clientRequestId: current?.clientRequestId || runtimeRequestId,
+      status,
+      promptText: current?.promptText || content.promptText,
+      agentType: session?.agentType,
+      finalAnswer: content.finalAnswer || undefined,
+      errorCode: result.error_code,
+      runtimeRecordId: session?.handle?.acpxRecordId || sessionId,
+      runtimeRequestId,
+      promptMessageId,
+      stopReason: result.stop_reason,
+      terminalSource: status === "running" ? "runtime_record" : "reconciled_runtime_record",
+      startedAt: result.started_at,
+      completedAt: result.completed_at,
+    });
+    known.set(turnId, reconciled.turn);
+  }
+
+  if (record?.messages?.length > 0) {
+    for (let index = 0; index < record.messages.length; index += 1) {
+      const message = record.messages[index];
+      if (!message?.User || typeof message.User.id !== "string") {
+        continue;
+      }
+      const turnId = message.User.id;
+      const existing = [...known.values()].find(
+        (turn) =>
+          turn.turnId === turnId ||
+          turn.clientRequestId === turnId ||
+          turn.promptMessageId === turnId,
+      );
+      if (existing) {
+        continue;
+      }
+      const promptText = runtimeMessageText(message.User.content);
+      let finalAnswer = "";
+      for (let cursor = index + 1; cursor < record.messages.length; cursor += 1) {
+        const candidate = record.messages[cursor];
+        if (candidate?.User) {
+          break;
+        }
+        if (candidate?.Agent) {
+          const text = runtimeMessageText(candidate.Agent.content);
+          if (text) {
+            finalAnswer = text;
+          }
+        }
+      }
+      if (!finalAnswer) {
+        continue;
+      }
+      const imported = await turnJournal.record({
+        sessionId,
+        turnId,
+        clientRequestId: turnId,
+        status: "completed",
+        promptText,
+        agentType: session?.agentType,
+        finalAnswer,
+        runtimeRecordId: session?.handle?.acpxRecordId || sessionId,
+        runtimeRequestId: turnId,
+        promptMessageId: turnId,
+        stopReason: "legacy_history",
+        terminalSource: "legacy_runtime_history",
+        occurredAt: record.lastUsedAt || record.createdAt,
+      });
+      known.set(turnId, imported.turn);
+    }
+  }
+
+  snapshot = await turnJournal.snapshot(sessionId);
+  if (recoverOutstanding && !session?.activeTurn) {
+    if (snapshot.active) {
+      await turnJournal.record({
+        sessionId,
+        turnId: snapshot.active.turnId,
+        clientRequestId: snapshot.active.clientRequestId,
+        status: "failed",
+        promptText: snapshot.active.promptText,
+        agentType: snapshot.active.agentType,
+        finalAnswer: snapshot.active.finalAnswer,
+        errorCode: "runtime_restarted",
+        errorText: "1ACP restarted before the Turn reached a durable terminal state.",
+        stopReason: "runtime_restarted",
+        terminalSource: "recovery_policy",
+      });
+    }
+    for (const queued of snapshot.queued) {
+      await turnJournal.record({
+        sessionId,
+        turnId: queued.turnId,
+        clientRequestId: queued.clientRequestId,
+        status: "cancelled",
+        promptText: queued.promptText,
+        agentType: queued.agentType,
+        errorCode: "runtime_restarted",
+        errorText: "1ACP restarted before this queued Turn was dispatched.",
+        stopReason: "runtime_restarted",
+        terminalSource: "recovery_policy",
+      });
+    }
+  }
+  return await turnJournal.snapshot(sessionId);
+}
+
+function sendTurnState(ws, sessionId, turn, queuePosition, acceptedNew = false) {
+  if (!ws || ws.readyState !== 1 /* OPEN */) {
+    return;
+  }
+  ws.send(
+    JSON.stringify({
+      event: "turn_state",
+      sessionId,
+      ...turn,
+      requestId: turn.clientRequestId,
+      ...(queuePosition > 0 ? { queuePosition } : {}),
+      ...(acceptedNew ? { acceptedNew: true } : {}),
+    }),
+  );
+}
+
+async function sendAuthoritativeTurnSync(ws, sessionId, session, recoverOutstanding = false) {
+  if (!ws || ws.readyState !== 1 /* OPEN */) {
+    return;
+  }
+  const snapshot = await reconcileTurnJournal(sessionId, session, recoverOutstanding);
+  ws.send(
+    JSON.stringify({
+      event: "turn_sync",
+      sessionId,
+      sequence: snapshot.sequence,
+      ...(snapshot.active ? { active: snapshot.active } : {}),
+      queued: snapshot.queued,
+      turns: snapshot.turns,
+    }),
+  );
+}
+
+const turnDispatchChains = new Map();
+
+async function withTurnDispatchLock(sessionId, operation) {
+  const previous = turnDispatchChains.get(sessionId) || Promise.resolve();
+  const current = previous.catch(() => {}).then(operation);
+  turnDispatchChains.set(sessionId, current);
+  try {
+    return await current;
+  } finally {
+    if (turnDispatchChains.get(sessionId) === current) {
+      turnDispatchChains.delete(sessionId);
+    }
+  }
 }
 
 function clearSessionHistoryPush(sessionId) {
@@ -721,7 +1059,14 @@ wss.on("connection", (ws) => {
             resumeSessionId,
             acpSessionId,
             permissionMode,
+            env,
           } = payload;
+
+          console.time(`ensure_session_${sessionId}`);
+          console.log(
+            `[DEBUG] ensure_session started for agent=${agentType || "unknown"}, session=${sessionId}`,
+          );
+
           if (!sessionId || !workspacePath || !agentType) {
             sendError(
               ws,
@@ -757,6 +1102,16 @@ wss.on("connection", (ws) => {
           if (Array.isArray(mcpServers) && mcpServers.length > 0) {
             sessionOptions.mcpServers = mcpServers;
           }
+          if (env && typeof env === "object" && !Array.isArray(env)) {
+            const safeEnv = Object.fromEntries(
+              Object.entries(env).filter(
+                ([key, value]) => typeof key === "string" && typeof value === "string",
+              ),
+            );
+            if (Object.keys(safeEnv).length > 0) {
+              sessionOptions.env = safeEnv;
+            }
+          }
 
           // Prefer the explicit resumeSessionId (the agent-side UUID
           // recorded in the 1agents index); fall back to acpSessionId
@@ -788,29 +1143,32 @@ wss.on("connection", (ws) => {
             // order here is Map insertion order (request arrival).
             for (const pending of pendingPermissions.values()) {
               if (pending.sessionId === sessionId && pending.payload) {
-                ws.send(JSON.stringify(pending.payload));
+                sendRuntimeTurnEvent(ws, sessionId, existing.activeTurn, pending.payload);
               }
             }
             for (const pending of pendingAskUserQuestions.values()) {
               if (pending.sessionId === sessionId && pending.payload) {
-                ws.send(JSON.stringify(pending.payload));
+                sendRuntimeTurnEvent(ws, sessionId, existing.activeTurn, pending.payload);
               }
             }
             for (const pending of pendingExitPlanModes.values()) {
               if (pending.sessionId === sessionId && pending.payload) {
-                ws.send(JSON.stringify(pending.payload));
+                sendRuntimeTurnEvent(ws, sessionId, existing.activeTurn, pending.payload);
               }
             }
             registerAgentSessionMapping(sessionId, existingSession.handle);
+            await sendAuthoritativeTurnSync(ws, sessionId, existingSession);
             ws.send(
               JSON.stringify({
                 event: "session_ready",
                 sessionId,
+                turnProtocolVersion: 3,
                 agentSessionId:
                   existingSession.handle.agentSessionId || existingSession.handle.backendSessionId,
               }),
             );
             void sendSessionMeta(ws, sessionId, existingSession.handle);
+            console.timeEnd(`ensure_session_${sessionId}`);
             break;
           }
 
@@ -831,10 +1189,12 @@ wss.on("connection", (ws) => {
                 }
               }
               registerAgentSessionMapping(sessionId, handle);
+              await sendAuthoritativeTurnSync(ws, sessionId, sess || { handle, agentType });
               ws.send(
                 JSON.stringify({
                   event: "session_ready",
                   sessionId,
+                  turnProtocolVersion: 3,
                   agentSessionId: handle.agentSessionId || handle.backendSessionId,
                 }),
               );
@@ -845,10 +1205,69 @@ wss.on("connection", (ws) => {
             break;
           }
 
+          // Track the most recent CWD for background pre-warm
+          if (normalizedPath) {
+            lastUsedCwd = normalizedPath;
+          }
+
+          // Phase 2: Instant pre-warm hit for fresh grok-build sessions if CWD matches!
+          if (agentType === "grok-build" && !resumeId && prewarmedGrokHandle) {
+            if (prewarmedGrokCwd === normalizedPath) {
+              console.time(`ensure_session_${sessionId}`);
+              console.log(
+                `[PRE-WARM] 🚀 Instant hit! Reusing pre-warmed grok-build handle for CWD=${normalizedPath}, session=${sessionId}`,
+              );
+              const handle = await runtime.adoptSession({
+                handle: prewarmedGrokHandle,
+                sessionKey: sessionId,
+              });
+              prewarmedGrokHandle = null;
+              prewarmedGrokCwd = null;
+              console.timeEnd(`ensure_session_${sessionId}`);
+
+              // Asynchronously trigger background pre-warm for the next session using the same CWD
+              setTimeout(() => prewarmGrokSession(normalizedPath), 500);
+
+              activeSessions.set(sessionId, {
+                handle,
+                activeTurn: null,
+                promptQueue: [],
+                ws,
+                agentType,
+                sessionMode: await resolveGrokPermissionMode(handle, agentType),
+                permissionMode: seededMode ?? "approve-reads",
+              });
+              registerAgentSessionMapping(sessionId, handle);
+              await sendAuthoritativeTurnSync(ws, sessionId, activeSessions.get(sessionId), true);
+              ws.send(
+                JSON.stringify({
+                  event: "session_ready",
+                  sessionId,
+                  turnProtocolVersion: 3,
+                  agentSessionId: handle.agentSessionId || handle.backendSessionId,
+                }),
+              );
+              void sendSessionMeta(ws, sessionId, handle);
+              break;
+            } else {
+              console.log(
+                `[PRE-WARM] CWD mismatch (prewarmed=${prewarmedGrokCwd}, requested=${normalizedPath}). Discarding obsolete pre-warm handle.`,
+              );
+              try {
+                void runtime.close({ handle: prewarmedGrokHandle, reason: "CWD mismatch" });
+              } catch {
+                // ignore
+              }
+              prewarmedGrokHandle = null;
+              prewarmedGrokCwd = null;
+            }
+          }
+
           console.log(
             `[acpx-server] Initializing session. Agent: ${agentType}, Cwd: ${normalizedPath}, ResumeSessionId: ${resumeId || "<none>"}`,
           );
 
+          console.time(`ensure_session_${sessionId}`);
           const sessionPromise = runtime.ensureSession({
             sessionKey: sessionId,
             agent: agentType,
@@ -861,6 +1280,14 @@ wss.on("connection", (ws) => {
 
           try {
             const handle = await sessionPromise;
+            console.timeEnd(`ensure_session_${sessionId}`);
+            console.log(`[DEBUG] ensure_session finished for session=${sessionId}`);
+
+            // Asynchronously trigger background pre-warm after a cold spawn using the new CWD
+            if (agentType === "grok-build") {
+              setTimeout(() => prewarmGrokSession(normalizedPath), 500);
+            }
+
             activeSessions.set(sessionId, {
               handle,
               activeTurn: null,
@@ -878,10 +1305,12 @@ wss.on("connection", (ws) => {
             });
             registerAgentSessionMapping(sessionId, handle);
 
+            await sendAuthoritativeTurnSync(ws, sessionId, activeSessions.get(sessionId), true);
             ws.send(
               JSON.stringify({
                 event: "session_ready",
                 sessionId,
+                turnProtocolVersion: 3,
                 agentSessionId: handle.agentSessionId || handle.backendSessionId,
               }),
             );
@@ -896,7 +1325,13 @@ wss.on("connection", (ws) => {
           // attachments: optional [{ mediaType, data }] (base64) — forwarded
           // to runtime.startTurn, which maps image/* and audio/* onto ACP
           // content blocks. Other media types are rejected by the runtime.
-          const { text, attachments } = payload;
+          const {
+            text,
+            attachments,
+            turnId: requestedTurnId,
+            requestId: requestedRuntimeId,
+            turnManaged,
+          } = payload;
           if (!sessionId || text === undefined) {
             sendError(ws, sessionId, "INVALID_PARAMS", "sessionId and text are required");
             return;
@@ -906,6 +1341,81 @@ wss.on("connection", (ws) => {
           if (!session) {
             sendError(ws, sessionId, "SESSION_NOT_FOUND", "Session not initialized");
             return;
+          }
+
+          if (turnManaged || requestedTurnId) {
+            if (!requestedRuntimeId) {
+              ws.send(
+                JSON.stringify({
+                  event: "protocol_error",
+                  sessionId,
+                  code: "MISSING_REQUEST_ID",
+                  message: "managed Turns require a requestId idempotency key",
+                }),
+              );
+              return;
+            }
+            await withTurnDispatchLock(sessionId, async () => {
+              const snapshot = await turnJournal.snapshot(sessionId);
+              const requestFingerprint = hostPromptFingerprint(text, attachments);
+              const existing = snapshot.turns.find(
+                (turn) => turn.clientRequestId === requestedRuntimeId,
+              );
+              if (existing) {
+                if (existing.requestFingerprint !== requestFingerprint) {
+                  ws.send(
+                    JSON.stringify({
+                      event: "protocol_error",
+                      sessionId,
+                      turnId: existing.turnId,
+                      requestId: requestedRuntimeId,
+                      code: "IDEMPOTENCY_CONFLICT",
+                      message: "requestId was already used for a different prompt",
+                    }),
+                  );
+                  return;
+                }
+                const queuePosition =
+                  existing.status === "queued"
+                    ? snapshot.queued.findIndex((turn) => turn.turnId === existing.turnId) + 1
+                    : 0;
+                sendTurnState(ws, sessionId, existing, queuePosition);
+                return;
+              }
+
+              const turnId = requestedTurnId || randomUUID();
+              const promptItem = {
+                text,
+                attachments,
+                turnId,
+                requestId: requestedRuntimeId,
+                requestFingerprint,
+                ws,
+              };
+              if (session.activeTurn || session.promptQueue.length > 0) {
+                const queued = await turnJournal.record({
+                  sessionId,
+                  turnId,
+                  clientRequestId: requestedRuntimeId,
+                  status: "queued",
+                  promptText: text,
+                  requestFingerprint,
+                  agentType: session.agentType,
+                  runtimeRecordId: session.handle?.acpxRecordId || sessionId,
+                });
+                session.promptQueue.push(promptItem);
+                sendTurnState(
+                  ws,
+                  sessionId,
+                  queued.turn,
+                  session.promptQueue.length,
+                  queued.created,
+                );
+                return;
+              }
+              await runPromptTurn(session, sessionId, promptItem);
+            });
+            break;
           }
 
           if (session.activeTurn || session.promptQueue.length > 0) {
@@ -934,7 +1444,7 @@ wss.on("connection", (ws) => {
             return;
           }
 
-          runPromptTurn(session, sessionId, { text, attachments });
+          await runPromptTurn(session, sessionId, { text, attachments });
           break;
         }
 
@@ -1296,12 +1806,9 @@ wss.on("connection", (ws) => {
         }
 
         case "cancel_turn": {
-          // Composer "停止": stop generating without tearing the session down.
-          // Cancels the active turn and drops any queued prompts, but keeps
-          // the session in activeSessions so the user can immediately continue
-          // the conversation. (Full teardown is close_session, below.) The
-          // cancelled turn settles with status "cancelled", so runPromptTurn
-          // emits a normal `done` — no error is surfaced to the client.
+          // Composer "停止": cancel the explicitly targeted active Turn while
+          // preserving the session and host-owned durable queue. Full teardown
+          // is close_session below.
           if (!sessionId) {
             sendError(ws, sessionId, "INVALID_PARAMS", "sessionId is required");
             return;
@@ -1313,9 +1820,43 @@ wss.on("connection", (ws) => {
             return;
           }
 
-          // Drop the queue first so the active turn's finally block doesn't
-          // auto-start a queued prompt after we cancel it.
-          cancelSessionQueue(session, sessionId);
+          const requestedTurnId = payload.turnId;
+          const activeHostTurnId = session.activeTurn?.hostTurnId;
+          if (requestedTurnId && requestedTurnId !== activeHostTurnId) {
+            const queuedIndex = session.promptQueue.findIndex(
+              (item) => item.turnId === requestedTurnId,
+            );
+            if (queuedIndex >= 0) {
+              const [queued] = session.promptQueue.splice(queuedIndex, 1);
+              const cancelled = await turnJournal.record({
+                sessionId,
+                turnId: queued.turnId,
+                clientRequestId: queued.requestId,
+                status: "cancelled",
+                promptText: queued.text,
+                agentType: session.agentType,
+                errorCode: "cancelled_by_user",
+                errorText: "Queued Turn was cancelled before execution.",
+                stopReason: "cancelled_by_user",
+                terminalSource: "turn_journal",
+              });
+              sendTurnState(ws, sessionId, cancelled.turn);
+            } else {
+              ws.send(
+                JSON.stringify({
+                  event: "protocol_error",
+                  sessionId,
+                  turnId: requestedTurnId,
+                  code: "STALE_TURN_CANCEL",
+                  message: "cancel target is neither active nor queued",
+                }),
+              );
+            }
+            return;
+          }
+          if (!requestedTurnId) {
+            await cancelSessionQueue(session, sessionId);
+          }
           if (session.activeTurn) {
             try {
               await session.activeTurn.cancel({ reason: "Stopped by user" });
@@ -1341,7 +1882,7 @@ wss.on("connection", (ws) => {
               if (session.activeTurn) {
                 await session.activeTurn.cancel({ reason: "Session closed" });
               }
-              cancelSessionQueue(session, sessionId);
+              await cancelSessionQueue(session, sessionId);
               await runtime.close({ handle: session.handle, reason: "Session closed by request" });
             } catch (err) {
               console.error(`[acpx-server] Error closing runtime handle:`, err);
@@ -1642,9 +2183,10 @@ wss.on("connection", (ws) => {
       // `npx … codex-acp` fallback fell through to PATH). Surface an
       // actionable message instead of the opaque raw shell error.
       if (
-        err?.detailCode === "AGENT_STARTUP_FAILED" &&
-        (err.exitCode === 127 ||
-          /command not found|ENOENT|not found/i.test(err.stderrSummary || err.message || ""))
+        (err?.detailCode === "AGENT_STARTUP_FAILED" &&
+          (err.exitCode === 127 ||
+            /command not found|ENOENT|not found/i.test(err.stderrSummary || err.message || ""))) ||
+        err?.message?.startsWith("Failed to spawn agent command:")
       ) {
         const cmd = err.agentCommand || "the ACP adapter";
         sendError(
@@ -1735,13 +2277,10 @@ function leavePlanModeAfterExit(sessionId, ws) {
   console.log(`[acpx-server] exit_plan_mode left plan → ${nextMode} for ${sessionId}`);
   try {
     if (ws && ws.readyState === 1 /* OPEN */) {
-      ws.send(
-        JSON.stringify({
-          event: "mode_changed",
-          sessionId,
-          payload: { currentModeId: nextMode },
-        }),
-      );
+      sendRuntimeTurnEvent(ws, sessionId, session.activeTurn, {
+        event: "mode_changed",
+        payload: { currentModeId: nextMode },
+      });
     }
   } catch (err) {
     console.warn(
@@ -1787,6 +2326,8 @@ function sendError(ws, sessionId, errorCode, message) {
       sessionId,
       code: errorCode,
       message,
+      scope: "control",
+      terminal: false,
     }),
   );
 }
@@ -1844,22 +2385,71 @@ function sendPromptCancelled(ws, sessionId, requestId) {
 // originating ws for each one. The active turn is left untouched — callers
 // handle the active-turn cancel separately so they can attach their own
 // reason ("User cancelled via UI" vs "Session closed" vs "Clean shutdown").
-function cancelSessionQueue(session, sessionId) {
+async function cancelSessionQueue(session, sessionId) {
   if (!session?.promptQueue) {
     return;
   }
   for (const item of session.promptQueue) {
-    sendPromptCancelled(item.ws, sessionId, item.queuedRequestId);
+    if (item.turnId) {
+      const cancelled = await turnJournal.record({
+        sessionId,
+        turnId: item.turnId,
+        clientRequestId: item.requestId,
+        status: "cancelled",
+        promptText: item.text,
+        agentType: session.agentType,
+        errorCode: "session_closed",
+        errorText: "Queued Turn was cancelled because the session closed.",
+        stopReason: "session_closed",
+        terminalSource: "turn_journal",
+      });
+      sendTurnState(item.ws || session.ws, sessionId, cancelled.turn);
+    } else {
+      sendPromptCancelled(item.ws, sessionId, item.queuedRequestId);
+    }
   }
   session.promptQueue.length = 0;
 }
 
-// Start (or continue) running a prompt on the given session and chain into
-// the next queued prompt when this turn completes. Extracted from
-// case "prompt" so the queue-drain in the finally block can re-enter it
-// without duplicating the event-consumption logic.
-function runPromptTurn(session, sessionId, promptItem) {
-  const requestId = `turn_${Date.now()}`;
+function sendRuntimeTurnEvent(ws, sessionId, turn, payload) {
+  if (!ws || ws.readyState !== 1 /* OPEN */) {
+    return false;
+  }
+  const hostTurnId = turn?.hostTurnId;
+  if (hostTurnId) {
+    turn.eventSequence = (turn.eventSequence || 0) + 1;
+  }
+  ws.send(
+    JSON.stringify({
+      ...payload,
+      sessionId,
+      ...(hostTurnId ? { turnId: hostTurnId, sequence: turn.eventSequence } : {}),
+    }),
+  );
+  return true;
+}
+
+// 1ACP owns both host-managed and legacy prompt dispatch. Host-managed Turns
+// are journaled before execution or queue acknowledgement.
+async function runPromptTurn(session, sessionId, promptItem) {
+  const requestId = promptItem.requestId || `turn_${Date.now()}`;
+  if (promptItem.turnId) {
+    const running = await turnJournal.record({
+      sessionId,
+      turnId: promptItem.turnId,
+      clientRequestId: requestId,
+      status: "running",
+      promptText: promptItem.text,
+      requestFingerprint: promptItem.requestFingerprint,
+      agentType: session.agentType,
+      runtimeRecordId: session.handle?.acpxRecordId || sessionId,
+      runtimeRequestId: requestId,
+      promptMessageId: requestId,
+      terminalSource: "turn_journal",
+    });
+    const currentSession = activeSessions.get(sessionId);
+    sendTurnState(currentSession?.ws || promptItem.ws, sessionId, running.turn, 0, running.created);
+  }
   const attachments = Array.isArray(promptItem.attachments)
     ? promptItem.attachments.filter(
         (a) => a && typeof a.mediaType === "string" && typeof a.data === "string",
@@ -1872,10 +2462,13 @@ function runPromptTurn(session, sessionId, promptItem) {
     mode: "prompt",
     requestId,
   });
+  turn.hostTurnId = promptItem.turnId || null;
+  turn.eventSequence = 0;
 
   session.activeTurn = turn;
+  let terminalSent = false;
 
-  (async () => {
+  void (async () => {
     try {
       for await (const event of turn.events) {
         const currentSession = activeSessions.get(sessionId);
@@ -1887,14 +2480,11 @@ function runPromptTurn(session, sessionId, promptItem) {
 
         // event types: text_delta, status, tool_call, error
         if (event.type === "text_delta") {
-          targetWs.send(
-            JSON.stringify({
-              event: "text_delta",
-              sessionId,
-              text: event.text,
-              type: event.stream || "output", // 'thought' or 'output'
-            }),
-          );
+          sendRuntimeTurnEvent(targetWs, sessionId, turn, {
+            event: "text_delta",
+            text: event.text,
+            type: event.stream || "output", // 'thought' or 'output'
+          });
         } else if (event.type === "tool_call") {
           console.log(
             "[acpx-server] Real-time tool_call event received:",
@@ -1912,21 +2502,18 @@ function runPromptTurn(session, sessionId, promptItem) {
           // so the frontend can treat status as authoritative over heuristics.
           const rawStatus = typeof event.status === "string" ? event.status : undefined;
           const toolStatus = rawStatus === "success" ? "completed" : rawStatus || undefined;
-          targetWs.send(
-            JSON.stringify({
-              event: "tool_call",
-              sessionId,
-              toolName: resolveToolDisplayName(event),
-              toolCallId: event.toolCallId,
-              ...(event.rawInput !== undefined ? { arguments: event.rawInput } : {}),
-              ...(event.kind ? { kind: event.kind } : {}),
-              ...(toolStatus ? { status: toolStatus } : {}),
-              ...(Array.isArray(event.locations) && event.locations.length > 0
-                ? { locations: event.locations }
-                : {}),
-              ...(toolDiffs.length > 0 ? { diffs: toolDiffs } : {}),
-            }),
-          );
+          sendRuntimeTurnEvent(targetWs, sessionId, turn, {
+            event: "tool_call",
+            toolName: resolveToolDisplayName(event),
+            toolCallId: event.toolCallId,
+            ...(event.rawInput !== undefined ? { arguments: event.rawInput } : {}),
+            ...(event.kind ? { kind: event.kind } : {}),
+            ...(toolStatus ? { status: toolStatus } : {}),
+            ...(Array.isArray(event.locations) && event.locations.length > 0
+              ? { locations: event.locations }
+              : {}),
+            ...(toolDiffs.length > 0 ? { diffs: toolDiffs } : {}),
+          });
           // Terminal tool outcomes also surface as tool_result so older clients
           // that only watch results still update. Prefer ACP "completed"/"failed";
           // accept legacy "success" for the same gate.
@@ -1942,25 +2529,22 @@ function runPromptTurn(session, sessionId, promptItem) {
                   ? event.rawOutput
                   : JSON.stringify(event.rawOutput);
             }
-            targetWs.send(
-              JSON.stringify({
-                event: "tool_result",
-                sessionId,
-                toolCallId: event.toolCallId,
-                toolName: resolveToolDisplayName(event),
-                text: textContent,
-                isError: toolStatus === "failed",
-              }),
-            );
+            sendRuntimeTurnEvent(targetWs, sessionId, turn, {
+              event: "tool_result",
+              toolCallId: event.toolCallId,
+              toolName: resolveToolDisplayName(event),
+              text: textContent,
+              isError: toolStatus === "failed",
+            });
           }
         } else if (event.type === "error") {
-          targetWs.send(
-            JSON.stringify({
-              event: "error",
-              sessionId,
-              message: event.message,
-            }),
-          );
+          sendRuntimeTurnEvent(targetWs, sessionId, turn, {
+            event: "error",
+            scope: "turn",
+            terminal: false,
+            code: event.code,
+            message: event.message,
+          });
         } else if (
           event.type === "status" &&
           event.tag === "current_mode_update" &&
@@ -1974,13 +2558,10 @@ function runPromptTurn(session, sessionId, promptItem) {
           if (liveSession) {
             liveSession.sessionMode = event.currentModeId;
           }
-          targetWs.send(
-            JSON.stringify({
-              event: "mode_changed",
-              sessionId,
-              payload: { currentModeId: event.currentModeId },
-            }),
-          );
+          sendRuntimeTurnEvent(targetWs, sessionId, turn, {
+            event: "mode_changed",
+            payload: { currentModeId: event.currentModeId },
+          });
         } else if (
           event.type === "status" &&
           event.tag === "available_commands_update" &&
@@ -1988,13 +2569,10 @@ function runPromptTurn(session, sessionId, promptItem) {
         ) {
           // Live refresh of the slash-command list (rare mid-session; the
           // session_meta snapshot covers the common case at session start).
-          targetWs.send(
-            JSON.stringify({
-              event: "available_commands_update",
-              sessionId,
-              payload: { availableCommands: event.availableCommands },
-            }),
-          );
+          sendRuntimeTurnEvent(targetWs, sessionId, turn, {
+            event: "available_commands_update",
+            payload: { availableCommands: event.availableCommands },
+          });
         } else if (
           event.type === "status" &&
           event.tag === "plan" &&
@@ -2002,13 +2580,10 @@ function runPromptTurn(session, sessionId, promptItem) {
         ) {
           // The agent's execution plan (TodoWrite / Codex plan). Full list on
           // every update — the client replaces its checklist wholesale.
-          targetWs.send(
-            JSON.stringify({
-              event: "plan",
-              sessionId,
-              payload: { entries: event.planEntries },
-            }),
-          );
+          sendRuntimeTurnEvent(targetWs, sessionId, turn, {
+            event: "plan",
+            payload: { entries: event.planEntries },
+          });
         } else if (event.type === "status" && event.tag === "usage_update") {
           // Token/context usage + cost for the composer badge. used/size feed
           // the context-window % gauge; cost (when the adapter reports it) is
@@ -2021,7 +2596,7 @@ function runPromptTurn(session, sessionId, promptItem) {
             ...(event.breakdown ? { breakdown: event.breakdown } : {}),
           };
           if (Object.keys(usage).length > 0) {
-            targetWs.send(JSON.stringify({ event: "usage", sessionId, payload: usage }));
+            sendRuntimeTurnEvent(targetWs, sessionId, turn, { event: "usage", payload: usage });
           }
         } else if (event.type === "status" && event.tag === "config_option_update") {
           // The agent changed a config option itself (rare — model/effort are
@@ -2039,8 +2614,52 @@ function runPromptTurn(session, sessionId, promptItem) {
 
       const currentSession = activeSessions.get(sessionId);
       const targetWs = currentSession ? currentSession.ws : null;
+      const journalTerminal = turn.hostTurnId
+        ? await turnJournal.record({
+            sessionId,
+            turnId: turn.hostTurnId,
+            clientRequestId: requestId,
+            status: result.status,
+            promptText: promptItem.text,
+            agentType: currentSession?.agentType || session.agentType,
+            finalAnswer: result.finalAnswer,
+            errorCode:
+              result.status === "failed" ? result.error?.code || "ACP_PROMPT_FAILED" : undefined,
+            errorText: result.status === "failed" ? result.error?.message : undefined,
+            runtimeRecordId:
+              currentSession?.handle?.acpxRecordId || session.handle?.acpxRecordId || sessionId,
+            runtimeRequestId: result.runtimeRequestId || requestId,
+            promptMessageId: result.promptMessageId || requestId,
+            stopReason:
+              result.stopReason || (result.status === "failed" ? "runtime_error" : undefined),
+            terminalSource: "live_runtime",
+          })
+        : undefined;
       if (targetWs && targetWs.readyState === 1 /* OPEN */) {
-        if (result.status === "failed") {
+        if (turn.hostTurnId) {
+          sendRuntimeTurnEvent(targetWs, sessionId, turn, {
+            ...journalTerminal.turn,
+            event: "turn_terminal",
+            status: result.status,
+            journalSequence: journalTerminal.turn.lastEventSeq,
+            stopReason:
+              result.stopReason || (result.status === "failed" ? "runtime_error" : undefined),
+            ...(result.finalAnswer ? { finalAnswer: result.finalAnswer } : {}),
+            runtimeRequestId: result.runtimeRequestId || requestId,
+            promptMessageId: result.promptMessageId || requestId,
+            completedAt: new Date().toISOString(),
+            ...(result.status === "failed"
+              ? {
+                  error: {
+                    code: result.error?.code || "ACP_PROMPT_FAILED",
+                    message: result.error?.message || "Turn execution failed",
+                  },
+                }
+              : {}),
+          });
+          terminalSent = true;
+          void sendSessionMeta(targetWs, sessionId, currentSession.handle);
+        } else if (result.status === "failed") {
           targetWs.send(
             JSON.stringify({
               event: "error",
@@ -2084,7 +2703,47 @@ function runPromptTurn(session, sessionId, promptItem) {
       console.error(`[acpx-server] Error executing turn:`, err);
       const currentSession = activeSessions.get(sessionId);
       const targetWs = currentSession ? currentSession.ws : null;
-      if (targetWs && targetWs.readyState === 1 /* OPEN */) {
+      if (turn.hostTurnId && !terminalSent) {
+        try {
+          const terminal = await turnJournal.record({
+            sessionId,
+            turnId: turn.hostTurnId,
+            clientRequestId: requestId,
+            status: "failed",
+            promptText: promptItem.text,
+            agentType: currentSession?.agentType,
+            errorCode: "ACP_PROMPT_FAILED",
+            errorText: err?.message || String(err),
+            runtimeRecordId: currentSession?.handle?.acpxRecordId || sessionId,
+            runtimeRequestId: requestId,
+            promptMessageId: requestId,
+            stopReason: "runtime_error",
+            terminalSource: "bridge_error",
+          });
+          sendRuntimeTurnEvent(targetWs, sessionId, turn, {
+            ...terminal.turn,
+            event: "turn_terminal",
+            status: "failed",
+            journalSequence: terminal.turn.lastEventSeq,
+            stopReason: "runtime_error",
+            runtimeRequestId: requestId,
+            promptMessageId: requestId,
+            completedAt: new Date().toISOString(),
+            error: {
+              code: "ACP_PROMPT_FAILED",
+              message: err?.message || String(err),
+            },
+          });
+          terminalSent = true;
+        } catch (journalError) {
+          sendError(
+            targetWs,
+            sessionId,
+            "TURN_JOURNAL_FAILED",
+            journalError?.message || String(journalError),
+          );
+        }
+      } else if (targetWs && targetWs.readyState === 1 /* OPEN */) {
         targetWs.send(
           JSON.stringify({
             event: "error",
@@ -2094,14 +2753,16 @@ function runPromptTurn(session, sessionId, promptItem) {
         );
       }
     } finally {
-      const currentSession = activeSessions.get(sessionId);
-      if (currentSession) {
-        currentSession.activeTurn = null;
-        if (currentSession.promptQueue.length > 0) {
-          const next = currentSession.promptQueue.shift();
-          runPromptTurn(currentSession, sessionId, next);
+      await withTurnDispatchLock(sessionId, async () => {
+        const currentSession = activeSessions.get(sessionId);
+        if (currentSession?.activeTurn === turn) {
+          currentSession.activeTurn = null;
+          if (currentSession.promptQueue.length > 0) {
+            const next = currentSession.promptQueue.shift();
+            await runPromptTurn(currentSession, sessionId, next);
+          }
         }
-      }
+      });
     }
   })();
 }
@@ -2132,15 +2793,12 @@ async function handleExitPlanModeCallback(req, ctx) {
         pendingExitPlanModes.delete(requestId);
         resolve({ outcome: "abandoned" });
         try {
-          session.ws.send(
-            JSON.stringify({
-              event: "exit_plan_mode_timeout",
-              sessionId: clientSessionId,
-              requestId,
-              toolCallId,
-              message: "exit_plan_mode auto-abandoned after 5min timeout.",
-            }),
-          );
+          sendRuntimeTurnEvent(session.ws, clientSessionId, session.activeTurn, {
+            event: "exit_plan_mode_timeout",
+            requestId,
+            toolCallId,
+            message: "exit_plan_mode auto-abandoned after 5min timeout.",
+          });
         } catch {
           // socket may already be closed
         }
@@ -2179,7 +2837,7 @@ async function handleExitPlanModeCallback(req, ctx) {
     }
 
     try {
-      session.ws.send(JSON.stringify(payload));
+      sendRuntimeTurnEvent(session.ws, clientSessionId, session.activeTurn, payload);
     } catch (err) {
       console.warn(`[acpx-server] failed to send exit_plan_mode event:`, err.message);
       clearTimeout(timer);
@@ -2215,15 +2873,12 @@ async function handleAskUserQuestionCallback(req, ctx) {
         pendingAskUserQuestions.delete(requestId);
         resolve({ outcome: "cancelled" });
         try {
-          session.ws.send(
-            JSON.stringify({
-              event: "ask_user_question_timeout",
-              sessionId: clientSessionId,
-              requestId,
-              toolCallId,
-              message: "ask_user_question auto-cancelled after 5min timeout.",
-            }),
-          );
+          sendRuntimeTurnEvent(session.ws, clientSessionId, session.activeTurn, {
+            event: "ask_user_question_timeout",
+            requestId,
+            toolCallId,
+            message: "ask_user_question auto-cancelled after 5min timeout.",
+          });
         } catch {
           // socket may already be closed
         }
@@ -2263,7 +2918,7 @@ async function handleAskUserQuestionCallback(req, ctx) {
     }
 
     try {
-      session.ws.send(JSON.stringify(payload));
+      sendRuntimeTurnEvent(session.ws, clientSessionId, session.activeTurn, payload);
     } catch (err) {
       console.warn(`[acpx-server] failed to send ask_user_question event:`, err.message);
       clearTimeout(timer);
@@ -2373,14 +3028,11 @@ async function handlePermissionRequestCallback(req, ctx) {
         resolve({ outcome: "reject_once" });
 
         // Notify Go backend of the timeout
-        session.ws.send(
-          JSON.stringify({
-            event: "permission_timeout",
-            sessionId: clientSessionId,
-            requestId,
-            message: `Permission request for "${req.raw.toolCall.title}" auto-denied after 5min timeout.`,
-          }),
-        );
+        sendRuntimeTurnEvent(session.ws, clientSessionId, session.activeTurn, {
+          event: "permission_timeout",
+          requestId,
+          message: `Permission request for "${req.raw.toolCall.title}" auto-denied after 5min timeout.`,
+        });
       },
       5 * 60 * 1000,
     );
@@ -2422,14 +3074,11 @@ async function handlePermissionRequestCallback(req, ctx) {
         // Tell the client to collapse the composer prompt so a late click
         // does not race into PERMISSION_NOT_FOUND.
         try {
-          session.ws.send(
-            JSON.stringify({
-              event: "permission_timeout",
-              sessionId: clientSessionId,
-              requestId,
-              message: `Permission request for "${req.raw.toolCall.title}" was cancelled.`,
-            }),
-          );
+          sendRuntimeTurnEvent(session.ws, clientSessionId, session.activeTurn, {
+            event: "permission_timeout",
+            requestId,
+            message: `Permission request for "${req.raw.toolCall.title}" was cancelled.`,
+          });
         } catch (err) {
           console.warn(`[acpx-server] failed to send permission abort event:`, err.message);
         }
@@ -2438,16 +3087,13 @@ async function handlePermissionRequestCallback(req, ctx) {
     );
 
     // Send permission request to client
-    session.ws.send(
-      JSON.stringify({
-        event: "permission_request",
-        sessionId: clientSessionId,
-        requestId,
-        toolCallId: req.raw.toolCall.toolCallId,
-        toolName: resolveToolDisplayName(req.raw.toolCall),
-        arguments: req.raw.toolCall.rawInput || {},
-      }),
-    );
+    sendRuntimeTurnEvent(session.ws, clientSessionId, session.activeTurn, {
+      event: "permission_request",
+      requestId,
+      toolCallId: req.raw.toolCall.toolCallId,
+      toolName: resolveToolDisplayName(req.raw.toolCall),
+      arguments: req.raw.toolCall.rawInput || {},
+    });
   });
 }
 
@@ -2463,7 +3109,7 @@ async function killAllManagedAgents() {
       if (session.activeTurn) {
         promises.push(session.activeTurn.cancel({ reason: "Clean shutdown" }));
       }
-      cancelSessionQueue(session, sessionId);
+      promises.push(cancelSessionQueue(session, sessionId));
       promises.push(runtime.close({ handle: session.handle, reason: "Clean shutdown" }));
     } catch (e) {
       console.error(`[acpx-server] Cleanup error for session ${sessionId}:`, e);
