@@ -21,6 +21,7 @@ import { FsRowActionsMenu, type FsRowAction } from '../FsRowActionsMenu';
 import { buildFeatureBreakdownPrompt, buildFeatureCatalogGeneratePrompt } from './aiPMWorkflow';
 import { FeatureNodeForm } from './FeatureNodeForm';
 import { FeatureCatalogHistoryDialog } from './FeatureCatalogHistoryDialog';
+import { FeatureDocumentPreviewDrawer } from './FeatureDocumentPreviewDrawer';
 import { TaskPreviewDrawer } from './TaskPreviewDrawer';
 import {
     buildFeatureTree,
@@ -339,6 +340,7 @@ export function FeatureCatalogView({
     const [renameValue, setRenameValue] = useState('');
     const [documentPath, setDocumentPath] = useState('');
     const [previewItem, setPreviewItem] = useState<ProjectItem | null>(null);
+    const [previewDocumentPath, setPreviewDocumentPath] = useState<string | null>(null);
     const [moveLink, setMoveLink] = useState<MoveLinkState | null>(null);
     const [moveTargetId, setMoveTargetId] = useState('');
     const [treePanePercent, setTreePanePercent] = useState(50);
@@ -823,7 +825,7 @@ export function FeatureCatalogView({
     };
 
     const openDocument = (path: string) => {
-        void tabsStore.openPreviewTab(path, featureDocumentName(path));
+        setPreviewDocumentPath(path);
     };
 
     const moveLinkedItem = async () => {
@@ -1645,6 +1647,12 @@ export function FeatureCatalogView({
                 task={previewItem}
                 onClose={() => setPreviewItem(null)}
                 onOpenFull={taskId => taskNav.openTaskById(workspaceId, taskId)}
+            />
+            <FeatureDocumentPreviewDrawer
+                open={previewDocumentPath !== null}
+                path={previewDocumentPath}
+                onClose={() => setPreviewDocumentPath(null)}
+                onOpenInFiles={path => void tabsStore.openPreviewTab(path, featureDocumentName(path))}
             />
             {renameTarget && (
                 <div class="ws-modal-overlay" onClick={() => !busy && setRenameTarget(null)}>

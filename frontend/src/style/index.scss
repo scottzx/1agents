@@ -7275,7 +7275,9 @@ body {
   animation: fadeIn 0.18s ease-out;
 }
 
+.milestone-detail .preview-drawer,
 .milestone-detail .task-preview-drawer,
+.feature-catalog-shell > .preview-drawer,
 .feature-catalog-shell > .task-preview-drawer {
   position: absolute;
   top: 50%;
@@ -7567,6 +7569,7 @@ body {
     }
   }
 
+  .milestone-detail .preview-drawer,
   .milestone-detail .task-preview-drawer {
     width: calc(100% - 24px);
     max-height: calc(100% - 24px);
@@ -30549,6 +30552,7 @@ body {
   }
 }
 
+.feature-catalog-shell > .preview-drawer,
 .feature-catalog-shell > .task-preview-drawer {
   top: 0;
   right: 0;
@@ -30860,6 +30864,7 @@ body {
     display: none;
   }
 
+  .feature-catalog-shell > .preview-drawer,
   .feature-catalog-shell > .task-preview-drawer {
     top: auto;
     left: 0;
