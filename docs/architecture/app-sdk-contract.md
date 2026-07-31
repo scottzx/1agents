@@ -1,13 +1,13 @@
 # 应用 SDK 契约 — 应用两面契约 · 北向任务 API · 三存储面
 
-> **状态：远期草案**（[名称定义表 §0.9](../product/名称定义表.md)）。当前**不实装** App Registry；扩展优先 skill + scripts + 内置浏览器预览。本文保留契约形，供远期 registry 多应用接入，**非当前交付真源**。
+> **状态：演进中的外部 SDK 契约草案**（[名称定义表 §0.9](../product/名称定义表.md)）。编译期 App Registry、Manifest 查询与启停、前端视图注册及三类挂载基础设施已经落地；本文描述的是更完整的应用接入目标，不能把所有规范条目都视为当前已实现 API。当前事实以代码和 [agentsOS 架构](./agentsOS-架构设计.md)中的实现边界为准。
 >
-> 1agents「AI-native 组织 / 可装可卸多应用平台」的**应用接入规范**（远期）。
+> 1agents「AI-native 组织 / 可组合多应用平台」的**外部应用接入规范草案**。
 > 配套总纲见 [`agentsOS-架构设计.md`](./agentsOS-架构设计.md);本文是其 §10「应用契约两面(SDK)」的展开。
-> **术语权威**：[名称定义表 §0](../product/名称定义表.md)。可调度单元 = ProjectItem（`ItemType=task`）；**核心 / 内核** = ②③④ 框架；**应用 / 专业模板** = ① 业务层 + function 实现（registry 装载为远期）。
-> 适用范围（远期）:单用户 · 无 RBAC · 编译期模块 + registry 开关。
+> **术语权威**：[名称定义表 §0](../product/名称定义表.md)。可调度单元 = ProjectItem（`ItemType=task`）；**核心 / 内核** = ②③④ 框架；**应用 / 专业模板** = ① 业务层 + function 实现。
+> 当前适用范围：单用户 · 无 RBAC · 编译期模块 + Registry 启停；动态下载安装和第三方市场不在当前实现边界。
 
-远期北极星:**做第三个应用几乎零内核改动**。契约验证思路仍可用 #347 闸门语言描述，但**不作为当前 Epic 交付标准**。
+演进北极星：**新增注册应用尽量不改内核**。契约验证思路仍可用 #347 闸门语言描述，但本文不是当前版本全部 API 的实现证明。
 
 ---
 
@@ -439,6 +439,6 @@ registerAppView('CostLens', CostLens);
 本文混合两类内容,读者据此判断稳定度:
 
 - **已落地(签名稳定)** — `backend/internal/taskapi/{api,binding,function}.go` 与 `backend/internal/meta/{types,db,tasks}.go`。§3.1、§3.2 的所有签名、`AppPermissions` / `DispatchSpec` / `TaskTargetSpec` / `CompletionEvent` 结构、executor 三态常量、`meta.schemaVersion = 20` 与 `ensureProjectsColumns` 幂等模式,均**直接来自已提交代码**。
-- **契约约定(待并行收敛)** — 文中显式标「契约约定」处:appregistry / domainstore / templateregistry 的具体 Go 包、前端 `registerAppView`、应用模块落点路径 `backend/internal/apps/<id>/`。后端与前端 agent 正并行敲定;两侧应**向本文的规范形收敛**,签名与 §2 的 manifest 保持一致。
+- **实现核对说明** — `appregistry` / `domainstore` / `templateregistry`、前端 `registerAppView` 与三类挂载已有实现，但具体签名和应用目录布局以当前代码为准。文中显式标「契约约定」的内容仍是外部 SDK 目标，不应反向覆盖已经落地的内部接口。
 
 > 落地纪律(总纲 §12):先立任务 API 边界、应用只经 API;`task` / `pm_*` 物理表先共存、延后拆;别第一步重写 `meta.Task`。本契约就是那条边界的成文版本。

@@ -1,6 +1,6 @@
 # 1Agents 文档索引
 
-本目录按用途分类。入口优先读 **[名称定义表](./product/名称定义表.md)（术语权威 / §0 冲突裁决）→ 产品定位 → 架构总纲 → 设计规范 → 功能 PRD**；运维与排错看 `guides/` / `tips/`。术语与表名/kind 以名称定义表为准，专题文档若冲突应回写定义表或改专题。
+本目录按用途分类。入口优先读 **[名称定义表](./product/名称定义表.md)（术语权威 / §0 冲突裁决）→ [核心产品介绍](./product/1Agents_项目介绍.md)（Agent Infra / 工作 Graph / 任务蓝图）→ 架构总纲 → 设计规范 → 功能 PRD**；运维与排错看 `guides/` / `tips/`。术语与表名/kind 以名称定义表为准，专题文档若冲突应回写定义表或改专题。
 
 ```
 docs/
@@ -25,9 +25,9 @@ docs/
 |------|------|
 | [名称定义表.md](./product/名称定义表.md) | **术语与名称总表**（§0 冲突裁决 · ProjectItem / workforce / executor×assignee / Session×AgentTurn） |
 | [术语迁移引用清单-M1.md](./product/术语迁移引用清单-M1.md) | Epic #184 迁移触点盘点（代码 + docs 过时句） |
-| [roadmap.md](./product/roadmap.md) | **权威版本路线图**（1.x→4.x 里程碑与 issue 归位） |
-| [1Agents_项目介绍.md](./product/1Agents_项目介绍.md) | 对外项目介绍 / 关于我们 |
-| [1Agents_营销素材与项目定位白皮书.md](./product/1Agents_营销素材与项目定位白皮书.md) | 定位、受众、营销素材 |
+| [roadmap.md](./product/roadmap.md) | **权威版本路线图**：工作 Graph、反馈回路、1.x→4.x 里程碑与 issue 归位 |
+| [1Agents_项目介绍.md](./product/1Agents_项目介绍.md) | **核心产品介绍**：一万-Agent Infra、自循环智能体 Graph、任务蓝图与端到端业务链 |
+| [1Agents_营销素材与项目定位白皮书.md](./product/1Agents_营销素材与项目定位白皮书.md) | 对外定位、受众、核心话术与社交传播文案 |
 | [frontend-product-features.md](./product/frontend-product-features.md) | 前端产品功能总览（模块 ↔ 入口） |
 | [产品命名.md](./product/产品命名.md) | 1Agents / 1Hive 品牌命名（细表见名称定义表） |
 | [专家智能体-视觉创作台词.md](./product/专家智能体-视觉创作台词.md) | 视觉创作专家 persona / 系统提示词 |
@@ -38,8 +38,8 @@ docs/
 
 | 文档 | 说明 |
 |------|------|
-| [agentsOS-架构设计.md](./architecture/agentsOS-架构设计.md) | **架构总纲**：任务内核 · 项目外壳；App Registry / 多应用为**远期** |
-| [app-sdk-contract.md](./architecture/app-sdk-contract.md) | 应用 SDK 契约草案（**远期** registry；北向任务 API / 三存储面） |
+| [agentsOS-架构设计.md](./architecture/agentsOS-架构设计.md) | **架构总纲**：工作 Graph · 任务内核 · 项目外壳；App Registry 与三类挂载基础设施已落地，领域应用逐项演进 |
+| [app-sdk-contract.md](./architecture/app-sdk-contract.md) | 完整外部应用 SDK 契约草案；当前内部 Manifest / Registry / 挂载边界见 agentsOS 架构 |
 | [ai_collaborative_workbench_design.md](./architecture/ai_collaborative_workbench_design.md) | AI 协作工作台设计（Project→Task→Session） |
 | [remote_agents和cc-connect的技术架构设计.md](./architecture/remote_agents和cc-connect的技术架构设计.md) | 工作区 ↔ cc-connect 多通道集成 |
 | [ota-architecture.md](./architecture/ota-architecture.md) | OTA 多形态分发更新架构 |
@@ -68,6 +68,8 @@ docs/
 ## 4. 功能设计 · `features/`
 
 按功能域拆分；常见文件名：`prd.md` / `design.md` / `walkthrough.md` / `task.md`。
+
+> **状态说明：** 部分专题保留了立项或实施前写稿时的 `Draft / Proposed / Ready` 状态和“现状缺口”，用于追溯设计演进，不再单独代表当前产品是否已经交付。当前对外能力以 [项目介绍](./product/1Agents_项目介绍.md)、[前端产品功能总览](./product/frontend-product-features.md)和代码为准；需要回看设计取舍时再进入对应专题。
 
 | 功能 | 文档 | 状态侧重 |
 |------|------|----------|
@@ -126,7 +128,7 @@ docs/
 
 ## 约定
 
-- **权威优先级**：`product/名称定义表.md`（**术语 / 实体名 / kind**）> `product/roadmap.md`（版本）> `architecture/agentsOS-架构设计.md`（架构；registry 段为远期）> `design_rules/`（UI 规范）> 单功能 `features/*`。
-- **状态字段**：功能文档文首的 Status（Implemented / Draft / RFC 等）以该文件为准；索引表只做导航。
+- **权威优先级**：`product/名称定义表.md`（**术语 / 实体名 / kind**）> `product/roadmap.md`（版本）> `architecture/agentsOS-架构设计.md`（架构与当前 App Registry 边界）> `design_rules/`（UI 规范）> 单功能 `features/*`。
+- **状态字段**：功能文档文首的 Status（Implemented / Draft / RFC 等）表示该专题文档在写作时的阶段；它可以作为设计历史，但不覆盖当前产品入口材料和代码事实。索引表只做导航。
 - **新增文档**：按上表选目录；功能级一律放 `features/<kebab-name>/`，避免继续堆在 `docs/` 根目录。
 - **过时术语**：`tasks` 表名、`kind=assistant`、`SessionTier`/`professional-project` 落库、`任务可脱离 project` 等——见名称定义表 §0 否决与 §0.0 落地状态；docs 中出现须带标注，不得当现行断言。

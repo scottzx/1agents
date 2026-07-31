@@ -1425,72 +1425,6 @@ export function FeatureCatalogView({
                                         {selectedNode.description || '尚未补充该节点的范围与边界。'}
                                     </p>
 
-                                    <section class="feature-documents" aria-label="关联文档">
-                                        <div class="feature-documents-heading">
-                                            <strong>关联文档</strong>
-                                            <span>{selectedNode.documents?.length ?? 0}</span>
-                                        </div>
-                                        {selectedNode.documents?.length ? (
-                                            <div class="feature-document-list">
-                                                {selectedNode.documents.map(path => (
-                                                    <div class="feature-document-row" key={path}>
-                                                        <button
-                                                            type="button"
-                                                            class="feature-document-open"
-                                                            title={path}
-                                                            onClick={() => openDocument(path)}
-                                                        >
-                                                            <span aria-hidden="true">▤</span>
-                                                            <span>
-                                                                <strong>{featureDocumentName(path)}</strong>
-                                                                <small>{path}</small>
-                                                            </span>
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            class="feature-document-remove"
-                                                            aria-label={`移除文档“${featureDocumentName(path)}”`}
-                                                            title="移除关联"
-                                                            disabled={busy}
-                                                            onClick={() => void removeDocument(path)}
-                                                        >
-                                                            ×
-                                                        </button>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <p class="feature-documents-empty">
-                                                可关联项目根目录相对路径或绝对路径，点击后在右侧文件抽屉中预览。
-                                            </p>
-                                        )}
-                                        <div class="feature-document-add">
-                                            <input
-                                                type="text"
-                                                value={documentPath}
-                                                placeholder="例如 docs/spec.md 或 /绝对路径/spec.md"
-                                                aria-label="文档路径"
-                                                disabled={busy}
-                                                onInput={(event: Event) =>
-                                                    setDocumentPath((event.currentTarget as HTMLInputElement).value)
-                                                }
-                                                onKeyDown={(event: KeyboardEvent) => {
-                                                    if (event.key !== 'Enter') return;
-                                                    event.preventDefault();
-                                                    void addDocument();
-                                                }}
-                                            />
-                                            <button
-                                                type="button"
-                                                class="feature-btn secondary"
-                                                disabled={busy || !documentPath.trim()}
-                                                onClick={() => void addDocument()}
-                                            >
-                                                关联
-                                            </button>
-                                        </div>
-                                    </section>
-
                                     {selectedNode.progress && (
                                         <div class="feature-read-summary">
                                             <div>
@@ -1631,6 +1565,72 @@ export function FeatureCatalogView({
                                             </div>
                                         </Fragment>
                                     )}
+
+                                    <section class="feature-documents" aria-label="关联文档">
+                                        <div class="feature-documents-heading">
+                                            <strong>关联文档</strong>
+                                            <span>{selectedNode.documents?.length ?? 0}</span>
+                                        </div>
+                                        {selectedNode.documents?.length ? (
+                                            <div class="feature-document-list">
+                                                {selectedNode.documents.map(path => (
+                                                    <div class="feature-document-row" key={path}>
+                                                        <button
+                                                            type="button"
+                                                            class="feature-document-open"
+                                                            title={path}
+                                                            onClick={() => openDocument(path)}
+                                                        >
+                                                            <span aria-hidden="true">▤</span>
+                                                            <span>
+                                                                <strong>{featureDocumentName(path)}</strong>
+                                                                <small>{path}</small>
+                                                            </span>
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            class="feature-document-remove"
+                                                            aria-label={`移除文档“${featureDocumentName(path)}”`}
+                                                            title="移除关联"
+                                                            disabled={busy}
+                                                            onClick={() => void removeDocument(path)}
+                                                        >
+                                                            ×
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p class="feature-documents-empty">
+                                                可关联项目根目录相对路径或绝对路径，点击后在右侧文件抽屉中预览。
+                                            </p>
+                                        )}
+                                        <div class="feature-document-add">
+                                            <input
+                                                type="text"
+                                                value={documentPath}
+                                                placeholder="例如 docs/spec.md 或 /绝对路径/spec.md"
+                                                aria-label="文档路径"
+                                                disabled={busy}
+                                                onInput={(event: Event) =>
+                                                    setDocumentPath((event.currentTarget as HTMLInputElement).value)
+                                                }
+                                                onKeyDown={(event: KeyboardEvent) => {
+                                                    if (event.key !== 'Enter') return;
+                                                    event.preventDefault();
+                                                    void addDocument();
+                                                }}
+                                            />
+                                            <button
+                                                type="button"
+                                                class="feature-btn secondary"
+                                                disabled={busy || !documentPath.trim()}
+                                                onClick={() => void addDocument()}
+                                            >
+                                                关联
+                                            </button>
+                                        </div>
+                                    </section>
                                 </Fragment>
                             )}
                         </Fragment>
