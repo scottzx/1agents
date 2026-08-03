@@ -28,3 +28,6 @@
 [submodule "modules/AgentTeams"]
 	path = modules/AgentTeams
 	url = https://github.com/agentscope-ai/AgentTeams.git
+[submodule "modules/transcribe.cpp"]
+	path = modules/transcribe.cpp
+	url = https://github.com/handy-computer/transcribe.cpp.git
