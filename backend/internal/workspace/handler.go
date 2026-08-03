@@ -306,8 +306,16 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 // gets a working bridge exactly like a hand-created workspace. Persisting the
 // project row is the caller's job; this only does the non-storage side-effects.
 func (h *Handler) registerWorkspaceProject(ws Workspace) {
-	// Ensure the project has agent guidance files (CLAUDE.md / AGENTS.md).
+	// Ensure the project has agent guidance files (CLAUDE.md / AGENTS.md) and
+	// scaffold dirs (.claude / .agents).
 	ensureProjectGuideFiles(ws.Path)
+
+	// Initialize a local git repository with an "init" commit for the fresh
+	// project (best-effort). The shared "temp" scratch workspace is skipped —
+	// it is not a real project.
+	if ws.ID != "temp" {
+		gitInitProject(ws.Path)
+	}
 
 	// Dynamically register this workspace as a CC-Connect project. The project
 	// name must match what the panel route addresses (ccconnect.CCProjectName):
