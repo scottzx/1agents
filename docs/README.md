@@ -12,6 +12,7 @@ docs/
 ├── guides/           编译打包、OAuth、ACP 环境配置
 ├── tips/             证书、语音等实操技巧
 ├── experience/       实战经验沉淀（非规格）
+├── GOAI/            Agent Infra 参赛方案与长期演进记录
 ├── discussions/      讨论稿与落地蓝图
 ├── assets/           图示、营销页静态资源
 └── archive/          历史会话笔记（可忽略）
@@ -39,6 +40,7 @@ docs/
 | 文档 | 说明 |
 |------|------|
 | [agentsOS-架构设计.md](./architecture/agentsOS-架构设计.md) | **架构总纲**：工作 Graph · 任务内核 · 项目外壳；App Registry 与三类挂载基础设施已落地，领域应用逐项演进 |
+| [chat-first-agentteams-interaction.md](./architecture/chat-first-agentteams-interaction.md) | **聊天优先交互架构**：Matrix / 1agents Chat 与工作台双表面、AgentTeams Team Runtime、cc-connect Channel Gateway 边界 |
 | [app-sdk-contract.md](./architecture/app-sdk-contract.md) | 完整外部应用 SDK 契约草案；当前内部 Manifest / Registry / 挂载边界见 agentsOS 架构 |
 | [ai_collaborative_workbench_design.md](./architecture/ai_collaborative_workbench_design.md) | AI 协作工作台设计（Project→Task→Session） |
 | [remote_agents和cc-connect的技术架构设计.md](./architecture/remote_agents和cc-connect的技术架构设计.md) | 工作区 ↔ cc-connect 多通道集成 |
@@ -110,6 +112,8 @@ docs/
 |------|------|------|
 | `experience/` | [三执行者实战案例.md](./experience/三执行者实战案例.md) | agent / function / human 经验（认知层） |
 | `experience/` | [builtin-browser-webproxy-remotion.md](./experience/builtin-browser-webproxy-remotion.md) | 内置浏览器 path 反代 + Remotion composition 路由（成功经验） |
+| `GOAI/` | [技术方案v1.md](./GOAI/技术方案v1.md) | AgentTeams 粗粒度 Team Runtime 参赛方案（当前决策） |
+| `GOAI/` | [技术方案（长期）-v1.md](./GOAI/技术方案（长期）-v1.md) | Story Studio 到单人/多人多 Agent 平台的长期路线 |
 | `discussions/` | [一芥智能体落地技术实现蓝图_V1.1.md](./discussions/一芥智能体落地技术实现蓝图_V1.1.md) | 落地技术蓝图讨论稿 |
 | `assets/` | 设计图、业务流程图、`index.html` | 图示与静态页 |
 | `archive/` | ORIGINAL_REQUEST / PROJECT / model-role-notes | 历史会话与个人笔记，默认不作为规格引用 |
@@ -120,7 +124,7 @@ docs/
 
 1. **新同学上手**：`product/名称定义表` → `product/1Agents_项目介绍` → `product/frontend-product-features` → `architecture/agentsOS-架构设计` → `design_rules/app-agentic-workbench-design-standard`
 2. **做功能 / 改 UI**：`design_rules/*` → 对应 `features/<域>/` → 必要时 `uiux/`
-3. **接 agent / 改传输层**：`architecture/agent-convergence-roadmap` → `happy-integration-skeleton` → `happy-cli-fork-sync` → `adapter/README`
+3. **接 agent / 改传输层**：`architecture/chat-first-agentteams-interaction` → `architecture/agent-convergence-roadmap` → `happy-integration-skeleton` → `happy-cli-fork-sync` → `adapter/README`
 4. **发版 / 部署**：`guides/编译与打包指南` → `architecture/ota-architecture` → `features/npm-package-split/prd`
 5. **排错**：`guides/acp-agent-env-config` · `guides/microsoft-oauth-setup` · `tips/*`
 

@@ -1,4 +1,7 @@
-## 结论先行
+> **Historical analysis / Superseded decision**
+> 本文保留 2026-07 对 AgentTeams、1ACP、cc-connect 和 Go 任务内核的完整调研过程，但其“Matrix 仅用于内部协作、cc-connect 承担主交互入口、1ACP 运行 AgentTeams Worker”等结论已被 2026-08-03 决策取代。当前权威方向见 [Chat-first AgentTeams 交互与渠道架构](../architecture/chat-first-agentteams-interaction.md) 和 [GOAI 技术方案](../GOAI/技术方案v1.md)。
+
+## 结论先行（历史）
 
 AgentTeams 非常适合成为 1agents 参赛方案里的“多 Agent 组织与协同执行引擎”，但不适合替换 1agents 已有的 Go 任务管理、cc-connect 或 1ACP。
 
@@ -20,7 +23,7 @@ AgentTeams 非常适合成为 1agents 参赛方案里的“多 Agent 组织与�
 
 我建议将参赛选题收敛为：
 
-> **面向企业软件变更与发布的多 Agent 合规执行闭环**  
+> **面向企业软件变更与发布的多 Agent 合规执行闭环**
 > 从企业 IM 接收需求，由 AgentTeams 团队完成影响分析、方案评审、编码、测试、安全审计和交付验证；1agents 负责全程任务追踪、人工审批、证据沉淀和最终回写。
 
 这能把 1agents 现有的几乎所有核心能力串成一个真正端到端、可运行、可验证的 Production 场景。
