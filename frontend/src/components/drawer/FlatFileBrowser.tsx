@@ -185,6 +185,26 @@ function buildRowActions(entry: FsEntry): FsRowAction[] {
     return items;
 }
 
+/**
+ * Actions for the virtual root row: create a folder/file directly at the
+ * workspace root (parent = null — see openFsNewItemModal/submitFsNewItem).
+ * Static (no per-render state), so it can live at module scope.
+ */
+const ROOT_ROW_ACTIONS: FsRowAction[] = [
+    {
+        id: 'newFolder',
+        labelKey: 'fileBrowser.newFolder',
+        icon: ACTIONS_ICONS.newFolder,
+        onSelect: () => openFsNewItemModal('folder', null),
+    },
+    {
+        id: 'newFile',
+        labelKey: 'fileBrowser.newFile',
+        icon: ACTIONS_ICONS.newFile,
+        onSelect: () => openFsNewItemModal('file', null),
+    },
+];
+
 /** Local access (desktop/localhost) has direct filesystem reach, so the upload shortcut is only useful for remote access. */
 const IS_LOCALHOST =
     typeof window !== 'undefined' &&
@@ -493,11 +513,41 @@ export function FlatFileBrowser({
                     <div class="fb-loading-spinner" />
                     <span>{t('fileBrowser.loading', language)}</span>
                 </div>
-            ) : fsEntries.length === 0 ? (
-                <div class="fb-empty">{t('fileBrowser.empty', language)}</div>
             ) : (
                 <div class="fb-file-list fb-tree-list">
-                    {renderTreeNodes(sortedTree)}
+                    {/* Virtual root row — pinned on top so a folder/file can be
+                        created directly at the workspace root via its "..." menu.
+                        Not a real entry: no chevron, no click target. The 28px
+                        left padding aligns the folder icon with depth-0 dirs
+                        (8px pad + 12px chevron + 8px gap). */}
+                    <div
+                        class="fb-file-row fb-row-dir fb-root-row"
+                        style="padding-left: 28px"
+                        title={t('fileBrowser.rootEntry', language)}
+                    >
+                        <svg
+                            class="fb-folder-icon"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2.5"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                        </svg>
+                        <div class="fb-file-info">
+                            <span class="fb-file-name">…</span>
+                        </div>
+                        <div class="fb-row-actions">
+                            <FsRowActionsMenu entry={{ path: '' }} items={ROOT_ROW_ACTIONS} language={language} />
+                        </div>
+                    </div>
+                    {fsEntries.length === 0 ? (
+                        <div class="fb-empty">{t('fileBrowser.empty', language)}</div>
+                    ) : (
+                        renderTreeNodes(sortedTree)
+                    )}
                     <div class="fb-list-footer">{t('fileBrowser.loaded', language)}</div>
                 </div>
             )}

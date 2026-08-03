@@ -15316,6 +15316,18 @@ body {
       }
     }
 
+    // Virtual workspace-root row pinned above the tree. Not a real entry:
+    // no chevron, no click target — its value is the "..." menu offering
+    // new-folder / new-file directly at the root. Muted icon + default
+    // cursor signal that it's an affordance, not a navigable directory.
+    .fb-file-row.fb-root-row {
+      cursor: default;
+
+      .fb-folder-icon {
+        color: var(--text-muted);
+      }
+    }
+
     .fb-list-footer {
       font-size: 11px;
       color: var(--text-muted);
