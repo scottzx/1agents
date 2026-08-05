@@ -1,8 +1,48 @@
 # 1Agents 产品里程碑路线图
 
-> 本文是 1Agents 的**唯一权威版本路线图**。大版本固定 1/2/3/4，内部子版本连续递增、不跳号。
-> GitHub 用[原生 Milestones](https://github.com/scottzx/1agents/milestones) 承载，看板见 [Project #3](https://github.com/users/scottzx/projects/3)。
-> issue 引用形如 [#60](https://github.com/scottzx/1agents/issues/60)，点击直达。
+> 本文是 1Agents 的**唯一权威产品路线图**。从 2026-08 起，仓库内功能蓝图和项目看板使用严格 SemVer 版本树；当前大迭代为 **v1.0.0 企业工作底座**。
+> 下方历史 1.x→4.x 内容继续保留为早期宏观能力路线和 GitHub issue 归位记录，不再覆盖仓库内 SemVer 里程碑的发布含义。
+> GitHub 用[原生 Milestones](https://github.com/scottzx/1agents/milestones) 承载外部协作，看板见 [Project #3](https://github.com/users/scottzx/projects/3)。仓库内执行状态以 1agents 项目看板、功能蓝图和版本里程碑为准。
+
+---
+
+## 当前大迭代：v1.0.0 企业工作底座
+
+v1.0.0 将工作 Graph 从“项目和任务的组织方式”推进为可承载不同企业业务的运行底座。完整设计见 [企业工作底座 v1.0.0](../architecture/enterprise-foundation-v1.0.0.md)，顶层需求为项目看板 `#319`。
+
+```text
+C0 企业底座契约与个人工作台兼容基线
+  → C1 售前与交付端到端闭环
+  → C2 电商产品上新与双领域泛化验证
+  → v1.0.0 发布闸门
+```
+
+`C0`、`C1`、`C2` 是 `1.0.0` 内部交付阶段，不是三个子版本。功能蓝图中的相关功能点继续统一指向纯 SemVer 里程碑 `1.0.0`；完整边界、退出条件和各阶段“不做范围”见[企业工作底座 v1.0.0 的 §10](../architecture/enterprise-foundation-v1.0.0.md)。
+
+| 阶段 | 对应功能蓝图范围 | 阶段结果 |
+|---|---|---|
+| **C0** | WorkCase；Command/Query/Outbox Event；Capability Contract；领域所有权；Product Shell Registry；个人工作台 | 契约和端到端测试证明底座边界成立，现有个人工作台主流程无回归 |
+| **C1** | 售前与交付 Product Shell；线索证据；调研资格；沟通与需求；方案版本；建设、交付绑定与验收 | 一个真实商机从 Evidence 走到 Human Acceptance，关键决定全程可追溯 |
+| **C2** | 电商运营 Product Shell；选品立项；ProductLaunch WorkCase；Brief/素材/Listing；双领域能力晋升评审 | 产品上新不修改内核领域字段，三个壳共享运行、权限和审计事实 |
+
+v1.0.0 产品形态：
+
+| 产品壳 | 定位 | 本期范围 |
+|---|---|---|
+| 个人工作台 | 跨领域个人控制台 | 保留现有项目、任务、会话、终端、文件、Inbox、日程和 Agent；增强多任务、多会话、待审批和异常管理 |
+| 售前与交付 | 第一个完整领域应用 | 线索证据、商机、调研、资格、沟通、需求快照、方案版本、建设清单和验收闭环 |
+| 电商运营 | 第二领域泛化验证 | 选品、人工立项、拍摄 Brief、素材、Listing 和上架；投流、订单、物流、售后延后 |
+
+v1.0.0 发布闸门：
+
+1. 三个壳共享同一 Workspace、WorkCase、Task、Session、Artifact、权限和审计事实；
+2. 应用不依赖其他应用实现，不跨领域写表；
+3. Agent、Function、Human、Web 和外部入口通过统一 Command 改变业务状态；
+4. 售前端到端闭环由真实商机样例跑通；
+5. 电商产品上新无需向内核加入领域字段即可跑通；
+6. 功能蓝图、任务、版本、验收证据和文档保持可追溯。
+
+明确延后：通用工作流引擎、任意低代码对象、完整 RBAC/多租户、微服务拆分、分布式事务、动态应用市场、第三方代码沙箱、完整 CRM 商务链，以及完整电商交易履约链。
 
 ---
 
@@ -37,7 +77,7 @@ Loop 只能描述一次重复；路线图围绕一张包含节点、状态、依
 
 ---
 
-## 大版本主题
+## 历史宏观版本主题
 
 | 大版本 | 主题 | 一句话 |
 |--------|------|--------|
@@ -47,7 +87,7 @@ Loop 只能描述一次重复；路线图围绕一张包含节点、状态、依
 | **4.x** | 经验复利 | 复盘归档 → 提示词/工具 → 技能卡 → 任务模板 → 项目模板/架构 |
 | **分支线** | 多设备集群 | Remote Control 之上的另一主线：无中心多设备 Mesh |
 
-> **当前产品能力：** 已形成从数据 / Inbox、ProjectItem、任务蓝图、Schedule、1ACP 执行到 Check 与状态回写的工作 Graph。大版本、Milestone 和 issue 的历史归位仍以 GitHub Milestones 与 Project #3 为准。
+> **历史说明：** 以下 1.x→4.x 是早期宏观产品能力分层和 GitHub issue 归位记录。当前仓库内大迭代以本文顶部 v1.0.0 SemVer 计划为准。
 
 ---
 
