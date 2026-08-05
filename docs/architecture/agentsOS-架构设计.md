@@ -5,6 +5,7 @@
 > 可调度工作单元 = **ProjectItem** 中 `ItemType=task` 的条目（口语可称「任务」）；**工单**弃用。主实体类型名是 ProjectItem，不是 Task。
 > **工作 Graph / 任务蓝图**是对 ProjectItem、依赖、里程碑、调度、执行记录和验收回写的产品级组织方式，不新增平行领域实体或 `graph` 表；定义见[项目介绍](../product/1Agents_项目介绍.md)与[名称定义表 §1](../product/名称定义表.md)。
 > **当前实现边界**：编译期 App Registry、Manifest 查询与启停、前端视图注册，以及 `project-tab` / `l1-page` / `lens` 三类挂载基础设施已经落地；当前生产注册应用确认到**圆桌讨论**（`agents-roundtable`）。media / CRM / 电台仍是领域应用示例，完整外部 SDK、运行时热安装与应用市场仍在演进（名称定义表 §0.9）。
+> **v1.0.0 演进**：WorkCase、Command/Query/Event、Capability Contract、领域所有权、三套 Product Shell、售前闭环和电商泛化验证以[企业工作底座 v1.0.0](./enterprise-foundation-v1.0.0.md)为目标规格。本文继续描述当前已落地架构和既有概念，二者冲突时先区分“当前事实”与“目标设计”。
 
 ---
 

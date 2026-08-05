@@ -39,6 +39,7 @@ docs/
 
 | 文档 | 说明 |
 |------|------|
+| [enterprise-foundation-v1.0.0.md](./architecture/enterprise-foundation-v1.0.0.md) | **v1.0.0 目标架构**：当前/目标分界、D1–D7、三层边界、WorkCase、Command/Query/Event、能力晋升、同库分域、三 Product Shell 与 C0/C1/C2 闸门 |
 | [agentsOS-架构设计.md](./architecture/agentsOS-架构设计.md) | **架构总纲**：工作 Graph · 任务内核 · 项目外壳；App Registry 与三类挂载基础设施已落地，领域应用逐项演进 |
 | [chat-first-agentteams-interaction.md](./architecture/chat-first-agentteams-interaction.md) | **聊天优先交互架构**：Matrix / 1agents Chat 与工作台双表面、AgentTeams Team Runtime、cc-connect Channel Gateway 边界 |
 | [app-sdk-contract.md](./architecture/app-sdk-contract.md) | 完整外部应用 SDK 契约草案；当前内部 Manifest / Registry / 挂载边界见 agentsOS 架构 |
@@ -123,16 +124,17 @@ docs/
 ## 阅读路径建议
 
 1. **新同学上手**：`product/名称定义表` → `product/1Agents_项目介绍` → `product/frontend-product-features` → `architecture/agentsOS-架构设计` → `design_rules/app-agentic-workbench-design-standard`
-2. **做功能 / 改 UI**：`design_rules/*` → 对应 `features/<域>/` → 必要时 `uiux/`
-3. **接 agent / 改传输层**：`architecture/chat-first-agentteams-interaction` → `architecture/agent-convergence-roadmap` → `happy-integration-skeleton` → `happy-cli-fork-sync` → `adapter/README`
-4. **发版 / 部署**：`guides/编译与打包指南` → `architecture/ota-architecture` → `features/npm-package-split/prd`
-5. **排错**：`guides/acp-agent-env-config` · `guides/microsoft-oauth-setup` · `tips/*`
+2. **规划 / 实现 v1.0.0 企业底座**：`architecture/enterprise-foundation-v1.0.0` → `product/roadmap` → 对应功能蓝图与 `features/<域>/`
+3. **做功能 / 改 UI**：`design_rules/*` → 对应 `features/<域>/` → 必要时 `uiux/`
+4. **接 agent / 改传输层**：`architecture/chat-first-agentteams-interaction` → `architecture/agent-convergence-roadmap` → `happy-integration-skeleton` → `happy-cli-fork-sync` → `adapter/README`
+5. **发版 / 部署**：`guides/编译与打包指南` → `architecture/ota-architecture` → `features/npm-package-split/prd`
+6. **排错**：`guides/acp-agent-env-config` · `guides/microsoft-oauth-setup` · `tips/*`
 
 ---
 
 ## 约定
 
-- **权威优先级**：`product/名称定义表.md`（**术语 / 实体名 / kind**）> `product/roadmap.md`（版本）> `architecture/agentsOS-架构设计.md`（架构与当前 App Registry 边界）> `design_rules/`（UI 规范）> 单功能 `features/*`。
+- **权威优先级**：`product/名称定义表.md`（**现行术语 / 实体名 / kind**）> `product/roadmap.md`（版本）> `architecture/enterprise-foundation-v1.0.0.md`（v1.0.0 目标架构）> `architecture/agentsOS-架构设计.md`（当前架构与 App Registry 边界）> `design_rules/`（UI 规范）> 单功能 `features/*`。目标文档不能覆盖代码尚未实现的当前事实。
 - **状态字段**：功能文档文首的 Status（Implemented / Draft / RFC 等）表示该专题文档在写作时的阶段；它可以作为设计历史，但不覆盖当前产品入口材料和代码事实。索引表只做导航。
 - **新增文档**：按上表选目录；功能级一律放 `features/<kebab-name>/`，避免继续堆在 `docs/` 根目录。
 - **过时术语**：`tasks` 表名、`kind=assistant`、`SessionTier`/`professional-project` 落库、`任务可脱离 project` 等——见名称定义表 §0 否决与 §0.0 落地状态；docs 中出现须带标注，不得当现行断言。
