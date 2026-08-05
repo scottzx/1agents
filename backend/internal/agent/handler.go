@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/scottzx/1Agents/backend/internal/agent/permission"
+	"github.com/scottzx/1Agents/backend/internal/commandbus"
 	"github.com/scottzx/1Agents/backend/internal/meta"
 	"github.com/scottzx/1Agents/backend/internal/workspace"
 )
@@ -29,9 +30,14 @@ type Handler struct {
 	featureStore  *meta.FeatureCatalogStore
 	workCaseStore *meta.WorkCaseStore
 	eventStore    *meta.ProjectEventStore
-	acpxClient    *AcpxClient
-	scheduler     *Scheduler
-	catalog       *CatalogStore
+	// commandBus is the unified Command Gateway (#323, §5 D3): every case
+	// mutation dispatched from this REST surface goes through it, so Web,
+	// Agent, Function, Human, IM and external API share one write path with
+	// actor attribution, idempotency, optimistic concurrency and audit.
+	commandBus *commandbus.Gateway
+	acpxClient *AcpxClient
+	scheduler  *Scheduler
+	catalog    *CatalogStore
 	// selfBaseURL is this daemon's own loopback HTTP base (e.g.
 	// http://127.0.0.1:8080), injected into the AI Project Manager's
 	// task-tool MCP subprocess so it can call back into the task API.
@@ -47,6 +53,7 @@ func NewHandler(store *Store, tasksStore *TasksStore, acpxClient *AcpxClient, sc
 	var featureStore *meta.FeatureCatalogStore
 	var workCaseStore *meta.WorkCaseStore
 	var eventStore *meta.ProjectEventStore
+	var commandBus *commandbus.Gateway
 	if acpxClient != nil {
 		turnStore = acpxClient.turnStore
 	}
@@ -59,6 +66,18 @@ func NewHandler(store *Store, tasksStore *TasksStore, acpxClient *AcpxClient, sc
 		if turnStore == nil {
 			turnStore = meta.NewAgentTurnStore(db)
 		}
+		// Unified Command Gateway (#323): the single write path for case
+		// state. Construction failure leaves it nil and the work-case
+		// mutation endpoints answer 500 (requireCommandBus).
+		if bus, err := commandbus.New(db.SQL()); err == nil {
+			if err := meta.RegisterWorkCaseCommands(bus, workCaseStore); err != nil {
+				log.Printf("[agent] register work case commands: %v", err)
+			} else {
+				commandBus = bus
+			}
+		} else {
+			log.Printf("[agent] command gateway unavailable: %v", err)
+		}
 	}
 	return &Handler{
 		store:         store,
@@ -69,6 +88,7 @@ func NewHandler(store *Store, tasksStore *TasksStore, acpxClient *AcpxClient, sc
 		featureStore:  featureStore,
 		workCaseStore: workCaseStore,
 		eventStore:    eventStore,
+		commandBus:    commandBus,
 		acpxClient:    acpxClient,
 		scheduler:     scheduler,
 		catalog:       catalog,

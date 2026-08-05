@@ -399,34 +399,60 @@ func TestWorkCaseUpdatePatch(t *testing.T) {
 	c := mustCreateCase(t, store, "proj-1", "patchable")
 
 	objective := "新目标"
-	phase := "listing-shoot" // arbitrary app vocabulary — kernel must not police it
 	refs := []string{"commerce:product:9"}
 	got, err := store.Update("proj-1", c.ID, WorkCasePatch{
-		Objective:    &objective,
-		CurrentPhase: &phase,
-		SubjectRefs:  &refs,
+		Objective:   &objective,
+		SubjectRefs: &refs,
 	}, c.Version, caseEvent("proj-1", c.ID, "update"))
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	if got.Objective != objective || got.CurrentPhase != phase ||
+	if got.Objective != objective ||
 		len(got.SubjectRefs) != 1 || got.SubjectRefs[0] != refs[0] {
 		t.Fatalf("patch mismatch: %+v", got)
 	}
 	if got.Title != "patchable" {
 		t.Fatalf("untouched field changed: %q", got.Title)
 	}
-	// Status is never touched by Update.
-	if got.Status != CaseStatusOpen {
-		t.Fatalf("update changed status: %s", got.Status)
+	// Status and phase are never touched by Update (#323: phase advances
+	// only through the command-gated SetPhaseInTx).
+	if got.Status != CaseStatusOpen || got.CurrentPhase != "" {
+		t.Fatalf("update changed status/phase: %s %q", got.Status, got.CurrentPhase)
 	}
+
+	// SetPhaseInTx is the only phase path: opaque app vocabulary accepted,
+	// version bumped, stale versions rejected.
+	tx, err := db.sql.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	phaseCase, err := store.SetPhaseInTx(tx, "proj-1", c.ID, "listing-shoot", got.Version)
+	if err != nil {
+		tx.Rollback()
+		t.Fatalf("SetPhaseInTx: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if phaseCase.CurrentPhase != "listing-shoot" || phaseCase.Version != got.Version+1 {
+		t.Fatalf("phase advance mismatch: %+v", phaseCase)
+	}
+	tx, err = db.sql.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SetPhaseInTx(tx, "proj-1", c.ID, "stale", got.Version); !errors.Is(err, ErrCaseVersionConflict) {
+		tx.Rollback()
+		t.Fatalf("stale phase advance err=%v, want version conflict", err)
+	}
+	tx.Rollback()
 	// Invalid refs are rejected on the patch path too.
 	bad := "::"
-	if _, err := store.Update("proj-1", c.ID, WorkCasePatch{PrimarySubject: &bad}, got.Version, caseEvent("proj-1", c.ID, "update")); err == nil {
+	if _, err := store.Update("proj-1", c.ID, WorkCasePatch{PrimarySubject: &bad}, phaseCase.Version, caseEvent("proj-1", c.ID, "update")); err == nil {
 		t.Fatal("malformed primarySubject patch accepted")
 	}
 	empty := ""
-	if _, err := store.Update("proj-1", c.ID, WorkCasePatch{Title: &empty}, got.Version, caseEvent("proj-1", c.ID, "update")); !errors.Is(err, ErrInvalidProjectEvent) {
+	if _, err := store.Update("proj-1", c.ID, WorkCasePatch{Title: &empty}, phaseCase.Version, caseEvent("proj-1", c.ID, "update")); !errors.Is(err, ErrInvalidProjectEvent) {
 		t.Fatalf("empty title patch err=%v", err)
 	}
 }

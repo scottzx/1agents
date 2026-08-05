@@ -153,12 +153,16 @@ type CaseLink struct {
 
 // WorkCasePatch carries partial edits for WorkCaseStore.Update. Nil fields are
 // left untouched.
+//
+// Deliberately absent: Status and CurrentPhase. Lifecycle moves go through
+// Transition, and phase is an application projection that may only advance
+// through a registered Command (SetPhaseInTx via the command gateway, #323:
+// 禁止直接修改 Case phase) — never through a generic patch.
 type WorkCasePatch struct {
 	Title           *string
 	Objective       *string
 	CaseDefinition  *string
 	Owner           *string
-	CurrentPhase    *string
 	PrimarySubject  *string
 	SubjectRefs     *[]string
 	Participants    *[]CaseParticipant
@@ -254,6 +258,25 @@ func validateCaseContent(workspaceID, caseID, primarySubject string, subjectRefs
 // same transaction. The case always starts open with version 1; ID is assigned
 // when empty. Title is required.
 func (s *WorkCaseStore) Create(projectID string, c WorkCase, event ProjectEvent) (WorkCase, error) {
+	tx, err := s.db.sql.Begin()
+	if err != nil {
+		return WorkCase{}, err
+	}
+	defer tx.Rollback()
+	created, err := s.CreateInTx(tx, projectID, c)
+	if err != nil {
+		return WorkCase{}, err
+	}
+	if _, err := appendProjectEventTx(tx, event, false); err != nil {
+		return WorkCase{}, err
+	}
+	return created, tx.Commit()
+}
+
+// CreateInTx performs the Create write inside an open transaction so command
+// handlers can commit the state change atomically with the gateway's
+// idempotency and audit records (#323). Same invariants as Create.
+func (s *WorkCaseStore) CreateInTx(tx *sql.Tx, projectID string, c WorkCase) (WorkCase, error) {
 	if projectID == "" {
 		return WorkCase{}, fmt.Errorf("%w: project_id is required", ErrInvalidProjectEvent)
 	}
@@ -282,12 +305,6 @@ func (s *WorkCaseStore) Create(projectID string, c WorkCase, event ProjectEvent)
 	if err := validateCaseContent(c.WorkspaceID, c.ID, c.PrimarySubject, c.SubjectRefs, c.Participants); err != nil {
 		return WorkCase{}, err
 	}
-
-	tx, err := s.db.sql.Begin()
-	if err != nil {
-		return WorkCase{}, err
-	}
-	defer tx.Rollback()
 	var exists int
 	if err := tx.QueryRow(`SELECT COUNT(1) FROM projects WHERE id = ?`, projectID).Scan(&exists); err != nil {
 		return WorkCase{}, err
@@ -298,10 +315,7 @@ func (s *WorkCaseStore) Create(projectID string, c WorkCase, event ProjectEvent)
 	if err := insertWorkCaseTx(tx, c); err != nil {
 		return WorkCase{}, err
 	}
-	if _, err := appendProjectEventTx(tx, event, false); err != nil {
-		return WorkCase{}, err
-	}
-	return c, tx.Commit()
+	return c, nil
 }
 
 func insertWorkCaseTx(tx *sql.Tx, c WorkCase) error {
@@ -403,14 +417,28 @@ func updateWorkCaseTx(tx *sql.Tx, c WorkCase) error {
 }
 
 // Update applies patch to a case under optimistic concurrency and appends
-// event atomically. Status is never changed here — transitions go through
-// Transition. The version is bumped by exactly one on success.
+// event atomically. Status and CurrentPhase are never changed here —
+// transitions go through Transition, phase advances only through a command
+// (#323). The version is bumped by exactly one on success.
 func (s *WorkCaseStore) Update(projectID, id string, patch WorkCasePatch, expectedVersion int, event ProjectEvent) (WorkCase, error) {
 	tx, err := s.db.sql.Begin()
 	if err != nil {
 		return WorkCase{}, err
 	}
 	defer tx.Rollback()
+	updated, err := s.UpdateInTx(tx, projectID, id, patch, expectedVersion)
+	if err != nil {
+		return WorkCase{}, err
+	}
+	if _, err := appendProjectEventTx(tx, event, false); err != nil {
+		return WorkCase{}, err
+	}
+	return updated, tx.Commit()
+}
+
+// UpdateInTx performs the Update write inside an open transaction (command
+// gateway seam, #323). Same invariants as Update.
+func (s *WorkCaseStore) UpdateInTx(tx *sql.Tx, projectID, id string, patch WorkCasePatch, expectedVersion int) (WorkCase, error) {
 	c, err := loadCaseTx(tx, projectID, id)
 	if err != nil {
 		return WorkCase{}, err
@@ -432,9 +460,6 @@ func (s *WorkCaseStore) Update(projectID, id string, patch WorkCasePatch, expect
 	}
 	if patch.Owner != nil {
 		c.Owner = *patch.Owner
-	}
-	if patch.CurrentPhase != nil {
-		c.CurrentPhase = *patch.CurrentPhase
 	}
 	if patch.PrimarySubject != nil {
 		c.PrimarySubject = *patch.PrimarySubject
@@ -465,10 +490,30 @@ func (s *WorkCaseStore) Update(projectID, id string, patch WorkCasePatch, expect
 	if err := updateWorkCaseTx(tx, c); err != nil {
 		return WorkCase{}, err
 	}
-	if _, err := appendProjectEventTx(tx, event, false); err != nil {
+	return c, nil
+}
+
+// SetPhaseInTx advances the application phase projection inside an open
+// transaction under optimistic concurrency. This is the ONLY store path that
+// writes current_phase (#323: 禁止直接修改 Case phase) — it is reachable
+// exclusively through the registered workcase.set_phase command, so every
+// phase advance carries an actor, an idempotency key and an audit trail.
+// The kernel still never interprets the phase value.
+func (s *WorkCaseStore) SetPhaseInTx(tx *sql.Tx, projectID, id, phase string, expectedVersion int) (WorkCase, error) {
+	c, err := loadCaseTx(tx, projectID, id)
+	if err != nil {
 		return WorkCase{}, err
 	}
-	return c, tx.Commit()
+	if err := checkCaseVersion(c, expectedVersion); err != nil {
+		return WorkCase{}, err
+	}
+	c.CurrentPhase = phase
+	c.Version++
+	c.UpdatedAt = time.Now().UTC()
+	if err := updateWorkCaseTx(tx, c); err != nil {
+		return WorkCase{}, err
+	}
+	return c, nil
 }
 
 // Transition moves a case to the next lifecycle status under optimistic
@@ -479,14 +524,27 @@ func (s *WorkCaseStore) Update(projectID, id string, patch WorkCasePatch, expect
 //   - expectedVersion must match the stored version;
 //   - entering a terminal state stamps ClosedAt and stores reason as CloseReason.
 func (s *WorkCaseStore) Transition(projectID, id string, to CaseStatus, reason string, expectedVersion int, event ProjectEvent) (WorkCase, error) {
-	if !to.Valid() {
-		return WorkCase{}, fmt.Errorf("%w: unknown status %q", ErrInvalidCaseTransition, to)
-	}
 	tx, err := s.db.sql.Begin()
 	if err != nil {
 		return WorkCase{}, err
 	}
 	defer tx.Rollback()
+	updated, err := s.TransitionInTx(tx, projectID, id, to, reason, expectedVersion)
+	if err != nil {
+		return WorkCase{}, err
+	}
+	if _, err := appendProjectEventTx(tx, event, false); err != nil {
+		return WorkCase{}, err
+	}
+	return updated, tx.Commit()
+}
+
+// TransitionInTx performs the lifecycle move inside an open transaction
+// (command gateway seam, #323). Same rules as Transition.
+func (s *WorkCaseStore) TransitionInTx(tx *sql.Tx, projectID, id string, to CaseStatus, reason string, expectedVersion int) (WorkCase, error) {
+	if !to.Valid() {
+		return WorkCase{}, fmt.Errorf("%w: unknown status %q", ErrInvalidCaseTransition, to)
+	}
 	c, err := loadCaseTx(tx, projectID, id)
 	if err != nil {
 		return WorkCase{}, err
@@ -509,10 +567,7 @@ func (s *WorkCaseStore) Transition(projectID, id string, to CaseStatus, reason s
 	if err := updateWorkCaseTx(tx, c); err != nil {
 		return WorkCase{}, err
 	}
-	if _, err := appendProjectEventTx(tx, event, false); err != nil {
-		return WorkCase{}, err
-	}
-	return c, tx.Commit()
+	return c, nil
 }
 
 // Delete removes a case and all of its links, appending event atomically.
@@ -522,6 +577,18 @@ func (s *WorkCaseStore) Delete(projectID, id string, event ProjectEvent) error {
 		return err
 	}
 	defer tx.Rollback()
+	if err := s.DeleteInTx(tx, projectID, id); err != nil {
+		return err
+	}
+	if _, err := appendProjectEventTx(tx, event, false); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// DeleteInTx performs the deletion inside an open transaction (command
+// gateway seam, #323). Same rules as Delete.
+func (s *WorkCaseStore) DeleteInTx(tx *sql.Tx, projectID, id string) error {
 	if _, err := loadCaseTx(tx, projectID, id); err != nil {
 		return err
 	}
@@ -531,10 +598,7 @@ func (s *WorkCaseStore) Delete(projectID, id string, event ProjectEvent) error {
 	if _, err := tx.Exec(`DELETE FROM work_cases WHERE id = ?`, id); err != nil {
 		return err
 	}
-	if _, err := appendProjectEventTx(tx, event, false); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return nil
 }
 
 // ── associations (Task / Session / ArtifactRef, §4.3) ───────────────────────
@@ -545,17 +609,30 @@ func (s *WorkCaseStore) Delete(projectID, id string, event ProjectEvent) error {
 // the reference, the owning application interprets it). Duplicate links are
 // rejected with ErrDuplicate.
 func (s *WorkCaseStore) Link(projectID, caseID string, kind CaseLinkKind, targetID string, expectedVersion int, event ProjectEvent) (WorkCase, error) {
+	tx, err := s.db.sql.Begin()
+	if err != nil {
+		return WorkCase{}, err
+	}
+	defer tx.Rollback()
+	updated, err := s.LinkInTx(tx, projectID, caseID, kind, targetID, expectedVersion)
+	if err != nil {
+		return WorkCase{}, err
+	}
+	if _, err := appendProjectEventTx(tx, event, false); err != nil {
+		return WorkCase{}, err
+	}
+	return updated, tx.Commit()
+}
+
+// LinkInTx performs the association write inside an open transaction (command
+// gateway seam, #323). Same rules as Link.
+func (s *WorkCaseStore) LinkInTx(tx *sql.Tx, projectID, caseID string, kind CaseLinkKind, targetID string, expectedVersion int) (WorkCase, error) {
 	if !kind.Valid() {
 		return WorkCase{}, fmt.Errorf("%w: unknown link kind %q", ErrInvalidProjectEvent, kind)
 	}
 	if targetID == "" {
 		return WorkCase{}, fmt.Errorf("%w: link target_id is required", ErrInvalidProjectEvent)
 	}
-	tx, err := s.db.sql.Begin()
-	if err != nil {
-		return WorkCase{}, err
-	}
-	defer tx.Rollback()
 	c, err := loadCaseTx(tx, projectID, caseID)
 	if err != nil {
 		return WorkCase{}, err
@@ -580,10 +657,7 @@ func (s *WorkCaseStore) Link(projectID, caseID string, kind CaseLinkKind, target
 	if err := updateWorkCaseTx(tx, c); err != nil {
 		return WorkCase{}, err
 	}
-	if _, err := appendProjectEventTx(tx, event, false); err != nil {
-		return WorkCase{}, err
-	}
-	return c, tx.Commit()
+	return c, nil
 }
 
 // validateLinkTargetTx enforces workspace ownership for task/session targets.
@@ -622,14 +696,27 @@ func validateLinkTargetTx(tx *sql.Tx, projectID string, kind CaseLinkKind, targe
 // Unlink detaches targetID from the case under optimistic concurrency and
 // appends event atomically. Missing links are rejected with ErrNotFound.
 func (s *WorkCaseStore) Unlink(projectID, caseID string, kind CaseLinkKind, targetID string, expectedVersion int, event ProjectEvent) (WorkCase, error) {
-	if !kind.Valid() {
-		return WorkCase{}, fmt.Errorf("%w: unknown link kind %q", ErrInvalidProjectEvent, kind)
-	}
 	tx, err := s.db.sql.Begin()
 	if err != nil {
 		return WorkCase{}, err
 	}
 	defer tx.Rollback()
+	updated, err := s.UnlinkInTx(tx, projectID, caseID, kind, targetID, expectedVersion)
+	if err != nil {
+		return WorkCase{}, err
+	}
+	if _, err := appendProjectEventTx(tx, event, false); err != nil {
+		return WorkCase{}, err
+	}
+	return updated, tx.Commit()
+}
+
+// UnlinkInTx performs the association removal inside an open transaction
+// (command gateway seam, #323). Same rules as Unlink.
+func (s *WorkCaseStore) UnlinkInTx(tx *sql.Tx, projectID, caseID string, kind CaseLinkKind, targetID string, expectedVersion int) (WorkCase, error) {
+	if !kind.Valid() {
+		return WorkCase{}, fmt.Errorf("%w: unknown link kind %q", ErrInvalidProjectEvent, kind)
+	}
 	c, err := loadCaseTx(tx, projectID, caseID)
 	if err != nil {
 		return WorkCase{}, err
@@ -651,10 +738,7 @@ func (s *WorkCaseStore) Unlink(projectID, caseID string, kind CaseLinkKind, targ
 	if err := updateWorkCaseTx(tx, c); err != nil {
 		return WorkCase{}, err
 	}
-	if _, err := appendProjectEventTx(tx, event, false); err != nil {
-		return WorkCase{}, err
-	}
-	return c, tx.Commit()
+	return c, nil
 }
 
 // ListLinks returns all association edges of a case ordered by kind and

@@ -170,12 +170,30 @@ func TestWorkCaseHTTPPatchAndVersionConflict(t *testing.T) {
 	created := createWorkCaseHTTP(t, h, wsID, "patch target")
 	id := created["id"].(string)
 
-	// currentPhase carries arbitrary application vocabulary — the kernel must
-	// accept it without validation (应用投影，不编码领域规则).
+	// #323: 禁止直接修改 Case phase — PATCH must reject currentPhase and
+	// status outright; phase advances only via POST /{id}/phase.
 	rr := doWorkCase(t, h, http.MethodPatch, "/api/agent/work-cases/"+id, map[string]any{
 		"expectedVersion": 1,
 		"title":           "renamed",
 		"currentPhase":    "presales-qualification",
+	})
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("patch with currentPhase status %d, want 400: %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "invalid_payload") {
+		t.Fatalf("patch currentPhase body missing invalid_payload code: %s", rr.Body.String())
+	}
+	if rr := doWorkCase(t, h, http.MethodPatch, "/api/agent/work-cases/"+id, map[string]any{
+		"expectedVersion": 1,
+		"status":          "closed",
+	}); rr.Code != http.StatusBadRequest {
+		t.Fatalf("patch with status %d, want 400: %s", rr.Code, rr.Body.String())
+	}
+
+	// Field edits still go through (title + subjectRefs), phase untouched.
+	rr = doWorkCase(t, h, http.MethodPatch, "/api/agent/work-cases/"+id, map[string]any{
+		"expectedVersion": 1,
+		"title":           "renamed",
 		"subjectRefs":     []string{"presales:opportunity:42"},
 	})
 	if rr.Code != http.StatusOK {
@@ -185,9 +203,33 @@ func TestWorkCaseHTTPPatchAndVersionConflict(t *testing.T) {
 	if err := json.NewDecoder(rr.Body).Decode(&patched); err != nil {
 		t.Fatalf("decode patch: %v", err)
 	}
-	if patched.Title != "renamed" || patched.CurrentPhase != "presales-qualification" ||
+	if patched.Title != "renamed" || patched.CurrentPhase != "" ||
 		len(patched.SubjectRefs) != 1 || patched.Version != 2 {
 		t.Fatalf("patch result mismatch: %+v", patched)
+	}
+
+	// The dedicated set_phase command is the only phase path. The kernel
+	// still accepts arbitrary application vocabulary without validation
+	// (应用投影，不编码领域规则).
+	rr = doWorkCase(t, h, http.MethodPost, "/api/agent/work-cases/"+id+"/phase", map[string]any{
+		"expectedVersion": 2,
+		"currentPhase":    "presales-qualification",
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("set phase status %d: %s", rr.Code, rr.Body.String())
+	}
+	var phased meta.WorkCase
+	if err := json.NewDecoder(rr.Body).Decode(&phased); err != nil {
+		t.Fatalf("decode phase: %v", err)
+	}
+	if phased.CurrentPhase != "presales-qualification" || phased.Version != 3 {
+		t.Fatalf("phase result mismatch: %+v", phased)
+	}
+	// Stale phase advance → 409.
+	if rr := doWorkCase(t, h, http.MethodPost, "/api/agent/work-cases/"+id+"/phase", map[string]any{
+		"expectedVersion": 2, "currentPhase": "stale",
+	}); rr.Code != http.StatusConflict {
+		t.Fatalf("stale phase status %d, want 409: %s", rr.Code, rr.Body.String())
 	}
 
 	// Stale expectedVersion → 409; missing expectedVersion → 400.
@@ -204,7 +246,7 @@ func TestWorkCaseHTTPPatchAndVersionConflict(t *testing.T) {
 	}
 	// Malformed subject ref → 400 (structured domainref error).
 	rr = doWorkCase(t, h, http.MethodPatch, "/api/agent/work-cases/"+id, map[string]any{
-		"expectedVersion": 2,
+		"expectedVersion": 3,
 		"primarySubject":  "not a ref",
 	})
 	if rr.Code != http.StatusBadRequest {
@@ -216,7 +258,8 @@ func TestWorkCaseHTTPPatchAndVersionConflict(t *testing.T) {
 	}
 	// Stored row agrees.
 	got, ok, err := meta.NewWorkCaseStore(db).Get(id)
-	if err != nil || !ok || got.Title != "renamed" || got.Version != 2 {
+	if err != nil || !ok || got.Title != "renamed" || got.Version != 3 ||
+		got.CurrentPhase != "presales-qualification" {
 		t.Fatalf("stored after patch: ok=%v err=%v case=%+v", ok, err, got)
 	}
 }
