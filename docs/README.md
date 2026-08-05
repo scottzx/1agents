@@ -40,6 +40,7 @@ docs/
 | 文档 | 说明 |
 |------|------|
 | [enterprise-foundation-v1.0.0.md](./architecture/enterprise-foundation-v1.0.0.md) | **v1.0.0 目标架构**：当前/目标分界、D1–D7、三层边界、WorkCase、Command/Query/Event、能力晋升、同库分域、三 Product Shell 与 C0/C1/C2 闸门 |
+| [domain-ownership.md](./architecture/domain-ownership.md) | **领域所有权与依赖门禁（C0 已落地）**：kernel_/enterprise_/presales_/commerce_ 命名空间、表/写 API 唯一所有者、受控执行器与拒绝审计、架构门禁规则清单与新增领域应用操作清单（`make archgate`） |
 | [agentsOS-架构设计.md](./architecture/agentsOS-架构设计.md) | **架构总纲**：工作 Graph · 任务内核 · 项目外壳；App Registry 与三类挂载基础设施已落地，领域应用逐项演进 |
 | [chat-first-agentteams-interaction.md](./architecture/chat-first-agentteams-interaction.md) | **聊天优先交互架构**：Matrix / 1agents Chat 与工作台双表面、AgentTeams Team Runtime、cc-connect Channel Gateway 边界 |
 | [app-sdk-contract.md](./architecture/app-sdk-contract.md) | 完整外部应用 SDK 契约草案；当前内部 Manifest / Registry / 挂载边界见 agentsOS 架构 |

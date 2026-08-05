@@ -29,7 +29,7 @@ SWITCH_SRCS   := $(shell find modules/cc-switch-cli/src-tauri/src -type f 2>/dev
 HARNESSKIT_SRCS := $(shell find modules/HarnessKit/crates -type f 2>/dev/null) modules/HarnessKit/Cargo.toml modules/HarnessKit/Cargo.lock
 COFFEE_SRCS   := $(shell find modules/alipay-coffee/src modules/alipay-coffee/public -type f 2>/dev/null) modules/alipay-coffee/package.json modules/alipay-coffee/package-lock.json
 
-.PHONY: all frontend ttyd cc-connect cc-connect-noweb cc-switch harnesskit harnesskit-compliance harnesskit-sbom happy coffee backend agent package release-notes clean help install-hooks submodules submodule-cc-connect submodule-cc-switch submodule-happy-cli submodule-harnesskit
+.PHONY: all frontend ttyd cc-connect cc-connect-noweb cc-switch harnesskit harnesskit-compliance harnesskit-sbom happy coffee backend agent archgate package release-notes clean help install-hooks submodules submodule-cc-connect submodule-cc-switch submodule-happy-cli submodule-harnesskit
 
 help:
 	@echo "Unified Build and Packaging System for Remote Agents"
@@ -49,6 +49,7 @@ help:
 	@echo "  make happy             - Build the happy-cli Node submodule + build/happy launcher"
 	@echo "  make coffee            - Stage the Alipay coffee payment Node.js service"
 	@echo "  make backend           - Compile 1agents Go server (backend) with version ldflags"
+	@echo "  make archgate          - Run the domain-ownership architecture gate (backend tests)"
 	@echo "  make package           - Create a target-distinguished deployable archive in dist/"
 	@echo "  make release-notes     - Generate a self-contained release feature-intro HTML page (FROM/TO/OUT overridable)"
 	@echo "  make clean             - Clean all intermediate and build outputs across components"
@@ -176,6 +177,15 @@ build/1agents: $(BACKEND_SRCS)
 	fi
 
 agent: backend
+
+# --- Domain-ownership architecture gate (#326) ------------------------------
+# Runs the ownership/dependency gate: unique-owner registry, cross-domain SQL
+# and import rules, and the legitimate Command/Query/Event path tests. Pure
+# `go test` (stdlib + modernc sqlite, no CGO) so CI runs it without extra
+# toolchains. See docs/architecture/domain-ownership.md.
+archgate:
+	@echo "=== Running domain-ownership architecture gate (backend)..."
+	cd backend && go test ./internal/domainownership/... ./internal/domainref/... ./internal/commandbus/... ./internal/outbox/...
 
 package: all harnesskit-sbom
 	@echo "=== Packaging 1agents for $(OS_LOWER)-$(ARCH_LOWER) on $(HOSTNAME)..."

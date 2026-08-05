@@ -1,0 +1,35 @@
+name: backend-archgate
+
+# Domain-ownership & dependency architecture gate (#326): unique owner per
+# table/write API, cross-domain SQL/import rules, repository exposure
+# boundary, and the legitimate Command/Query/Event path tests. Runs the same
+# `make archgate` developers run locally; see docs/architecture/domain-ownership.md.
+
+on:
+  push:
+    paths:
+      - "backend/**"
+      - "Makefile"
+      - ".github/workflows/backend-archgate.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - "Makefile"
+      - ".github/workflows/backend-archgate.yml"
+  workflow_call:
+
+jobs:
+  arch-gate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Init cc-connect submodule (Go replace target)
+        run: git submodule update --init modules/cc-connect
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+
+      - name: Domain ownership architecture gate
+        run: make archgate

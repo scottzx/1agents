@@ -27,6 +27,7 @@ import (
 	ctxt "github.com/scottzx/1Agents/backend/internal/context"
 	"github.com/scottzx/1Agents/backend/internal/data"
 	"github.com/scottzx/1Agents/backend/internal/digest"
+	"github.com/scottzx/1Agents/backend/internal/domainownership"
 	"github.com/scottzx/1Agents/backend/internal/fs"
 	"github.com/scottzx/1Agents/backend/internal/gateway"
 	"github.com/scottzx/1Agents/backend/internal/git"
@@ -115,6 +116,17 @@ func NewRouter(cfg *config.Config, harnessKitRuntime ...harnesskit.Runtime) http
 	appregistry.StartupDiagnostics()                     // C0 capability check (design §6.3)
 	mux.HandleFunc("/api/apps", appregistry.HandleList)  // GET → {apps:[...]}
 	mux.HandleFunc("/api/apps/", appregistryItemHandler) // POST /{id}/enable|disable
+
+	// ── Domain ownership gate (C0, design §7/§13.3) ────────────────────────
+	// Registers the kernel ownership ledger, ensures the denial-audit table
+	// and installs the persistent sink so cross-domain access denials are
+	// audited. Query-path permission denials are audited via the hook.
+	if db, err := meta.OpenDefault(); err == nil {
+		if err := domainownership.StartupGate(db.SQL()); err != nil {
+			log.Printf("[server] domain ownership gate: %v", err)
+		}
+	}
+	domainownership.WireQueryDenialAudit()
 
 	// ── Product Shell Registry API (C0, design §8/D7) ──────────────────────
 	mux.HandleFunc("/api/shells", appregistry.HandleShellList) // GET → {shells, defaultShell, userPreference, effectiveDefault}

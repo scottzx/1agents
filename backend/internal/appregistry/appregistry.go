@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/scottzx/1Agents/backend/internal/domainownership"
 	"github.com/scottzx/1Agents/backend/internal/domainstore"
 	"github.com/scottzx/1Agents/backend/internal/meta"
 )
@@ -214,7 +215,9 @@ func filterMountPoints(mps []MountPoint, dropped []string) []MountPoint {
 // name must be prefixed with appID + "_". Idempotent — safe to call on every
 // startup. Does NOT touch the global schemaVersion counter.
 //
-// Delegates to domainstore.EnsureTables for the actual execution.
+// Delegates to domainstore.EnsureTables for the actual execution, then
+// records the created tables in the domainownership ledger so every new
+// table has exactly one registered owner (design §7.1).
 //
 // Example call from an app's init():
 //
@@ -227,7 +230,10 @@ func EnsureDomainTables(appID string, ddls []string) error {
 	if err != nil {
 		return fmt.Errorf("appregistry: open db for %s domain tables: %w", appID, err)
 	}
-	return domainstore.EnsureTables(db.SQL(), appID, ddls)
+	if err := domainstore.EnsureTables(db.SQL(), appID, ddls); err != nil {
+		return err
+	}
+	return domainownership.RegisterAppTables(appID, ddls)
 }
 
 // ── Permission gating (design §10: C0 uses the same authorization facts) ──

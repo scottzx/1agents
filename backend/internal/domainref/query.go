@@ -96,6 +96,10 @@ func (r *Registry) Provider(namespace string) (QueryProvider, bool) {
 //	CodeUnknownProvider  — no provider registered for ref.Namespace
 //	CodeVersionMismatch  — ref.ContractVersion unsupported by the provider
 //	CodePermissionDenied / CodeNotFound — surfaced from the provider
+//
+// Permission denials are additionally handed to the process denial hook (if
+// installed) so the ownership gate can audit them; the hook never changes
+// the result.
 func (r *Registry) Resolve(ctx context.Context, req QueryRequest) (ObjectSummary, error) {
 	if err := req.Ref.Validate(); err != nil {
 		return ObjectSummary{}, err
@@ -109,7 +113,36 @@ func (r *Registry) Resolve(ctx context.Context, req QueryRequest) (ObjectSummary
 		return ObjectSummary{}, refError(req.Ref.String(), CodeVersionMismatch,
 			"provider %q supports contract versions %v, not %d", p.Namespace(), p.Versions(), v)
 	}
-	return p.Query(ctx, req)
+	summary, err := p.Query(ctx, req)
+	if err != nil && IsCode(err, CodePermissionDenied) {
+		denialHookMu.RLock()
+		h := denialHook
+		denialHookMu.RUnlock()
+		if h != nil {
+			h(req, err)
+		}
+	}
+	return summary, err
+}
+
+// ── denial audit hook ──────────────────────────────────────────────────────
+
+// DenialHook observes permission denials produced by Query providers so the
+// kernel ownership gate can audit them. The hook must not block and must
+// not retain or mutate req beyond reading it.
+type DenialHook func(req QueryRequest, err error)
+
+var (
+	denialHookMu sync.RWMutex
+	denialHook   DenialHook
+)
+
+// SetDenialHook installs the process-wide denial observer. Passing nil
+// detaches it.
+func SetDenialHook(h DenialHook) {
+	denialHookMu.Lock()
+	denialHook = h
+	denialHookMu.Unlock()
 }
 
 func supportsVersion(versions []int, v int) bool {

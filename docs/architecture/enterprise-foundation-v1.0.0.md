@@ -466,6 +466,7 @@ v1.0.0 只有同时满足以下条件才能发布：
 
 ## 15. 相关文档
 
+- [领域所有权与依赖门禁](./domain-ownership.md)：本文 §3.4/§6.3/§7/§13.3 的开发侧落地规范与 CI 门禁（`make archgate`）。
 - [产品里程碑路线图](../product/roadmap.md)：v1.0.0 的产品阶段、发布闸门与历史路线关系。
 - [agentsOS 架构设计](./agentsOS-架构设计.md)：当前工作 Graph、任务内核、项目外壳和 App Registry 基线。
 - [名称定义表](../product/名称定义表.md)：Workspace、ProjectItem、Session、AgentTurn、executor/assignee 等现行实体名。
