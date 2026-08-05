@@ -31081,3 +31081,212 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+// ── Personal Shell cross-shell work aggregation (#329) ───────────────────────
+// Flat, hairline-divided, pill controls; semantic color tokens only (no raw
+// hex), no shadows — matches the codex-minimal / bento design language.
+.personal-aggregate {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-panel);
+
+  .personal-aggregate-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--bento-gap, 12px);
+    padding: 14px 16px 8px;
+  }
+
+  .personal-aggregate-title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+
+  .personal-aggregate-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .personal-aggregate-sort {
+    appearance: none;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-card);
+    color: var(--text-main);
+    font-size: 12px;
+    padding: 5px 12px;
+    cursor: pointer;
+
+    &:hover {
+      border-color: var(--text-main);
+    }
+  }
+
+  .personal-aggregate-refresh {
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    width: 28px;
+    height: 28px;
+    line-height: 1;
+    cursor: pointer;
+
+    &:hover {
+      border-color: var(--text-main);
+      color: var(--text-main);
+    }
+  }
+
+  .personal-aggregate-buckets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 4px 16px 10px;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .personal-aggregate-bucket {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-size: 12px;
+    padding: 4px 12px;
+    cursor: pointer;
+
+    &:hover {
+      border-color: var(--text-main);
+      color: var(--text-main);
+    }
+
+    &.is-active {
+      background: var(--accent-emphasis);
+      border-color: var(--accent-emphasis);
+      color: var(--on-accent);
+    }
+
+    .personal-aggregate-count {
+      font-size: 11px;
+      opacity: 0.75;
+    }
+  }
+
+  .personal-aggregate-casefilter {
+    padding: 8px 16px 0;
+  }
+
+  .personal-aggregate-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 8px 16px 24px;
+  }
+
+  .personal-aggregate-loading,
+  .personal-aggregate-total {
+    padding: 16px 0;
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .personal-aggregate-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .personal-aggregate-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 4px;
+    border-bottom: 1px solid var(--border-color);
+
+    &:last-child {
+      border-bottom: 0;
+    }
+  }
+
+  .personal-aggregate-row-main {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    cursor: pointer;
+
+    .sp-dot {
+      margin-top: 6px;
+      flex: none;
+    }
+  }
+
+  .personal-aggregate-row-text {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .personal-aggregate-row-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-main);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .personal-aggregate-row-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .personal-aggregate-row-refs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-left: 20px;
+  }
+
+  .personal-aggregate-footer {
+    display: flex;
+    justify-content: center;
+    padding: 12px 0 0;
+  }
+
+  .personal-aggregate-more {
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-card);
+    color: var(--text-main);
+    font-size: 12px;
+    padding: 6px 18px;
+    cursor: pointer;
+
+    &:hover {
+      border-color: var(--text-main);
+    }
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+  }
+}

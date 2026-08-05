@@ -29,6 +29,7 @@ import { visibleSettingsCategories, type SettingsCategory } from '../../modules/
 import { RemindersPane } from '../drawer/Reminders';
 import { AssistantsPage } from '../pages/AssistantsPage';
 import { InboxPane } from '../drawer/Inbox';
+import { PersonalAggregatePanel } from '../personal/PersonalAggregatePanel';
 import { ContactsPane } from '../drawer/Contacts';
 import { DataSourcesPane } from '../drawer/DataSources';
 import { DiscoveryPanel } from '../drawer/DiscoveryPanel';
@@ -224,6 +225,24 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                     }}
                 >
                     <InboxPane />
+                </div>
+            );
+        case 'aggregate':
+            // Personal Shell cross-shell work aggregation (#329) — full-page
+            // pane, same padded scroll frame as the inbox/reminders landings.
+            return (
+                <div
+                    style={{
+                        flex: 1,
+                        minHeight: 0,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        overflow: 'hidden',
+                        boxSizing: 'border-box',
+                        backgroundColor: 'var(--bg-panel)',
+                    }}
+                >
+                    <PersonalAggregatePanel />
                 </div>
             );
         case 'datasources':

@@ -47,6 +47,8 @@ export type ContentView =
     | { kind: 'contacts' }
     | { kind: 'datasources' }
     | { kind: 'inbox' }
+    /** Personal Shell cross-shell work aggregation (#329). */
+    | { kind: 'aggregate' }
     | { kind: 'channels' }
     | { kind: 'providers' }
     | { kind: 'skills' }
