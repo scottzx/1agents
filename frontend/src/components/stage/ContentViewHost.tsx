@@ -12,7 +12,6 @@ import * as wsStore from '../../stores/workspaceStore';
 import * as tabsStore from '../../stores/tabsStore';
 import * as modal from '../../stores/modalStore';
 import * as stage from '../../stores/stageStore';
-import { getModuleByTab } from '../../modules/registry';
 
 import { Terminal } from '../terminal';
 import { TerminalEmptyState } from '../shared/TerminalEmptyState';
@@ -441,15 +440,15 @@ function renderBrowser(tabId: string, language: Lang) {
     );
 }
 
-function HarnessKitIframe({ theme, language }: { theme: 'light' | 'dark'; language: Lang }) {
+function HarnessKitIframe(_props: { theme: 'light' | 'dark'; language: Lang }) {
     const [webUrl, setWebUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         let active = true;
         fetch('/api/harnesskit/status')
-            .then((res) => res.json())
-            .then((data) => {
+            .then(res => res.json())
+            .then(data => {
                 if (active && data.webUrl) {
                     setWebUrl(data.webUrl);
                 }

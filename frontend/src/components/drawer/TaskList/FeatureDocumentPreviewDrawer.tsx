@@ -13,12 +13,7 @@ interface FeatureDocumentPreviewDrawerProps {
     onOpenInFiles: (path: string) => void;
 }
 
-export function FeatureDocumentPreviewDrawer({
-    open,
-    path,
-    onClose,
-    onOpenInFiles: _onOpenInFiles,
-}: FeatureDocumentPreviewDrawerProps) {
+export function FeatureDocumentPreviewDrawer({ open, path, onClose }: FeatureDocumentPreviewDrawerProps) {
     useEffect(() => {
         if (!open) return;
         const onKey = (e: KeyboardEvent) => {
