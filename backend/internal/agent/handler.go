@@ -27,6 +27,8 @@ type Handler struct {
 	activityStore *meta.ProjectActivityStore
 	taskRunStore  *meta.TaskRunStore
 	featureStore  *meta.FeatureCatalogStore
+	workCaseStore *meta.WorkCaseStore
+	eventStore    *meta.ProjectEventStore
 	acpxClient    *AcpxClient
 	scheduler     *Scheduler
 	catalog       *CatalogStore
@@ -43,6 +45,8 @@ func NewHandler(store *Store, tasksStore *TasksStore, acpxClient *AcpxClient, sc
 	var activityStore *meta.ProjectActivityStore
 	var taskRunStore *meta.TaskRunStore
 	var featureStore *meta.FeatureCatalogStore
+	var workCaseStore *meta.WorkCaseStore
+	var eventStore *meta.ProjectEventStore
 	if acpxClient != nil {
 		turnStore = acpxClient.turnStore
 	}
@@ -50,6 +54,8 @@ func NewHandler(store *Store, tasksStore *TasksStore, acpxClient *AcpxClient, sc
 		activityStore = meta.NewProjectActivityStore(db)
 		taskRunStore = meta.NewTaskRunStore(db)
 		featureStore = meta.NewFeatureCatalogStore(db)
+		workCaseStore = meta.NewWorkCaseStore(db)
+		eventStore = meta.NewProjectEventStore(db)
 		if turnStore == nil {
 			turnStore = meta.NewAgentTurnStore(db)
 		}
@@ -61,6 +67,8 @@ func NewHandler(store *Store, tasksStore *TasksStore, acpxClient *AcpxClient, sc
 		activityStore: activityStore,
 		taskRunStore:  taskRunStore,
 		featureStore:  featureStore,
+		workCaseStore: workCaseStore,
+		eventStore:    eventStore,
 		acpxClient:    acpxClient,
 		scheduler:     scheduler,
 		catalog:       catalog,

@@ -227,6 +227,8 @@ func NewRouter(cfg *config.Config, harnessKitRuntime ...harnesskit.Runtime) http
 			mux.HandleFunc("/api/agent/project-items", agentHandler.HandleTasksRoot)             // GET, POST
 			mux.HandleFunc("/api/agent/project-items/resolve", agentHandler.HandleTaskResolve)   // GET ?project=&number= (more specific than the subtree below)
 			mux.HandleFunc("/api/agent/project-items/", agentHandler.HandleTasksItem)            // DELETE /{id}
+			mux.HandleFunc("/api/agent/work-cases", agentHandler.HandleWorkCasesRoot)            // GET, POST (#322)
+			mux.HandleFunc("/api/agent/work-cases/", agentHandler.HandleWorkCasesItem)           // GET/PATCH/DELETE /{id}, transition, links, tasks, runs, events (#322)
 			mux.HandleFunc("/api/agent/agenda", agentHandler.HandleAgendaRoot)                   // GET (cross-workspace agenda, #192)
 			mux.HandleFunc("/api/agent/milestones", agentHandler.HandleMilestonesRoot)           // GET, POST
 			mux.HandleFunc("/api/agent/milestones/", agentHandler.HandleMilestonesItem)          // PATCH, DELETE /{id}, POST /reorder

@@ -30,6 +30,10 @@ func NewTaskStore(db *DB) *TaskStore {
 	return &TaskStore{db: db}
 }
 
+// DB exposes the underlying metadata database so sibling kernel stores (e.g.
+// WorkCaseStore, #322) can share this store's database handle.
+func (s *TaskStore) DB() *DB { return s.db }
+
 // ListProjects returns every project (workspace) known to the meta DB. Used by
 // the agenda aggregator to sweep tasks/milestones across all workspaces (#192).
 func (s *TaskStore) ListProjects() ([]Project, error) {

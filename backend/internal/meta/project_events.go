@@ -20,6 +20,7 @@ var (
 
 var projectEventRegistry = map[string]map[string]bool{
 	"project_item":            {"create": true, "update": true, "close": true, "reopen": true, "complete": true, "cancel": true, "delete": true},
+	"work_case":               {"create": true, "update": true, "transition": true, "link": true, "unlink": true, "delete": true},
 	"milestone":               {"create": true, "update": true, "delete": true},
 	"feature_node":            {"create": true, "update": true, "move": true, "delete": true},
 	"feature_link":            {"link": true, "unlink": true},
