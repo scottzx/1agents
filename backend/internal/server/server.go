@@ -111,6 +111,7 @@ func NewRouter(cfg *config.Config, harnessKitRuntime ...harnesskit.Runtime) http
 	mux.Handle("/avatars/", workspace.ServeAvatars())                                     // GET avatar files (embedded presets + uploads)
 
 	// ── App registry API (Wave 2a, #330) ────────────────────────────────────
+	appregistry.StartupDiagnostics()                     // C0 capability check (design §6.3)
 	mux.HandleFunc("/api/apps", appregistry.HandleList)  // GET → {apps:[...]}
 	mux.HandleFunc("/api/apps/", appregistryItemHandler) // POST /{id}/enable|disable
 

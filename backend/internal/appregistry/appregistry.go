@@ -9,6 +9,7 @@ package appregistry
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -41,34 +42,60 @@ type AppManifest struct {
 	MountPoints  []MountPoint `json:"mountPoints"`
 	TaskTypes    []string     `json:"taskTypes"`
 	DomainTables []string     `json:"domainTables"`
+
+	// Capability Contract fields (C0, design §6.2/§6.3). All optional:
+	// manifests without them behave exactly as before C0.
+	Provides    []string      `json:"provides,omitempty"`    // capability refs "id@major" this app provides
+	Requires    []Requirement `json:"requires,omitempty"`    // capabilities this app needs
+	Permissions []string      `json:"permissions,omitempty"` // declared permissions (C0: declaration only)
 }
 
 var (
-	mu       sync.RWMutex
-	registry = map[string]*AppManifest{}
-	order    []string // insertion order for deterministic List()
+	mu             sync.RWMutex
+	registry       = map[string]*AppManifest{}
+	order          []string              // insertion order for deterministic List()
+	providersByRef = map[string]string{} // capability ref ("id@major") → providing app id
 )
 
 // Register declares an application at compile time. Call from init().
-// Panics on duplicate ID to catch copy-paste errors early.
+// Panics on duplicate ID, duplicate capability provider, or malformed
+// provides/requires references to catch copy-paste errors early.
 func Register(m AppManifest) {
 	mu.Lock()
 	defer mu.Unlock()
 	if _, dup := registry[m.ID]; dup {
 		panic(fmt.Sprintf("appregistry: duplicate app id %q", m.ID))
 	}
+	for _, p := range m.Provides {
+		ref, err := ParseCapabilityRef(p)
+		if err != nil {
+			panic(fmt.Sprintf("appregistry: app %q: %v", m.ID, err))
+		}
+		if owner, dup := providersByRef[ref.String()]; dup {
+			panic(fmt.Sprintf("appregistry: duplicate provider for capability %s: %q and %q",
+				ref, owner, m.ID))
+		}
+		providersByRef[ref.String()] = m.ID
+	}
+	for _, req := range m.Requires {
+		if req.Capability == "" || req.Major < 0 {
+			panic(fmt.Sprintf("appregistry: app %q: malformed requirement %+v", m.ID, req))
+		}
+	}
 	cp := m
 	registry[m.ID] = &cp
 	order = append(order, m.ID)
 }
 
-// List returns all registered manifests in registration order, with current
-// enabled state merged from the database.
+// List returns all registered manifests in registration order, with the
+// effective enabled state from capability validation (persisted intent merged
+// with manifest defaults). Mount points gated by unmet optional requirements
+// are omitted.
 func List() []AppManifest {
-	db, err := meta.OpenDefault()
-	states := map[string]bool{}
-	if err == nil {
-		states = loadStates(db)
+	diags := Validate(currentPersistedStates())
+	diagByID := make(map[string]AppDiagnostic, len(diags))
+	for _, d := range diags {
+		diagByID[d.AppID] = d
 	}
 
 	mu.RLock()
@@ -76,44 +103,58 @@ func List() []AppManifest {
 	out := make([]AppManifest, 0, len(order))
 	for _, id := range order {
 		m := *registry[id]
-		if en, ok := states[id]; ok {
-			m.Enabled = en
-		}
+		m.Enabled = diagByID[id].Enabled
+		m.MountPoints = filterMountPoints(m.MountPoints, diagByID[id].DroppedMountPoints)
 		out = append(out, m)
 	}
 	return out
 }
 
-// Get returns a manifest by id, with enabled state merged from the database.
-// ok=false when the id is not registered.
+// Get returns a manifest by id, with the effective enabled state from
+// capability validation. ok=false when the id is not registered.
 func Get(id string) (AppManifest, bool) {
-	mu.RLock()
-	m, ok := registry[id]
-	mu.RUnlock()
-	if !ok {
-		return AppManifest{}, false
-	}
-	cp := *m
-	db, err := meta.OpenDefault()
-	if err == nil {
-		states := loadStates(db)
-		if en, found := states[id]; found {
-			cp.Enabled = en
+	diags := Validate(currentPersistedStates())
+	var diag AppDiagnostic
+	found := false
+	for _, d := range diags {
+		if d.AppID == id {
+			diag = d
+			found = true
+			break
 		}
 	}
+	if !found {
+		return AppManifest{}, false
+	}
+	mu.RLock()
+	cp := *registry[id]
+	mu.RUnlock()
+	cp.Enabled = diag.Enabled
+	cp.MountPoints = filterMountPoints(cp.MountPoints, diag.DroppedMountPoints)
 	return cp, true
 }
 
 // SetEnabled persists the enabled state for app id and updates the in-memory
-// default. Returns an error when the app is not registered.
+// default. Returns an error when the app is not registered, and a
+// *RejectedError when capability validation rejects the change:
+//
+//   - enabling is rejected when the app's required capabilities are unmet
+//     (missing, incompatible major, provider disabled) or part of a cycle;
+//   - disabling is rejected while effectively-enabled apps still require
+//     capabilities this app provides.
 func SetEnabled(id string, enabled bool) error {
-	mu.Lock()
-	m, ok := registry[id]
+	mu.RLock()
+	_, ok := registry[id]
+	mu.RUnlock()
 	if !ok {
-		mu.Unlock()
 		return fmt.Errorf("appregistry: unknown app %q", id)
 	}
-	m.Enabled = enabled
+	if err := validateStateChange(id, enabled); err != nil {
+		return err
+	}
+
+	mu.Lock()
+	registry[id].Enabled = enabled
 	mu.Unlock()
 
 	db, err := meta.OpenDefault()
@@ -129,6 +170,24 @@ func SetEnabled(id string, enabled bool) error {
 		id, boolToInt(enabled),
 	)
 	return err
+}
+
+// filterMountPoints removes mount points whose ids are in dropped.
+func filterMountPoints(mps []MountPoint, dropped []string) []MountPoint {
+	if len(dropped) == 0 {
+		return mps
+	}
+	drop := make(map[string]bool, len(dropped))
+	for _, id := range dropped {
+		drop[id] = true
+	}
+	out := make([]MountPoint, 0, len(mps))
+	for _, mp := range mps {
+		if !drop[mp.ID] {
+			out = append(out, mp)
+		}
+	}
+	return out
 }
 
 // EnsureDomainTables creates domain tables for appID using the provided DDL
@@ -176,7 +235,7 @@ func HandleEnable(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := SetEnabled(id, true); err != nil {
 		log.Printf("[appregistry] enable %s: %v", id, err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeSetEnabledError(w, err)
 		return
 	}
 	writeJSON(w, map[string]any{"ok": true, "id": id, "enabled": true})
@@ -195,7 +254,7 @@ func HandleDisable(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := SetEnabled(id, false); err != nil {
 		log.Printf("[appregistry] disable %s: %v", id, err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeSetEnabledError(w, err)
 		return
 	}
 	writeJSON(w, map[string]any{"ok": true, "id": id, "enabled": false})
@@ -252,4 +311,16 @@ func writeJSON(w http.ResponseWriter, v any) {
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		log.Printf("[appregistry] json encode: %v", err)
 	}
+}
+
+// writeSetEnabledError maps a SetEnabled error to an HTTP response: 409 for
+// capability-validation rejections (the message carries the reasons), 500
+// otherwise.
+func writeSetEnabledError(w http.ResponseWriter, err error) {
+	var rejected *RejectedError
+	if errors.As(err, &rejected) {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	http.Error(w, err.Error(), http.StatusInternalServerError)
 }
