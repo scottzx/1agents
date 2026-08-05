@@ -30,6 +30,10 @@ const (
 	CommandWorkCaseSetPhase   = "workcase.set_phase"
 )
 
+// caseEventSchemaVersion is the schema version of the work_case fact payload
+// (caseSnapshot shape) carried by Outbox Events (#324, §5.3).
+const caseEventSchemaVersion = 1
+
 // caseCommandKinds are the actor kinds allowed to mutate cases in general.
 // Individual commands tighten this (delete is user/human only; terminal
 // transitions require a user or human decision, §8: 关键人工决定不可被
@@ -198,7 +202,7 @@ func (s *WorkCaseStore) handleCreateCase(ctx context.Context, cmd commandbus.Com
 	if err != nil {
 		return commandbus.Result{}, classifyCaseError(err)
 	}
-	return caseResult(created, stored.ID)
+	return caseResult(created, stored.ID, "create")
 }
 
 func (s *WorkCaseStore) handleUpdateCase(ctx context.Context, cmd commandbus.Command, tx *sql.Tx) (commandbus.Result, error) {
@@ -234,7 +238,7 @@ func (s *WorkCaseStore) handleUpdateCase(ctx context.Context, cmd commandbus.Com
 	if err != nil {
 		return commandbus.Result{}, classifyCaseError(err)
 	}
-	return caseResult(updated, stored.ID)
+	return caseResult(updated, stored.ID, "update")
 }
 
 func (s *WorkCaseStore) handleTransitionCase(ctx context.Context, cmd commandbus.Command, tx *sql.Tx) (commandbus.Result, error) {
@@ -266,7 +270,7 @@ func (s *WorkCaseStore) handleTransitionCase(ctx context.Context, cmd commandbus
 	if err != nil {
 		return commandbus.Result{}, classifyCaseError(err)
 	}
-	return caseResult(updated, stored.ID)
+	return caseResult(updated, stored.ID, "transition")
 }
 
 func (s *WorkCaseStore) handleDeleteCase(ctx context.Context, cmd commandbus.Command, tx *sql.Tx) (commandbus.Result, error) {
@@ -290,7 +294,15 @@ func (s *WorkCaseStore) handleDeleteCase(ctx context.Context, cmd commandbus.Com
 		return commandbus.Result{}, classifyCaseError(err)
 	}
 	payload, _ := json.Marshal(map[string]any{"ok": true, "id": p.CaseID})
-	return commandbus.Result{Version: before.Version, EventID: stored.ID, TargetID: p.CaseID, Payload: payload}, nil
+	return commandbus.Result{
+		Version:            before.Version,
+		EventID:            stored.ID,
+		TargetID:           p.CaseID,
+		Payload:            payload,
+		EventType:          "work_case.delete",
+		EventSchemaVersion: caseEventSchemaVersion,
+		SubjectRef:         caseSubjectRef(cmd.WorkspaceID, p.CaseID),
+	}, nil
 }
 
 func (s *WorkCaseStore) handleLinkCase(ctx context.Context, cmd commandbus.Command, tx *sql.Tx) (commandbus.Result, error) {
@@ -321,7 +333,7 @@ func (s *WorkCaseStore) handleLinkCase(ctx context.Context, cmd commandbus.Comma
 	if err != nil {
 		return commandbus.Result{}, classifyCaseError(err)
 	}
-	return caseResult(updated, stored.ID)
+	return caseResult(updated, stored.ID, "link")
 }
 
 func (s *WorkCaseStore) handleUnlinkCase(ctx context.Context, cmd commandbus.Command, tx *sql.Tx) (commandbus.Result, error) {
@@ -352,7 +364,7 @@ func (s *WorkCaseStore) handleUnlinkCase(ctx context.Context, cmd commandbus.Com
 	if err != nil {
 		return commandbus.Result{}, classifyCaseError(err)
 	}
-	return caseResult(updated, stored.ID)
+	return caseResult(updated, stored.ID, "unlink")
 }
 
 func (s *WorkCaseStore) handleSetPhaseCase(ctx context.Context, cmd commandbus.Command, tx *sql.Tx) (commandbus.Result, error) {
@@ -379,7 +391,7 @@ func (s *WorkCaseStore) handleSetPhaseCase(ctx context.Context, cmd commandbus.C
 	if err != nil {
 		return commandbus.Result{}, classifyCaseError(err)
 	}
-	return caseResult(updated, stored.ID)
+	return caseResult(updated, stored.ID, "update")
 }
 
 // ── shared helpers ──────────────────────────────────────────────────────────
@@ -425,13 +437,33 @@ func caseSnapshot(c WorkCase) map[string]any {
 	}
 }
 
-// caseResult packages a mutated case into the command result envelope.
-func caseResult(c WorkCase, eventID string) (commandbus.Result, error) {
+// caseResult packages a mutated case into the command result envelope,
+// including the Outbox Event envelope fields (#324, §5.3): the gateway
+// appends the delivery row from them inside the command transaction.
+func caseResult(c WorkCase, eventID, operation string) (commandbus.Result, error) {
 	payload, err := json.Marshal(c)
 	if err != nil {
 		return commandbus.Result{}, commandbus.WrapError(commandbus.CodeInternal, err, "marshal case result: %v", err)
 	}
-	return commandbus.Result{Version: c.Version, EventID: eventID, TargetID: c.ID, Payload: payload}, nil
+	return commandbus.Result{
+		Version:            c.Version,
+		EventID:            eventID,
+		TargetID:           c.ID,
+		Payload:            payload,
+		EventType:          "work_case." + operation,
+		EventSchemaVersion: caseEventSchemaVersion,
+		SubjectRef:         caseSubjectRef(c.WorkspaceID, c.ID),
+	}, nil
+}
+
+// caseSubjectRef renders the canonical CaseRef of the subject object the
+// event is about (§5.3 subjectRef).
+func caseSubjectRef(workspaceID, caseID string) string {
+	ref, err := domainref.NewCaseRef(workspaceID, caseID, 0)
+	if err != nil {
+		return ""
+	}
+	return ref.String()
 }
 
 // classifyCaseError maps store sentinels onto stable command error codes so

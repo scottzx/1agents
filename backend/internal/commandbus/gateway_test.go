@@ -85,7 +85,10 @@ func registerKVCommands(t *testing.T, bus *commandbus.Gateway, counters *kvCount
 				}
 				counters.add(&counters.creates, 1)
 				payload, _ := json.Marshal(map[string]any{"key": p.Key, "value": p.Value})
-				return commandbus.Result{Version: 1, EventID: "evt-" + p.Key, TargetID: p.Key, Payload: payload}, nil
+				return commandbus.Result{
+					Version: 1, EventID: "evt-" + p.Key + "-c1", TargetID: p.Key, Payload: payload,
+					EventType: "kv.created", EventSchemaVersion: 1, SubjectRef: "kv:" + p.Key,
+				}, nil
 			},
 		},
 		{
@@ -123,7 +126,12 @@ func registerKVCommands(t *testing.T, bus *commandbus.Gateway, counters *kvCount
 				}
 				counters.add(&counters.sets, 1)
 				payload, _ := json.Marshal(map[string]any{"key": p.Key, "value": p.Value})
-				return commandbus.Result{Version: cmd.ExpectedVersion + 1, EventID: "evt-" + p.Key, TargetID: p.Key, Payload: payload}, nil
+				return commandbus.Result{
+					Version:  cmd.ExpectedVersion + 1,
+					EventID:  fmt.Sprintf("evt-%s-s%d", p.Key, cmd.ExpectedVersion+1),
+					TargetID: p.Key, Payload: payload,
+					EventType: "kv.updated", EventSchemaVersion: 1, SubjectRef: "kv:" + p.Key,
+				}, nil
 			},
 		},
 		{
@@ -294,7 +302,7 @@ func TestIdempotentReplayProducesEffectOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first dispatch: %v", err)
 	}
-	if first.Status != commandbus.ResultSucceeded || first.EventID != "evt-a" || first.Version != 1 {
+	if first.Status != commandbus.ResultSucceeded || first.EventID != "evt-a-c1" || first.Version != 1 {
 		t.Fatalf("first result mismatch: %+v", first)
 	}
 
@@ -402,7 +410,7 @@ func TestExecutionAuditTrail(t *testing.T) {
 	ok := rows[1]
 	if ok.Status != "succeeded" || ok.Contract != "kv.create" ||
 		ok.ActorKind != "user" || ok.ActorName != "tester" ||
-		ok.TargetID != "aud" || ok.NewVersion != 1 || ok.EventID != "evt-aud" ||
+		ok.TargetID != "aud" || ok.NewVersion != 1 || ok.EventID != "evt-aud-c1" ||
 		ok.IdempotencyKey != "audit-1" || ok.CorrelationID != "corr-1" ||
 		ok.DurationMS < 0 || ok.CreatedAt.IsZero() || len(ok.Result) == 0 {
 		t.Fatalf("success audit mismatch: %+v", ok)
@@ -549,5 +557,249 @@ func TestRegistryRejectsDuplicatesAndMalformed(t *testing.T) {
 	contracts := bus.Contracts()
 	if len(contracts) != 1 || contracts[0] != "x.y" {
 		t.Fatalf("contracts=%v", contracts)
+	}
+}
+
+// ── outbox integration (#324) ───────────────────────────────────────────────
+
+func outboxCount(t *testing.T, db *sql.DB) int {
+	t.Helper()
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(1) FROM outbox_events`).Scan(&n); err != nil {
+		t.Fatalf("count outbox_events: %v", err)
+	}
+	return n
+}
+
+func TestDispatchAppendsOutboxEventInCommandTransaction(t *testing.T) {
+	bus, db := newGateway(t)
+	registerKVCommands(t, bus, &kvCounters{})
+	ctx := context.Background()
+
+	cmd := userCommand("kv.create", "ob-1", `{"key":"ob","value":"1"}`)
+	cmd.CorrelationID = "corr-ob"
+	res, err := bus.Dispatch(ctx, cmd)
+	if err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+
+	// Exactly one outbox row, committed atomically with the business write,
+	// carrying the full §5.3 envelope.
+	var (
+		eventID, ws, eventType                                        string
+		schemaVersion                                                 int
+		corrID, causationID, subjectRef, actorKind, actorName, origin string
+		status                                                        string
+	)
+	err = db.QueryRow(`
+		SELECT event_id, workspace_id, event_type, schema_version, correlation_id,
+			causation_id, subject_ref, actor_kind, actor_name, origin, status
+		FROM outbox_events`).Scan(
+		&eventID, &ws, &eventType, &schemaVersion, &corrID, &causationID,
+		&subjectRef, &actorKind, &actorName, &origin, &status)
+	if err != nil {
+		t.Fatalf("read outbox row: %v", err)
+	}
+	if eventID != res.EventID || ws != "ws-1" || eventType != "kv.created" ||
+		schemaVersion != 1 || corrID != "corr-ob" || causationID == "" ||
+		subjectRef != "kv:ob" || actorKind != "user" || actorName != "tester" ||
+		origin != "http" || status != "pending" {
+		t.Fatalf("outbox envelope mismatch: id=%s ws=%s type=%s v=%d corr=%s caus=%s subj=%s actor=%s/%s origin=%s status=%s",
+			eventID, ws, eventType, schemaVersion, corrID, causationID, subjectRef, actorKind, actorName, origin, status)
+	}
+
+	// The causation id is the command execution that produced the event.
+	execs, err := bus.ListExecutions(commandbus.ExecutionFilter{WorkspaceID: "ws-1"})
+	if err != nil {
+		t.Fatalf("ListExecutions: %v", err)
+	}
+	matched := false
+	for _, e := range execs {
+		if e.Status == "succeeded" && e.EventID == res.EventID && e.ExecutionID == causationID {
+			matched = true
+		}
+	}
+	if !matched {
+		t.Fatalf("no succeeded execution matches event causation %q: %+v", causationID, execs)
+	}
+
+	// An idempotent replay appends no second outbox row.
+	again, err := bus.Dispatch(ctx, cmd)
+	if err != nil || again.Status != commandbus.ResultReplayed {
+		t.Fatalf("replay: res=%+v err=%v", again, err)
+	}
+	if n := outboxCount(t, db); n != 1 {
+		t.Fatalf("outbox rows=%d after replay, want 1", n)
+	}
+}
+
+func TestBusinessFailureProducesNoOutboxEvent(t *testing.T) {
+	bus, db := newGateway(t)
+	registerKVCommands(t, bus, &kvCounters{})
+	// A handler that writes domain state and then fails: both the write and
+	// the outbox row must roll back.
+	if err := bus.Register(commandbus.Descriptor{
+		Contract:       "kv.write_then_fail",
+		SchemaVersions: []int{1},
+		AllowedKinds:   []commandbus.ActorKind{commandbus.ActorUser},
+		Handler: func(ctx context.Context, cmd commandbus.Command, tx *sql.Tx) (commandbus.Result, error) {
+			if _, err := tx.Exec(`INSERT INTO test_kv (k, value, version) VALUES ('boom', '1', 1)`); err != nil {
+				return commandbus.Result{}, commandbus.WrapError(commandbus.CodeInternal, err, "insert: %v", err)
+			}
+			return commandbus.Result{}, commandbus.NewError(commandbus.CodeDomainRejected, "business rule violated after write")
+		},
+	}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	_, err := bus.Dispatch(context.Background(), userCommand("kv.write_then_fail", "bf-1", `{}`))
+	if !commandbus.IsCode(err, commandbus.CodeDomainRejected) {
+		t.Fatalf("dispatch err=%v, want domain_rejected", err)
+	}
+	var kvRows int
+	if err := db.QueryRow(`SELECT COUNT(1) FROM test_kv`).Scan(&kvRows); err != nil {
+		t.Fatal(err)
+	}
+	if kvRows != 0 {
+		t.Fatalf("test_kv rows=%d, want 0 (business write rolled back)", kvRows)
+	}
+	if n := outboxCount(t, db); n != 0 {
+		t.Fatalf("outbox rows=%d, want 0 (failed write produces no event)", n)
+	}
+}
+
+func TestOutboxFailureRollsBackBusinessTransaction(t *testing.T) {
+	bus, db := newGateway(t)
+	registerKVCommands(t, bus, &kvCounters{})
+	ctx := context.Background()
+
+	// Sabotage the outbox table so the append inside the command transaction
+	// fails: the business write and the idempotency claim roll back with it.
+	if _, err := db.Exec(`DROP TABLE outbox_events`); err != nil {
+		t.Fatalf("drop outbox_events: %v", err)
+	}
+	_, err := bus.Dispatch(ctx, userCommand("kv.create", "of-1", `{"key":"victim","value":"1"}`))
+	if !commandbus.IsCode(err, commandbus.CodeInternal) {
+		t.Fatalf("dispatch err=%v, want internal", err)
+	}
+	var kvRows int
+	if err := db.QueryRow(`SELECT COUNT(1) FROM test_kv`).Scan(&kvRows); err != nil {
+		t.Fatal(err)
+	}
+	if kvRows != 0 {
+		t.Fatalf("test_kv rows=%d, want 0 (outbox failure rolls back the business write)", kvRows)
+	}
+	var idemRows int
+	if err := db.QueryRow(`SELECT COUNT(1) FROM command_idempotency`).Scan(&idemRows); err != nil {
+		t.Fatal(err)
+	}
+	if idemRows != 0 {
+		t.Fatalf("command_idempotency rows=%d, want 0 (nothing committed)", idemRows)
+	}
+}
+
+func TestEnvelopeRequiredWhenHandlerProducesEvent(t *testing.T) {
+	bus, db := newGateway(t)
+	// A handler that reports an event id but omits the envelope violates the
+	// outbox contract; the whole command fails and rolls back.
+	if err := bus.Register(commandbus.Descriptor{
+		Contract:       "kv.no_envelope",
+		SchemaVersions: []int{1},
+		AllowedKinds:   []commandbus.ActorKind{commandbus.ActorUser},
+		Handler: func(ctx context.Context, cmd commandbus.Command, tx *sql.Tx) (commandbus.Result, error) {
+			if _, err := tx.Exec(`INSERT INTO test_kv (k, value, version) VALUES ('env', '1', 1)`); err != nil {
+				return commandbus.Result{}, err
+			}
+			return commandbus.Result{Version: 1, EventID: "evt-env", TargetID: "env"}, nil
+		},
+	}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	_, err := bus.Dispatch(context.Background(), userCommand("kv.no_envelope", "ne-1", `{}`))
+	if !commandbus.IsCode(err, commandbus.CodeInternal) {
+		t.Fatalf("dispatch err=%v, want internal", err)
+	}
+	var kvRows int
+	if err := db.QueryRow(`SELECT COUNT(1) FROM test_kv`).Scan(&kvRows); err != nil {
+		t.Fatal(err)
+	}
+	if kvRows != 0 {
+		t.Fatalf("test_kv rows=%d, want 0", kvRows)
+	}
+	if n := outboxCount(t, db); n != 0 {
+		t.Fatalf("outbox rows=%d, want 0", n)
+	}
+}
+
+func TestCausationChainReconstructsCommandFlow(t *testing.T) {
+	bus, db := newGateway(t)
+	registerKVCommands(t, bus, &kvCounters{})
+	ctx := context.Background()
+
+	// Step 1 of the flow.
+	first := userCommand("kv.create", "chain-1", `{"key":"c1","value":"1"}`)
+	first.CorrelationID = "corr-chain"
+	res1, err := bus.Dispatch(ctx, first)
+	if err != nil {
+		t.Fatalf("first dispatch: %v", err)
+	}
+
+	// Step 2: a command caused by the first event, in the same correlation.
+	second := withVersion(userCommand("kv.set", "chain-2", `{"key":"c1","value":"2"}`), 1)
+	second.CorrelationID = "corr-chain"
+	second.CausationID = res1.EventID
+	res2, err := bus.Dispatch(ctx, second)
+	if err != nil {
+		t.Fatalf("second dispatch: %v", err)
+	}
+
+	outboxEnvelope := func(id string) (causation, correlation string) {
+		t.Helper()
+		err := db.QueryRow(
+			`SELECT causation_id, correlation_id FROM outbox_events WHERE event_id = ?`, id).
+			Scan(&causation, &correlation)
+		if err != nil {
+			t.Fatalf("read outbox %s: %v", id, err)
+		}
+		return causation, correlation
+	}
+	execs, err := bus.ListExecutions(commandbus.ExecutionFilter{WorkspaceID: "ws-1"})
+	if err != nil {
+		t.Fatalf("ListExecutions: %v", err)
+	}
+	execByEvent := map[string]commandbus.Execution{}
+	corrCount := 0
+	for _, e := range execs {
+		if e.Status == "succeeded" {
+			execByEvent[e.EventID] = e
+			if e.CorrelationID == "corr-chain" {
+				corrCount++
+			}
+		}
+	}
+	if corrCount != 2 {
+		t.Fatalf("succeeded executions under corr-chain=%d, want 2", corrCount)
+	}
+
+	// Walk the chain backwards: event2 → causing execution → the event that
+	// caused that execution → its causing execution → the first command.
+	caus2, corr2 := outboxEnvelope(res2.EventID)
+	if corr2 != "corr-chain" {
+		t.Fatalf("event2 correlation=%q, want corr-chain", corr2)
+	}
+	exec2, ok := execByEvent[res2.EventID]
+	if !ok || exec2.ExecutionID != caus2 || exec2.Contract != "kv.set" {
+		t.Fatalf("event2 causation %q does not match its execution %+v", caus2, exec2)
+	}
+	if exec2.CausationID != res1.EventID {
+		t.Fatalf("execution2 causation=%q, want event1 id %q", exec2.CausationID, res1.EventID)
+	}
+	caus1, corr1 := outboxEnvelope(res1.EventID)
+	if corr1 != "corr-chain" {
+		t.Fatalf("event1 correlation=%q, want corr-chain", corr1)
+	}
+	exec1, ok := execByEvent[res1.EventID]
+	if !ok || exec1.ExecutionID != caus1 || exec1.Contract != "kv.create" {
+		t.Fatalf("event1 causation %q does not match its execution %+v", caus1, exec1)
 	}
 }

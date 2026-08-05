@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/scottzx/1Agents/backend/internal/outbox"
 )
 
 // schemaDDL owns the command infrastructure tables (§7.1: kernel tables,
@@ -94,12 +96,16 @@ type Gateway struct {
 	db       *sql.DB
 }
 
-// New returns a Gateway over db and ensures the infrastructure tables exist.
+// New returns a Gateway over db and ensures the infrastructure tables exist
+// (command idempotency/audit plus the outbox the dispatch appends into).
 func New(db *sql.DB) (*Gateway, error) {
 	if db == nil {
 		return nil, errors.New("commandbus: nil database handle")
 	}
 	if err := EnsureSchema(db); err != nil {
+		return nil, err
+	}
+	if err := outbox.EnsureSchema(db); err != nil {
 		return nil, err
 	}
 	return &Gateway{registry: NewRegistry(), db: db}, nil
@@ -118,7 +124,8 @@ func (g *Gateway) Contracts() []string { return g.registry.Contracts() }
 //  3. actor permission policy      → CodePermissionDenied
 //  4. idempotency claim            → replay stored result on duplicate key
 //  5. handler execution inside one transaction that also commits the
-//     idempotency record and the success audit row atomically
+//     idempotency record, the success audit row and — when the handler
+//     produced an event — the Outbox Event delivery row atomically
 //
 // Every attempt — including rejections — is recorded in command_executions
 // with its duration.
@@ -229,6 +236,30 @@ func (g *Gateway) Dispatch(ctx context.Context, cmd Command) (Result, error) {
 		tx.Rollback()
 		g.auditExecution(cmd, execID, "failed", target, ce, Result{}, time.Since(start))
 		return Result{}, ce
+	}
+	// Append the Outbox Event inside the very same transaction as the domain
+	// write (§5.2): the fact notification exists if and only if the business
+	// change committed. An append failure rolls the business write back.
+	if result.EventID != "" {
+		env := outbox.Event{
+			ID:            result.EventID,
+			WorkspaceID:   cmd.WorkspaceID,
+			EventType:     result.EventType,
+			SchemaVersion: result.EventSchemaVersion,
+			CorrelationID: cmd.CorrelationID,
+			CausationID:   execID,
+			SubjectRef:    result.SubjectRef,
+			ActorKind:     string(cmd.Actor.Kind),
+			ActorName:     cmd.Actor.Name,
+			Origin:        cmd.Actor.Origin,
+			OccurredAt:    time.Now().UTC(),
+		}
+		if err := outbox.AppendTx(tx, env); err != nil {
+			ce := WrapError(CodeInternal, err, "append outbox event: %v", err)
+			tx.Rollback()
+			g.auditExecution(cmd, execID, "failed", target, ce, Result{}, time.Since(start))
+			return Result{}, ce
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		ce := WrapError(CodeInternal, err, "commit command transaction: %v", err)

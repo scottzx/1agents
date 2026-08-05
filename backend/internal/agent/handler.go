@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -17,6 +18,7 @@ import (
 	"github.com/scottzx/1Agents/backend/internal/agent/permission"
 	"github.com/scottzx/1Agents/backend/internal/commandbus"
 	"github.com/scottzx/1Agents/backend/internal/meta"
+	"github.com/scottzx/1Agents/backend/internal/outbox"
 	"github.com/scottzx/1Agents/backend/internal/workspace"
 )
 
@@ -35,9 +37,13 @@ type Handler struct {
 	// Agent, Function, Human, IM and external API share one write path with
 	// actor attribution, idempotency, optimistic concurrency and audit.
 	commandBus *commandbus.Gateway
-	acpxClient *AcpxClient
-	scheduler  *Scheduler
-	catalog    *CatalogStore
+	// outboxDispatcher delivers the Outbox Events the command gateway appends
+	// atomically with each committed case mutation (#324, §5 D3): at-least-once
+	// with retry/backoff and per-consumer receipt dedup.
+	outboxDispatcher *outbox.Dispatcher
+	acpxClient       *AcpxClient
+	scheduler        *Scheduler
+	catalog          *CatalogStore
 	// selfBaseURL is this daemon's own loopback HTTP base (e.g.
 	// http://127.0.0.1:8080), injected into the AI Project Manager's
 	// task-tool MCP subprocess so it can call back into the task API.
@@ -54,6 +60,7 @@ func NewHandler(store *Store, tasksStore *TasksStore, acpxClient *AcpxClient, sc
 	var workCaseStore *meta.WorkCaseStore
 	var eventStore *meta.ProjectEventStore
 	var commandBus *commandbus.Gateway
+	var outboxDispatcher *outbox.Dispatcher
 	if acpxClient != nil {
 		turnStore = acpxClient.turnStore
 	}
@@ -78,22 +85,41 @@ func NewHandler(store *Store, tasksStore *TasksStore, acpxClient *AcpxClient, sc
 		} else {
 			log.Printf("[agent] command gateway unavailable: %v", err)
 		}
+		// Outbox dispatcher (#324): delivers the events the gateway appends
+		// atomically with each committed case mutation. Constructed here so
+		// it shares the command bus's database; the delivery loop itself is
+		// started by the server via StartOutboxDispatcher.
+		if disp, err := outbox.NewDispatcher(db.SQL()); err == nil {
+			outboxDispatcher = disp
+		} else {
+			log.Printf("[agent] outbox dispatcher unavailable: %v", err)
+		}
 	}
 	return &Handler{
-		store:         store,
-		tasksStore:    tasksStore,
-		turnStore:     turnStore,
-		activityStore: activityStore,
-		taskRunStore:  taskRunStore,
-		featureStore:  featureStore,
-		workCaseStore: workCaseStore,
-		eventStore:    eventStore,
-		commandBus:    commandBus,
-		acpxClient:    acpxClient,
-		scheduler:     scheduler,
-		catalog:       catalog,
-		selfBaseURL:   selfBaseURL,
+		store:            store,
+		tasksStore:       tasksStore,
+		turnStore:        turnStore,
+		activityStore:    activityStore,
+		taskRunStore:     taskRunStore,
+		featureStore:     featureStore,
+		workCaseStore:    workCaseStore,
+		eventStore:       eventStore,
+		commandBus:       commandBus,
+		outboxDispatcher: outboxDispatcher,
+		acpxClient:       acpxClient,
+		scheduler:        scheduler,
+		catalog:          catalog,
+		selfBaseURL:      selfBaseURL,
 	}
+}
+
+// StartOutboxDispatcher launches the background delivery loop for Outbox
+// Events (#324). No-op when the dispatcher could not be constructed.
+func (h *Handler) StartOutboxDispatcher(interval time.Duration) {
+	if h.outboxDispatcher == nil {
+		return
+	}
+	go h.outboxDispatcher.Run(context.Background(), interval)
 }
 
 // resolveWorkspacePath resolves workspaceID to its absolute physical path on host

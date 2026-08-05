@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/scottzx/1Agents/backend/internal/commandbus"
+	"github.com/scottzx/1Agents/backend/internal/domainref"
+	"github.com/scottzx/1Agents/backend/internal/outbox"
 )
 
 // caseBusRig wires a gateway with the WorkCase commands over a fresh DB.
@@ -450,5 +452,141 @@ func TestWorkCasePhaseOnlyThroughCommand(t *testing.T) {
 	}
 	if updated.CurrentPhase != "direct" {
 		t.Fatalf("update moved the phase: %q", updated.CurrentPhase)
+	}
+}
+
+// ── outbox events (#324) ────────────────────────────────────────────────────
+
+func TestWorkCaseCommandOutboxEnvelope(t *testing.T) {
+	bus, _, db := caseBusRig(t, "proj-1")
+	disp, err := outbox.NewDispatcher(db.SQL())
+	if err != nil {
+		t.Fatalf("NewDispatcher: %v", err)
+	}
+
+	cmd := caseCommand(CommandWorkCaseCreate, "proj-1", "ob-create", "user", "user", 0,
+		map[string]any{"title": "Outbox Case"})
+	cmd.CorrelationID = "corr-case"
+	res := dispatchCase(t, bus, cmd)
+
+	entry, ok, err := disp.Get(res.EventID)
+	if err != nil || !ok {
+		t.Fatalf("outbox entry for %s: ok=%v err=%v", res.EventID, ok, err)
+	}
+	wantSubject, err := domainref.NewCaseRef("proj-1", res.TargetID, 0)
+	if err != nil {
+		t.Fatalf("NewCaseRef: %v", err)
+	}
+	if entry.Status != outbox.StatusPending ||
+		entry.EventType != "work_case.create" || entry.SchemaVersion != 1 ||
+		entry.WorkspaceID != "proj-1" || entry.CorrelationID != "corr-case" ||
+		entry.CausationID == "" || entry.SubjectRef != wantSubject.String() ||
+		entry.ActorKind != "user" || entry.ActorName != "user" ||
+		entry.OccurredAt.IsZero() {
+		t.Fatalf("outbox envelope mismatch: %+v (want subject %s)", entry, wantSubject.String())
+	}
+	// The fact is read from the ProjectEvent audit row — no parallel copy.
+	if entry.Fact.TargetType != "work_case" || entry.Fact.TargetID != res.TargetID ||
+		entry.Fact.Operation != "create" || entry.Fact.Status != string(ProjectEventSucceeded) {
+		t.Fatalf("fact mismatch: %+v", entry.Fact)
+	}
+
+	// The causation id is the command execution that committed the fact.
+	execs, err := bus.ListExecutions(commandbus.ExecutionFilter{WorkspaceID: "proj-1", TargetID: res.TargetID})
+	if err != nil {
+		t.Fatalf("ListExecutions: %v", err)
+	}
+	matched := false
+	for _, e := range execs {
+		if e.Status == "succeeded" && e.EventID == res.EventID && e.ExecutionID == entry.CausationID {
+			matched = true
+		}
+	}
+	if !matched {
+		t.Fatalf("causation %q does not match any succeeded execution: %+v", entry.CausationID, execs)
+	}
+
+	// An idempotent replay appends no second outbox row.
+	replay, err := bus.Dispatch(context.Background(), cmd)
+	if err != nil || replay.Status != commandbus.ResultReplayed {
+		t.Fatalf("replay: %+v err=%v", replay, err)
+	}
+	var rows int
+	if err := db.SQL().QueryRow(`SELECT COUNT(1) FROM outbox_events`).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 1 {
+		t.Fatalf("outbox rows=%d after replay, want 1", rows)
+	}
+}
+
+func TestWorkCaseDomainRejectionProducesNoOutbox(t *testing.T) {
+	bus, _, db := caseBusRig(t, "proj-1")
+	created := createCaseViaCommand(t, bus, "proj-1", "ob-seed", "Outbox 拒绝测试")
+
+	// Stale expectedVersion → domain rejection: no outbox row is appended.
+	stale := caseCommand(CommandWorkCaseUpdate, "proj-1", "ob-stale", "user", "user", 99,
+		map[string]any{"caseId": created.ID, "title": "改不动"})
+	_, err := bus.Dispatch(context.Background(), stale)
+	if !commandbus.IsCode(err, commandbus.CodeVersionConflict) {
+		t.Fatalf("stale update err=%v, want version_conflict", err)
+	}
+	var rows int
+	if err := db.SQL().QueryRow(`SELECT COUNT(1) FROM outbox_events`).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 1 { // only the create's event
+		t.Fatalf("outbox rows=%d, want 1 (rejected command appends nothing)", rows)
+	}
+}
+
+func TestWorkCaseOutboxCausationChain(t *testing.T) {
+	bus, _, db := caseBusRig(t, "proj-1")
+	disp, err := outbox.NewDispatcher(db.SQL())
+	if err != nil {
+		t.Fatalf("NewDispatcher: %v", err)
+	}
+
+	create := caseCommand(CommandWorkCaseCreate, "proj-1", "chain-create", "user", "user", 0,
+		map[string]any{"title": "因果链"})
+	create.CorrelationID = "corr-flow"
+	created := dispatchCase(t, bus, create)
+
+	transition := caseCommand(CommandWorkCaseTransition, "proj-1", "chain-suspend", "user", "user", created.Version,
+		map[string]any{"caseId": created.TargetID, "status": "suspended"})
+	transition.CorrelationID = "corr-flow"
+	transition.CausationID = created.EventID
+	suspended := dispatchCase(t, bus, transition)
+
+	// Walk backwards: transition event → its execution → the create event.
+	ev2, ok, err := disp.Get(suspended.EventID)
+	if err != nil || !ok {
+		t.Fatalf("transition event: ok=%v err=%v", ok, err)
+	}
+	if ev2.EventType != "work_case.transition" || ev2.CorrelationID != "corr-flow" {
+		t.Fatalf("transition envelope: %+v", ev2)
+	}
+	execs, err := bus.ListExecutions(commandbus.ExecutionFilter{WorkspaceID: "proj-1", Contract: CommandWorkCaseTransition})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var exec2 *commandbus.Execution
+	for i := range execs {
+		if execs[i].EventID == suspended.EventID && execs[i].Status == "succeeded" {
+			exec2 = &execs[i]
+		}
+	}
+	if exec2 == nil || exec2.ExecutionID != ev2.CausationID {
+		t.Fatalf("transition causation %q not matched by its execution %+v", ev2.CausationID, execs)
+	}
+	if exec2.CausationID != created.EventID {
+		t.Fatalf("execution causation=%q, want create event %q", exec2.CausationID, created.EventID)
+	}
+	ev1, ok, err := disp.Get(created.EventID)
+	if err != nil || !ok {
+		t.Fatalf("create event: ok=%v err=%v", ok, err)
+	}
+	if ev1.CorrelationID != "corr-flow" || ev1.CausationID == "" {
+		t.Fatalf("create envelope: %+v", ev1)
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/scottzx/1Agents/backend/internal/agent"
 	"github.com/scottzx/1Agents/backend/internal/appkit"
@@ -218,6 +219,9 @@ func NewRouter(cfg *config.Config, harnessKitRuntime ...harnesskit.Runtime) http
 			catalogStore := agent.DefaultCatalog()
 
 			agentHandler := agent.NewHandler(agentStore, tasksStore, acpxClient, scheduler, catalogStore, selfBaseURL)
+			// Deliver Outbox Events appended by the command gateway (#324):
+			// at-least-once with retry/backoff and receipt dedup.
+			agentHandler.StartOutboxDispatcher(5 * time.Second)
 			mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes)              // GET
 			mux.HandleFunc("/api/agent/catalog", agentHandler.HandleAgentCatalog)                // GET (?refresh=1)
 			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)               // GET, POST

@@ -4,7 +4,10 @@
 // enters the same versioned Command envelope, is authorized against the
 // actor's permission context, is de-duplicated by idempotencyKey, is guarded
 // by expectedVersion optimistic concurrency, and is recorded in an execution
-// audit trail (actor, command, target, result, duration).
+// audit trail (actor, command, target, result, duration). Successful
+// commands that produce a fact append an Outbox Event delivery row in the
+// same transaction (see package outbox), so the notification commits
+// atomically with the state change.
 //
 // C0 scope (design §5.3): in-process typed handling, a stable envelope, a
 // handler registry and tests. No network message bus. Domain owners register
@@ -166,4 +169,12 @@ type Result struct {
 	EventID  string          `json:"eventId,omitempty"`
 	TargetID string          `json:"targetId,omitempty"`
 	Payload  json.RawMessage `json:"payload,omitempty"`
+	// EventType, EventSchemaVersion and SubjectRef complete the Outbox Event
+	// envelope (§5.3) of the produced fact. Whenever EventID is set the
+	// gateway requires all three and appends the outbox delivery row
+	// atomically inside the command transaction — a handler that produces an
+	// event but omits its envelope fails the whole command.
+	EventType          string `json:"eventType,omitempty"`
+	EventSchemaVersion int    `json:"eventSchemaVersion,omitempty"`
+	SubjectRef         string `json:"subjectRef,omitempty"`
 }
