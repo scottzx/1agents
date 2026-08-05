@@ -94,3 +94,30 @@ test('compareMountPlacement sorts by slot then order (legacy keeps declaration o
     assert.equal(store.resolvedMountSlot({ type: 'l1-page', slot: 'home' }), 'home');
     assert.equal(store.resolvedMountSlot({ type: 'project-tab' }), 'project-tab');
 });
+
+test('shell deep-link hash parsing and building are inverse and url-safe', async () => {
+    const store = await import('./productShellStore');
+
+    assert.equal(store.parseShellHash('#shell=personal'), 'personal');
+    assert.equal(store.parseShellHash('#shell=presales'), 'presales');
+    // No fragment / unrelated fragment → ''.
+    assert.equal(store.parseShellHash(''), '');
+    assert.equal(store.parseShellHash('#/m/settings/general'), '');
+    // Encoded ids round-trip.
+    assert.equal(store.parseShellHash(store.buildShellHash('personal')), 'personal');
+    assert.equal(store.buildShellHash(''), '');
+    assert.equal(store.buildShellHash('commerce'), '#shell=commerce');
+});
+
+test('boot resolution honors a valid shell deep link over the persisted shell', async () => {
+    const store = await import('./productShellStore');
+
+    // A valid, enabled deep link wins over the persisted active shell.
+    assert.equal(store.resolveBootShell('personal', 'presales', shells, 'personal'), 'presales');
+    // A deep link to a disabled shell is ignored → falls back to persisted.
+    assert.equal(store.resolveBootShell('personal', 'commerce', shells, 'personal'), 'personal');
+    // An unknown deep link is ignored → backend effective default.
+    assert.equal(store.resolveBootShell('', 'nope', shells, 'personal'), 'personal');
+    // No deep link → same as resolveActiveShell.
+    assert.equal(store.resolveBootShell('presales', '', shells, 'personal'), 'presales');
+});

@@ -8,9 +8,12 @@ import { AgentAvatar } from '../chat/AgentAvatar';
 import { CrumbTrail, type Crumb } from '../platform/ShellNav';
 import * as stage from '../../stores/stageStore';
 import * as tabsStore from '../../stores/tabsStore';
-import { isBeginnerMode } from '../../stores/uiStore';
+import { isBeginnerMode, isMobile } from '../../stores/uiStore';
 import * as taskNav from '../../stores/taskNavStore';
 import { activeWorkspaceDeviceId, activeWorkspaceId, remoteDevices, workspaces } from '../../stores/workspaceStore';
+import * as shellStore from '../../stores/productShellStore';
+import { ShellSwitcher } from './ShellSwitcher';
+import { ShellIcon } from '../settings/ProductShellPanel';
 
 interface WorkspaceHeaderProps {
     leftSidebarOpen: boolean;
@@ -265,6 +268,11 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
     const sessionActive = activeDrawerTab === 'none';
     const sidePanelOpen = tabsStore.sidePanelOpen.value;
 
+    // Product Shells (#328): enabled shells + the active one, for the mobile
+    // menu drawer's switch section (desktop uses the header <ShellSwitcher />).
+    const shellList = shellStore.enabledShells.value;
+    const activeShellId = shellStore.activeShellId.value;
+
     // Entity context (breadcrumb L3): when the active workspace is an assistant
     // OR a project, the session view's header shows the full 助理/项目 › <name> ›
     // <session> trail instead of a bare session name — clicking a crumb pops
@@ -371,6 +379,9 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                             </button>
                         )
                     )}
+                    {/* Global Product Shell switcher (#328) — desktop only; narrow
+                        screens switch shells from the menu drawer below. */}
+                    {!isMobile.value && <ShellSwitcher language={language} />}
                     {taskNav.headerCrumbs.value ? (
                         // Drill-in breadcrumb published by a per-tab surface
                         // (SkillsTab, AssistantsPage, DataSources, …) — wins over
@@ -652,6 +663,30 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                         <span class="mob-menu-badge">{t('header.mobile.current', language)}</span>
                     )}
                 </button>
+
+                {/* Product Shells (#328): switch the active product shell. */}
+                {shellList.length > 0 && (
+                    <div class="mobile-menu-section-title">{t('settings.nav.shells', language)}</div>
+                )}
+                {shellList.map(s => (
+                    <button
+                        key={s.id}
+                        id={`mob-menu-shell-${s.id}`}
+                        class={`mobile-menu-item ${activeShellId === s.id ? 'active' : ''}`}
+                        onClick={() => {
+                            closeMobileMenu();
+                            if (activeShellId !== s.id) stage.switchShell(s.id);
+                        }}
+                    >
+                        <span class="mob-menu-icon">
+                            <ShellIcon id={s.id} />
+                        </span>
+                        <span class="mob-menu-label">{s.name}</span>
+                        {activeShellId === s.id && (
+                            <span class="mob-menu-badge">{t('header.mobile.current', language)}</span>
+                        )}
+                    </button>
+                ))}
             </div>
         </Fragment>
     );

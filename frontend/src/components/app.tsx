@@ -367,6 +367,10 @@ export class App extends Component<{}, AppState> {
             fs.loadDir('', null);
             await Promise.all([wsStore.loadWorkspaces(true), sess.loadTerminals()]);
             sess.mergeSessionsIntoFolders(sess.terminalWindows.value, sess.chatSessions.value);
+            // Product Shell Registry (#328): the normal boot loads shells in
+            // componentDidMount, which returns early when the access gate shows —
+            // load them here too so the shell switcher is available after auth.
+            void productShellStore.loadShells();
             const workspaces = wsStore.workspaces.value;
             const activeWorkspaceId = wsStore.activeWorkspaceId.value;
             if (!activeWorkspaceId && workspaces.length > 0) {

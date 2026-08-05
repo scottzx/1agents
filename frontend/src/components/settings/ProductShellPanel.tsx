@@ -26,7 +26,7 @@ interface ProductShellPanelProps {
 }
 
 /** Small lucide-style icon per built-in shell id; generic grid fallback. */
-function ShellIcon({ id }: { id: string }) {
+export function ShellIcon({ id }: { id: string }) {
     const common = {
         viewBox: '0 0 24 24',
         fill: 'none',

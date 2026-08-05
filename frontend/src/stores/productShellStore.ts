@@ -61,6 +61,56 @@ const persistActiveShell = (id: string): void => {
     }
 };
 
+// ── Stable deep links (#328) ────────────────────────────────────────────────
+//
+// A shell is addressable via the URL fragment `#shell=<id>`. The fragment is
+// used (not a query param) on purpose: `location.search` flows into the
+// terminal WebSocket URL and xterm option parsing, so a `?shell=` param would
+// leak into the terminal; the fragment never reaches the server or xterm.
+//
+// The deep link is captured at module load (before any router/task-permalink
+// cleanup can rewrite the URL) and reconciled against the backend state in
+// `loadShells`. `parseShellHash` / `buildShellHash` are pure so they can be
+// unit-tested without a DOM.
+
+/** Parse a `#shell=<id>` fragment; returns '' when absent. Pure. */
+export function parseShellHash(hash: string): string {
+    const raw = hash.replace(/^#/, '');
+    const m = raw.match(/(?:^|&)shell=([^&]*)/);
+    if (!m) return '';
+    try {
+        return decodeURIComponent(m[1]);
+    } catch {
+        return m[1];
+    }
+}
+
+/** Build the `#shell=<id>` fragment for an id ('' clears it). Pure. */
+export function buildShellHash(id: string): string {
+    return id ? `#shell=${encodeURIComponent(id)}` : '';
+}
+
+const readWindowShellHash = (): string => {
+    return typeof window === 'undefined' ? '' : parseShellHash(window.location.hash);
+};
+
+/** Deep link present at boot — captured before any URL cleanup can drop it. */
+const BOOT_SHELL_DEEP_LINK = readWindowShellHash();
+
+/**
+ * Mirror the active shell into the URL fragment (stable deep link) without a
+ * reload. `replaceState` keeps the back button clean. No-op without a window.
+ */
+export const syncShellHash = (id: string): void => {
+    if (typeof window === 'undefined' || typeof window.history?.replaceState !== 'function') return;
+    try {
+        const target = buildShellHash(id) || window.location.pathname + window.location.search;
+        window.history.replaceState(null, '', target);
+    } catch {
+        /* non-fatal */
+    }
+};
+
 // ── Derived ──────────────────────────────────────────────────────────────────
 
 /** Shells the tenant has enabled. */
@@ -87,6 +137,23 @@ export function resolveActiveShell(persisted: string, shells: ProductShell[], ba
     }
     const firstEnabled = shells.find(s => s.enabled);
     return firstEnabled ? firstEnabled.id : '';
+}
+
+/**
+ * Boot resolution with a deep link (#328): a `#shell=<id>` fragment wins when
+ * it names a registered AND enabled shell; otherwise fall back to the normal
+ * persisted/default resolution. Pure, exposed for testing.
+ */
+export function resolveBootShell(
+    persisted: string,
+    deepLink: string,
+    shells: ProductShell[],
+    backendEffectiveDefault: string
+): string {
+    if (deepLink && shells.some(s => s.id === deepLink && s.enabled)) {
+        return deepLink;
+    }
+    return resolveActiveShell(persisted, shells, backendEffectiveDefault);
 }
 
 // ── Mount visibility (consumed by appManifestStore) ─────────────────────────
@@ -141,11 +208,19 @@ export const loadShells = async (): Promise<void> => {
         tenantDefaultShell.value = profile.defaultShell ?? '';
         userPreferredShell.value = profile.userPreference ?? '';
         effectiveDefaultShell.value = profile.effectiveDefault ?? '';
-        const resolved = resolveActiveShell(activeShellId.value, profile.shells, profile.effectiveDefault ?? '');
+        const resolved = resolveBootShell(
+            activeShellId.value,
+            BOOT_SHELL_DEEP_LINK,
+            profile.shells,
+            profile.effectiveDefault ?? ''
+        );
         if (resolved !== activeShellId.value) {
             activeShellId.value = resolved;
             persistActiveShell(resolved);
         }
+        // Keep the URL a stable deep link for the shell we actually landed on
+        // (also repairs a stale/invalid `#shell=` fragment).
+        syncShellHash(resolved);
     } finally {
         shellsLoading.value = false;
     }
@@ -158,6 +233,7 @@ export const loadShells = async (): Promise<void> => {
 export const setActiveShell = (id: string): void => {
     activeShellId.value = id;
     persistActiveShell(id);
+    syncShellHash(id);
 };
 
 /** Enable or disable a shell for the tenant, then refresh. */

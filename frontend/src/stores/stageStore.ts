@@ -4,6 +4,7 @@ import { isFullPageTab, type RightDrawerTab } from '../components/types';
 import * as tabsStore from './tabsStore';
 import * as ui from './uiStore';
 import * as appStore from './appManifestStore';
+import * as shellStore from './productShellStore';
 
 /**
  * Stage layout model — the unified two-column workbench shell.
@@ -423,4 +424,26 @@ export const exitL1App = (): void => {
 export const archiveL1App = (mountId: string): void => {
     appStore.archiveOpenL1App(mountId);
     ui.triggerTerminalFit();
+};
+
+/**
+ * Switch the active Product Shell (#328). This is a pure navigation change:
+ * it only recomputes which mount points the navigation and panes render. The
+ * Workspace, running sessions, and the right artifact column are NOT touched
+ * — none of those signals are written here. If the active L1 app is not
+ * mounted in the target shell, leave it so the main pane never renders a
+ * stale app page.
+ */
+export const switchShell = (shellId: string): void => {
+    shellStore.setActiveShell(shellId);
+    exitL1AppIfNotMounted();
+};
+
+/** Leave the active L1 app when its mount is gone from the active shell. */
+const exitL1AppIfNotMounted = (): void => {
+    const id = appStore.activeL1PageId.value;
+    if (!id) return;
+    if (!appStore.l1PageMounts.value.some(m => m.mount.id === id)) {
+        exitL1App();
+    }
 };
