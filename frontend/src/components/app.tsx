@@ -25,6 +25,7 @@ import * as agentCatalog from '../stores/agentCatalogStore';
 import * as stage from '../stores/stageStore';
 import * as taskNav from '../stores/taskNavStore';
 import * as appManifestStore from '../stores/appManifestStore';
+import * as productShellStore from '../stores/productShellStore';
 
 export {
     wsUrl,
@@ -115,6 +116,11 @@ export class App extends Component<{}, AppState> {
         // Platform layer (#317 Wave 2b): load installed app manifests for mount-point
         // rendering. Best-effort — graceful degradation when /api/apps unavailable.
         void appManifestStore.loadApps();
+
+        // Product Shell Registry (C0, design §8): load the shells + product profile
+        // so mount-point lists compose for the active shell. Best-effort — falls
+        // back to legacy single-shell rendering when /api/shells is unavailable.
+        void productShellStore.loadShells();
 
         // Multi-device (#114): load registered remote devices so the sidebar can
         // group their projects. Best-effort — failures degrade to local-only view.

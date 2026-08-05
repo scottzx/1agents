@@ -96,6 +96,9 @@ func takeSnapshot() registrySnapshot {
 	for id, m := range registry {
 		cp := *m
 		cp.MountPoints = append([]MountPoint(nil), m.MountPoints...)
+		for i := range cp.MountPoints {
+			cp.MountPoints[i].Shells = append([]string(nil), m.MountPoints[i].Shells...)
+		}
 		cp.TaskTypes = append([]string(nil), m.TaskTypes...)
 		cp.DomainTables = append([]string(nil), m.DomainTables...)
 		cp.Provides = append([]string(nil), m.Provides...)

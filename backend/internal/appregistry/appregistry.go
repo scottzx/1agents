@@ -23,6 +23,10 @@ import (
 // MountPoint declares where an app's UI surface is attached.
 //
 // type ∈ { "project-tab", "l1-page", "lens" }.
+//
+// Product Shell fields (C0, design §8 / D7) are all optional: a mount point
+// without them behaves exactly as before — visible in every enabled shell,
+// legacy slot/order, no permission gate.
 type MountPoint struct {
 	Type  string `json:"type"`            // "project-tab" | "l1-page" | "lens"
 	ID    string `json:"id"`              // stable slug, unique within the app
@@ -30,6 +34,21 @@ type MountPoint struct {
 	View  string `json:"view"`            // frontend component name
 	Icon  string `json:"icon,omitempty"`  // lucide icon slug (l1-page only)
 	Scope string `json:"scope,omitempty"` // "project" | "" (lens only)
+
+	// Shells lists the Product Shell ids this mount contributes to
+	// (e.g. ["presales"]). Empty means every enabled shell (legacy
+	// behavior).
+	Shells []string `json:"shells,omitempty"`
+	// Slot is the placement zone within a shell (e.g. "nav", "home").
+	// Empty falls back to a slot derived from Type.
+	Slot string `json:"slot,omitempty"`
+	// Order sorts mounts within the same slot (ascending; 0 default).
+	Order int `json:"order,omitempty"`
+	// Permission is the permission key required to see this mount.
+	// Empty means visible to everyone. When the active permission
+	// resolver denies it, the mount is dropped from navigation and
+	// composition entirely.
+	Permission string `json:"permission,omitempty"`
 }
 
 // AppManifest is the canonical shape shared with the frontend and docs agents.
@@ -211,15 +230,84 @@ func EnsureDomainTables(appID string, ddls []string) error {
 	return domainstore.EnsureTables(db.SQL(), appID, ddls)
 }
 
+// ── Permission gating (design §10: C0 uses the same authorization facts) ──
+
+// PermissionResolver decides whether userID holds the given permission key.
+// nil resolver (the C0 default) allows everything, so manifests without
+// permissions and deployments without RBAC behave exactly as before.
+type PermissionResolver func(userID, permission string) bool
+
+var (
+	permMu       sync.RWMutex
+	permResolver PermissionResolver
+)
+
+// SetPermissionResolver installs the process-wide permission check used for
+// mount-point visibility. Passing nil restores allow-all.
+func SetPermissionResolver(r PermissionResolver) {
+	permMu.Lock()
+	permResolver = r
+	permMu.Unlock()
+}
+
+// permissionAllowed reports whether userID may see a mount gated by
+// permission. Empty permission is always allowed; with no resolver
+// registered everything is allowed.
+func permissionAllowed(userID, permission string) bool {
+	if permission == "" {
+		return true
+	}
+	permMu.RLock()
+	r := permResolver
+	permMu.RUnlock()
+	if r == nil {
+		return true
+	}
+	return r(userID, permission)
+}
+
+// filterMountsByPermission drops mounts whose permission the user does not
+// hold, so pages the user may not see never enter navigation (design §8:
+// shells compose only visible contributions).
+func filterMountsByPermission(userID string, mps []MountPoint) []MountPoint {
+	out := make([]MountPoint, 0, len(mps))
+	for _, mp := range mps {
+		if permissionAllowed(userID, mp.Permission) {
+			out = append(out, mp)
+		}
+	}
+	return out
+}
+
 // ── HTTP handlers ─────────────────────────────────────────────────────────
 
-// HandleList handles GET /api/apps → {apps: [...]}
+// DefaultUserID is the C0 single-user identity: the backend has no
+// per-request user model yet (installation access token only), so shell and
+// permission APIs default to the local owner.
+const DefaultUserID = "owner"
+
+// requestUserID returns the caller identity for shell/permission scoping:
+// the ?user= query value when present, DefaultUserID otherwise.
+func requestUserID(r *http.Request) string {
+	if u := r.URL.Query().Get("user"); u != "" {
+		return u
+	}
+	return DefaultUserID
+}
+
+// HandleList handles GET /api/apps → {apps: [...]}. Mount points the
+// requesting user lacks permission for are omitted (?user=, default owner).
 func HandleList(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	writeJSON(w, map[string]any{"apps": List()})
+	user := requestUserID(r)
+	apps := List()
+	for i := range apps {
+		apps[i].MountPoints = filterMountsByPermission(user, apps[i].MountPoints)
+	}
+	writeJSON(w, map[string]any{"apps": apps})
 }
 
 // HandleEnable handles POST /api/apps/{id}/enable

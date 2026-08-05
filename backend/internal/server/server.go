@@ -115,6 +115,10 @@ func NewRouter(cfg *config.Config, harnessKitRuntime ...harnesskit.Runtime) http
 	mux.HandleFunc("/api/apps", appregistry.HandleList)  // GET → {apps:[...]}
 	mux.HandleFunc("/api/apps/", appregistryItemHandler) // POST /{id}/enable|disable
 
+	// ── Product Shell Registry API (C0, design §8/D7) ──────────────────────
+	mux.HandleFunc("/api/shells", appregistry.HandleShellList) // GET → {shells, defaultShell, userPreference, effectiveDefault}
+	mux.HandleFunc("/api/shells/", shellRegistryItemHandler)   // POST /{id}/enable|disable · PUT default|preference · GET composition
+
 	// ── Template registry API (Wave 2a, #329) ───────────────────────────────
 	mux.HandleFunc("/api/templates", templateregistry.HandleList) // GET → {templates:[...]}
 
@@ -1845,6 +1849,29 @@ func appregistryItemHandler(w http.ResponseWriter, r *http.Request) {
 		appregistry.HandleEnable(w, r)
 	case strings.HasSuffix(path, "/disable"):
 		appregistry.HandleDisable(w, r)
+	default:
+		http.Error(w, "not found", http.StatusNotFound)
+	}
+}
+
+// shellRegistryItemHandler routes the /api/shells/ prefix:
+//
+//	POST /api/shells/{id}/enable | /api/shells/{id}/disable
+//	PUT  /api/shells/default | /api/shells/preference
+//	GET  /api/shells/composition?shell=<id>
+func shellRegistryItemHandler(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Path
+	switch {
+	case strings.HasSuffix(path, "/enable"):
+		appregistry.HandleShellEnable(w, r)
+	case strings.HasSuffix(path, "/disable"):
+		appregistry.HandleShellDisable(w, r)
+	case strings.HasSuffix(path, "/default"):
+		appregistry.HandleShellDefault(w, r)
+	case strings.HasSuffix(path, "/preference"):
+		appregistry.HandleShellPreference(w, r)
+	case strings.HasSuffix(path, "/composition"):
+		appregistry.HandleShellComposition(w, r)
 	default:
 		http.Error(w, "not found", http.StatusNotFound)
 	}

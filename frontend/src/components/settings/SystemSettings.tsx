@@ -11,6 +11,7 @@ import { RelayDevicePanel } from './RelayDevicePanel';
 import { LocalMachinePanel, isLocalMachineMode } from './LocalMachinePanel';
 import { DevicesPanel } from './DevicesPanel';
 import { CoffeePanel } from './CoffeePanel';
+import { ProductShellPanel } from './ProductShellPanel';
 import { APP_VERSION, isNewer } from '../../version';
 import { fetchManifest } from '../../ota/checker';
 import type { RootManifest } from '../../ota/checker';
@@ -1445,6 +1446,8 @@ export function SystemSettings(props: SystemSettingsProps) {
                 return renderGeneral();
             case 'agents':
                 return renderAgents();
+            case 'shells':
+                return <ProductShellPanel language={language} />;
             case 'account':
                 // Subscription is a Relay/client concept — on the local backend
                 // (localhost) it's hidden from nav; guard deep-links too.

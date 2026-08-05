@@ -12327,6 +12327,7 @@ body {
         cursor: pointer; transition: all 0.18s ease;
         &:hover { background-color: var(--btn-hover); color: var(--text-main); }
         &.active { border-color: var(--accent-color); background-color: var(--accent-light); color: var(--accent-color); font-weight: 600; }
+        &:disabled { opacity: 0.45; cursor: default; &:hover { background-color: var(--bg-card); color: var(--text-secondary); } }
         svg { width: 14px; height: 14px; }
     }
 
