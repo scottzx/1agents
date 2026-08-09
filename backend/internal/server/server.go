@@ -118,10 +118,15 @@ func NewRouter(cfg *config.Config, harnessKitRuntime ...harnesskit.Runtime) http
 	mux.HandleFunc("/api/apps/", appregistryItemHandler) // POST /{id}/enable|disable
 
 	// ── LLM Provider API (ClawBox / ~/.1agents/providers.json) ─────────────
-	mux.HandleFunc("/api/providers", handleProviders)                // GET, POST, DELETE
-	mux.HandleFunc("/api/providers/switch", handleProviderSwitch)     // POST {id}
-	mux.HandleFunc("/api/providers/fetch-models", handleFetchModels) // POST {base_url, api_key}
-	mux.HandleFunc("/api/agents/switch", handleAgentSwitch)           // POST {agent, provider_id, model, ...}
+	mux.HandleFunc("/api/providers", handleProviders)                              // GET, POST, DELETE
+	mux.HandleFunc("/api/providers/switch", handleProviderSwitch)                  // POST {id}
+	mux.HandleFunc("/api/providers/fetch-models", handleFetchModels)               // POST {base_url, api_key}
+	mux.HandleFunc("/api/providers/discover-models", handleDiscoverProviderModels) // POST {provider_id}
+	mux.HandleFunc("/api/provider-models", handleProviderModels)                   // GET ?provider_id=
+	mux.HandleFunc("/api/agents/switch", handleAgentSwitch)                        // POST {agent, provider_id, model, ...}
+	mux.HandleFunc("/api/agents/runtime", handleAgentRuntime)                      // GET
+	mux.HandleFunc("/api/agents/options", handleAgentOptions)                      // GET
+	mux.HandleFunc("/api/agents/binding", handleAgentBinding)                      // POST {binding, apply}
 
 	// ── Domain ownership gate (C0, design §7/§13.3) ────────────────────────
 	// Registers the kernel ownership ledger, ensures the denial-audit table
@@ -240,27 +245,27 @@ func NewRouter(cfg *config.Config, harnessKitRuntime ...harnesskit.Runtime) http
 			// Deliver Outbox Events appended by the command gateway (#324):
 			// at-least-once with retry/backoff and receipt dedup.
 			agentHandler.StartOutboxDispatcher(5 * time.Second)
-			mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes)              // GET
-			mux.HandleFunc("/api/agent/catalog", agentHandler.HandleAgentCatalog)                // GET (?refresh=1)
-			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)               // GET, POST
-			mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem)              // GET, DELETE /{id}
-			mux.HandleFunc("/api/agent/turns", agentHandler.HandleTurns)                         // GET cursor-paged Turn history
-			mux.HandleFunc("/api/agent/activity", agentHandler.HandleProjectActivity)            // GET aggregated Project activity
-			mux.HandleFunc("/api/agent/project-items", agentHandler.HandleTasksRoot)             // GET, POST
-			mux.HandleFunc("/api/agent/project-items/resolve", agentHandler.HandleTaskResolve)   // GET ?project=&number= (more specific than the subtree below)
-			mux.HandleFunc("/api/agent/project-items/", agentHandler.HandleTasksItem)            // DELETE /{id}
-			mux.HandleFunc("/api/agent/work-cases", agentHandler.HandleWorkCasesRoot)            // GET, POST (#322)
-			mux.HandleFunc("/api/agent/work-cases/", agentHandler.HandleWorkCasesItem)           // GET/PATCH/DELETE /{id}, transition, links, tasks, runs, events (#322)
-			mux.HandleFunc("/api/agent/agenda", agentHandler.HandleAgendaRoot)                   // GET (cross-workspace agenda, #192)
+			mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes)               // GET
+			mux.HandleFunc("/api/agent/catalog", agentHandler.HandleAgentCatalog)                 // GET (?refresh=1)
+			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)                // GET, POST
+			mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem)               // GET, DELETE /{id}
+			mux.HandleFunc("/api/agent/turns", agentHandler.HandleTurns)                          // GET cursor-paged Turn history
+			mux.HandleFunc("/api/agent/activity", agentHandler.HandleProjectActivity)             // GET aggregated Project activity
+			mux.HandleFunc("/api/agent/project-items", agentHandler.HandleTasksRoot)              // GET, POST
+			mux.HandleFunc("/api/agent/project-items/resolve", agentHandler.HandleTaskResolve)    // GET ?project=&number= (more specific than the subtree below)
+			mux.HandleFunc("/api/agent/project-items/", agentHandler.HandleTasksItem)             // DELETE /{id}
+			mux.HandleFunc("/api/agent/work-cases", agentHandler.HandleWorkCasesRoot)             // GET, POST (#322)
+			mux.HandleFunc("/api/agent/work-cases/", agentHandler.HandleWorkCasesItem)            // GET/PATCH/DELETE /{id}, transition, links, tasks, runs, events (#322)
+			mux.HandleFunc("/api/agent/agenda", agentHandler.HandleAgendaRoot)                    // GET (cross-workspace agenda, #192)
 			mux.HandleFunc("/api/agent/personal/aggregate", agentHandler.HandlePersonalAggregate) // GET Personal Shell cross-shell work aggregate (#329)
-			mux.HandleFunc("/api/agent/milestones", agentHandler.HandleMilestonesRoot)           // GET, POST
-			mux.HandleFunc("/api/agent/milestones/", agentHandler.HandleMilestonesItem)          // PATCH, DELETE /{id}, POST /reorder
-			mux.HandleFunc("/api/agent/feature-catalog", agentHandler.HandleFeatureCatalogRoot)  // GET, POST
-			mux.HandleFunc("/api/agent/feature-catalog/", agentHandler.HandleFeatureCatalogItem) // PATCH, DELETE, item links
-			mux.HandleFunc("/api/agent/discussions", agentHandler.HandleDiscussionsRoot)         // POST — create a discussion thread (#189)
-			mux.HandleFunc("/api/agent/discussions/", agentHandler.HandleDiscussionItem)         // POST /{id}/cards, /{id}/conclude (#189)
-			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)                      // WebSocket upgrade & bridge
-			mux.HandleFunc("/api/agent/dashboard", agentHandler.HandleDashboard)                 // GET — cross-project cockpit aggregate (read-only)
+			mux.HandleFunc("/api/agent/milestones", agentHandler.HandleMilestonesRoot)            // GET, POST
+			mux.HandleFunc("/api/agent/milestones/", agentHandler.HandleMilestonesItem)           // PATCH, DELETE /{id}, POST /reorder
+			mux.HandleFunc("/api/agent/feature-catalog", agentHandler.HandleFeatureCatalogRoot)   // GET, POST
+			mux.HandleFunc("/api/agent/feature-catalog/", agentHandler.HandleFeatureCatalogItem)  // PATCH, DELETE, item links
+			mux.HandleFunc("/api/agent/discussions", agentHandler.HandleDiscussionsRoot)          // POST — create a discussion thread (#189)
+			mux.HandleFunc("/api/agent/discussions/", agentHandler.HandleDiscussionItem)          // POST /{id}/cards, /{id}/conclude (#189)
+			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)                       // WebSocket upgrade & bridge
+			mux.HandleFunc("/api/agent/dashboard", agentHandler.HandleDashboard)                  // GET — cross-project cockpit aggregate (read-only)
 
 			// Agents 圆桌脑暴 (design.md slice 1–2): room + 6×tmp seats + R1 chat/brief.
 			if rtHandler, rtErr := roundtable.NewHandlerDefaultWithPort(acpxPort); rtErr != nil {

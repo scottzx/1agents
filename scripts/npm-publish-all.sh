@@ -58,8 +58,7 @@ publish_one() {
 
 # 1) platform binary packages (leaf)
 for p in core-linux-x64 core-linux-arm64 core-darwin-arm64 \
-         cc-connect-linux-x64 cc-connect-linux-arm64 cc-connect-darwin-arm64 \
-         cc-switch-linux-x64 cc-switch-linux-arm64 cc-switch-darwin-arm64; do
+         cc-connect-linux-x64 cc-connect-linux-arm64 cc-connect-darwin-arm64; do
   if ! find "$PKG/$p/bin" -type f ! -name '.gitkeep' 2>/dev/null | grep -q .; then
     echo "=== skip empty $p (no binaries)"
     continue
@@ -69,7 +68,7 @@ done
 
 # 2) content + meta
 # acpx (forked ACP runtime) must publish before acp-bridge (depends on @1agents/acpx)
-for p in web happy acpx acp-bridge cc-connect cc-switch; do
+for p in web happy acpx acp-bridge cc-connect; do
   if [ "$p" = "acpx" ] && [ ! -f "$PKG/acpx/dist/runtime.js" ]; then
     echo "ERROR: npm/packages/acpx/dist/runtime.js missing — run npm-fill-packages.sh (builds modules/1acp)" >&2
     exit 1

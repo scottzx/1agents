@@ -29,7 +29,7 @@ npm install -g @1agents/1agents --registry=https://registry.npmmirror.com
 
 装 `@1agents/1agents` 时 registry 会拉（同版本）：
 
-- **deps：** `@1agents/web`、`@1agents/cc-connect`（+ 当前平台子包）、`@1agents/cc-switch`（+ 当前平台子包）、`@1agents/acp-bridge`（→ `@1agents/acpx` fork runtime）
+- **deps：** `@1agents/web`、`@1agents/cc-connect`（+ 当前平台子包）、`@1agents/acp-bridge`（→ `@1agents/acpx` fork runtime）
 - **optional：** `@1agents/core-<plat>`（`1agents` + `ttyd` + `hk`）、`@1agents/happy`
 
 `cloudflared` 不进依赖图（`-tunnel` 时按需）。  

@@ -3,72 +3,142 @@ import { useEffect } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 import { ProviderItem } from './LlmProviderPanel';
 
+interface AgentRuntimeStatus {
+    agent_id: string;
+    installed: boolean;
+    config_path: string;
+    base_url?: string;
+    model_id?: string;
+    warnings?: string[];
+}
+
+interface AgentBinding {
+    agent_id: string;
+    provider_id: string;
+    model_id?: string;
+    model_mapping?: Record<string, string>;
+    options?: Record<string, unknown>;
+}
+
+interface ProviderModel {
+    model_id: string;
+    available: boolean;
+}
+
+type AgentOptionValue = boolean | number | string;
+
+interface AgentOptionDefinition {
+    key: string;
+    type: 'boolean' | 'integer' | 'select' | string;
+    label: string;
+    default?: AgentOptionValue;
+    choices?: string[];
+    minimum?: number;
+    depends_on?: string;
+}
+
+interface AgentOptionSchema {
+    agent_id: string;
+    options: AgentOptionDefinition[];
+}
+
 interface AgentCardProps {
     agentId: string;
     agentName: string;
     agentDesc: string;
     configPath: string;
     providers: ProviderItem[];
+    runtime?: AgentRuntimeStatus;
+    binding?: AgentBinding;
+    optionSchema?: AgentOptionSchema;
     onSync: () => void;
 }
 
-function AgentCard({ agentId, agentName, agentDesc, configPath, providers, onSync }: AgentCardProps) {
+function AgentCard({
+    agentId,
+    agentName,
+    agentDesc,
+    configPath,
+    providers,
+    runtime,
+    binding,
+    optionSchema,
+    onSync,
+}: AgentCardProps) {
     const selectedProviderId = useSignal<string>('');
     const modelInput = useSignal<string>('');
     const sonnetInput = useSignal<string>('');
     const haikuInput = useSignal<string>('');
     const opusInput = useSignal<string>('');
+    const optionValues = useSignal<Record<string, AgentOptionValue>>({});
     const fetchedModels = useSignal<string[]>([]);
     const loadingModels = useSignal<boolean>(false);
     const submitting = useSignal<boolean>(false);
     const statusMsg = useSignal<string>('');
 
     // When provider is selected, initialize model defaults and try fetching models from endpoint
-    const handleSelectProvider = async (pId: string) => {
+    const handleSelectProvider = async (pId: string, savedBinding?: AgentBinding) => {
         selectedProviderId.value = pId;
         const p = providers.find(item => item.id === pId);
         if (!p) return;
 
-        modelInput.value = p.model || '';
-        sonnetInput.value = p.sonnet_model || p.model || '';
-        haikuInput.value = p.haiku_model || p.model || '';
-        opusInput.value = p.opus_model || p.model || '';
+        modelInput.value = savedBinding?.model_id || p.model || '';
+        sonnetInput.value = savedBinding?.model_mapping?.sonnet || p.sonnet_model || p.model || '';
+        haikuInput.value = savedBinding?.model_mapping?.haiku || p.haiku_model || p.model || '';
+        opusInput.value = savedBinding?.model_mapping?.opus || p.opus_model || p.model || '';
+        optionValues.value = Object.fromEntries(
+            (optionSchema?.options || []).map(option => [
+                option.key,
+                (savedBinding?.options?.[option.key] as AgentOptionValue | undefined) ?? option.default ?? '',
+            ])
+        );
 
-        // Use saved model_ids if present, otherwise fetch from endpoint
-        if (p.model_ids && p.model_ids.length > 0) {
-            fetchedModels.value = p.model_ids;
-        } else {
-            const targetUrl = p.openai_base_url || p.base_url || p.anthropic_base_url;
-            if (targetUrl) {
-                loadingModels.value = true;
-                try {
-                    const res = await fetch('/api/providers/fetch-models', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ base_url: targetUrl, api_key: p.api_key }),
-                    });
-                    if (res.ok) {
-                        const data = await res.json();
-                        fetchedModels.value = data.models || [];
-                    } else {
-                        fetchedModels.value = [];
-                    }
-                } catch {
-                    fetchedModels.value = [];
-                } finally {
-                    loadingModels.value = false;
+        loadingModels.value = true;
+        try {
+            const catalogRes = await fetch(`/api/provider-models?provider_id=${encodeURIComponent(p.id)}`);
+            if (catalogRes.ok) {
+                const catalogData = await catalogRes.json();
+                const catalogModels = ((catalogData.models || []) as ProviderModel[])
+                    .filter(model => model.available)
+                    .map(model => model.model_id);
+                if (catalogModels.length > 0) {
+                    fetchedModels.value = catalogModels;
+                    return;
                 }
-            } else {
-                fetchedModels.value = [];
             }
+
+            const endpoint = p.endpoints?.find(item => item.agent_id === agentId);
+            const targetUrl = endpoint?.base_url || p.base_url;
+            if (!targetUrl) {
+                fetchedModels.value = p.model_ids || [];
+                return;
+            }
+            const res = await fetch('/api/providers/discover-models', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider_id: p.id, agent_id: agentId, base_url: targetUrl }),
+            });
+            if (!res.ok) {
+                fetchedModels.value = p.model_ids || [];
+                return;
+            }
+            const data = await res.json();
+            fetchedModels.value = ((data.models || []) as ProviderModel[])
+                .filter(model => model.available)
+                .map(model => model.model_id);
+        } catch {
+            fetchedModels.value = p.model_ids || [];
+        } finally {
+            loadingModels.value = false;
         }
     };
 
     useEffect(() => {
         if (providers.length > 0 && !selectedProviderId.value) {
-            handleSelectProvider(providers[0].id);
+            const initialProviderID = binding?.provider_id || providers[0].id;
+            void handleSelectProvider(initialProviderID, binding);
         }
-    }, [providers]);
+    }, [providers, binding, optionSchema]);
 
     const handleApply = async () => {
         if (!selectedProviderId.value) {
@@ -78,17 +148,40 @@ function AgentCard({ agentId, agentName, agentDesc, configPath, providers, onSyn
         submitting.value = true;
         statusMsg.value = '';
         try {
-            const res = await fetch('/api/agents/switch', {
+            const binding = {
+                agent_id: agentId === 'claudecode' ? 'claude' : agentId,
+                provider_id: selectedProviderId.value,
+                model_id: modelInput.value,
+                model_mapping:
+                    agentId === 'claude'
+                        ? {
+                              sonnet: sonnetInput.value,
+                              haiku: haikuInput.value,
+                              opus: opusInput.value,
+                          }
+                        : undefined,
+                options: optionSchema?.options.length ? optionValues.value : undefined,
+            };
+            const previewRes = await fetch('/api/agents/binding', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    agent: agentId,
-                    provider_id: selectedProviderId.value,
-                    model: modelInput.value,
-                    sonnet_model: sonnetInput.value,
-                    haiku_model: haikuInput.value,
-                    opus_model: opusInput.value,
-                }),
+                body: JSON.stringify({ binding, apply: false }),
+            });
+            if (!previewRes.ok) {
+                const errData = await previewRes.json().catch(() => ({}));
+                throw new Error(errData.error || `HTTP ${previewRes.status}`);
+            }
+            const preview = await previewRes.json();
+            const paths = (preview.plan?.changes || []).map((change: { path: string }) => change.path);
+            if (
+                paths.length > 0 &&
+                !confirm(`将修改以下配置文件，并自动创建备份：\n\n${paths.join('\n')}\n\n是否继续？`)
+            )
+                return;
+            const res = await fetch('/api/agents/binding', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ binding, apply: true }),
             });
             if (!res.ok) {
                 const errData = await res.json().catch(() => ({}));
@@ -134,6 +227,30 @@ function AgentCard({ agentId, agentName, agentDesc, configPath, providers, onSyn
                 >
                     {configPath}
                 </code>
+            </div>
+
+            <div
+                style={{
+                    padding: '8px 10px',
+                    borderRadius: '6px',
+                    background: 'var(--bg-subtle, #f5f5f5)',
+                    fontSize: '0.78rem',
+                }}
+            >
+                <strong>当前本地配置：</strong>{' '}
+                {runtime?.installed ? (
+                    <span>
+                        {runtime.model_id || '未检测到模型'}
+                        {runtime.base_url ? ` · ${runtime.base_url}` : ''}
+                    </span>
+                ) : (
+                    <span>未发现配置文件</span>
+                )}
+                {runtime?.warnings?.map(warning => (
+                    <div key={warning} style={{ color: '#b26a00', marginTop: '4px' }}>
+                        {warning}
+                    </div>
+                ))}
             </div>
 
             {/* Provider Selection */}
@@ -289,6 +406,70 @@ function AgentCard({ agentId, agentName, agentDesc, configPath, providers, onSyn
                             </div>
                         </div>
                     )}
+                    {(optionSchema?.options || []).length > 0 && (
+                        <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #ddd' }}>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 600, marginBottom: '6px' }}>
+                                智能体可选配置
+                            </div>
+                            {optionSchema?.options.map(option => {
+                                if (option.depends_on && !optionValues.value[option.depends_on]) return null;
+                                const value = optionValues.value[option.key] ?? option.default ?? '';
+                                const updateValue = (nextValue: AgentOptionValue) => {
+                                    optionValues.value = { ...optionValues.value, [option.key]: nextValue };
+                                };
+                                return (
+                                    <label
+                                        key={option.key}
+                                        style={{ display: 'block', fontSize: '0.75rem', marginTop: '6px' }}
+                                    >
+                                        {option.type === 'boolean' ? (
+                                            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={value === true}
+                                                    onChange={e => updateValue((e.target as HTMLInputElement).checked)}
+                                                />
+                                                {option.label}
+                                            </span>
+                                        ) : option.type === 'select' ? (
+                                            <span>
+                                                {option.label}
+                                                <select
+                                                    value={String(value)}
+                                                    onChange={e => updateValue((e.target as HTMLSelectElement).value)}
+                                                    style={{ width: '100%', marginTop: '4px', padding: '6px 8px' }}
+                                                >
+                                                    {(option.choices || []).map(choice => (
+                                                        <option key={choice} value={choice}>
+                                                            {choice}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </span>
+                                        ) : (
+                                            <span>
+                                                {option.label}
+                                                <input
+                                                    type={option.type === 'integer' ? 'number' : 'text'}
+                                                    min={option.minimum}
+                                                    value={String(value)}
+                                                    onInput={e => {
+                                                        const input = e.target as HTMLInputElement;
+                                                        updateValue(
+                                                            option.type === 'integer'
+                                                                ? Number(input.value)
+                                                                : input.value
+                                                        );
+                                                    }}
+                                                    style={{ width: '100%', marginTop: '4px', padding: '6px 8px' }}
+                                                />
+                                            </span>
+                                        )}
+                                    </label>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -320,6 +501,9 @@ function AgentCard({ agentId, agentName, agentDesc, configPath, providers, onSyn
 
 export function AgentSwitchPanel() {
     const providers = useSignal<ProviderItem[]>([]);
+    const runtimes = useSignal<AgentRuntimeStatus[]>([]);
+    const bindings = useSignal<AgentBinding[]>([]);
+    const optionSchemas = useSignal<AgentOptionSchema[]>([]);
     const loading = useSignal<boolean>(true);
     const errorMsg = useSignal<string>('');
 
@@ -327,10 +511,23 @@ export function AgentSwitchPanel() {
         loading.value = true;
         errorMsg.value = '';
         try {
-            const res = await fetch('/api/providers');
+            const [res, runtimeRes, optionsRes] = await Promise.all([
+                fetch('/api/providers'),
+                fetch('/api/agents/runtime'),
+                fetch('/api/agents/options'),
+            ]);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             providers.value = data.providers || [];
+            bindings.value = data.bindings || [];
+            if (runtimeRes.ok) {
+                const runtimeData = await runtimeRes.json();
+                runtimes.value = runtimeData.agents || [];
+            }
+            if (optionsRes.ok) {
+                const optionsData = await optionsRes.json();
+                optionSchemas.value = optionsData.agents || [];
+            }
         } catch (err) {
             errorMsg.value = err instanceof Error ? err.message : String(err);
         } finally {
@@ -384,8 +581,11 @@ export function AgentSwitchPanel() {
                         agentId="claude"
                         agentName="Claude Code"
                         agentDesc="Anthropic CLI AI 编程助手"
-                        configPath="~/.claude.json"
+                        configPath="~/.claude/settings.json"
                         providers={providers.value}
+                        runtime={runtimes.value.find(item => item.agent_id === 'claude')}
+                        binding={bindings.value.find(item => item.agent_id === 'claude')}
+                        optionSchema={optionSchemas.value.find(item => item.agent_id === 'claude')}
                         onSync={loadProviders}
                     />
                     <AgentCard
@@ -394,14 +594,9 @@ export function AgentSwitchPanel() {
                         agentDesc="OpenAI 协议轻量级 CLI 工具"
                         configPath="~/.codex/config.toml"
                         providers={providers.value}
-                        onSync={loadProviders}
-                    />
-                    <AgentCard
-                        agentId="gemini"
-                        agentName="Gemini CLI"
-                        agentDesc="Google Gemini 命令行 Agent"
-                        configPath="~/.config/gemini/config.json"
-                        providers={providers.value}
+                        runtime={runtimes.value.find(item => item.agent_id === 'codex')}
+                        binding={bindings.value.find(item => item.agent_id === 'codex')}
+                        optionSchema={optionSchemas.value.find(item => item.agent_id === 'codex')}
                         onSync={loadProviders}
                     />
                 </div>

@@ -1513,9 +1513,6 @@ export const zhCN: Record<string, string> = {
     'settings.credits.feishu': '飞书开放平台官方 SDK',
     'settings.credits.dingtalk': '钉钉流式接入 SDK',
     'settings.credits.websocket': 'cc-connect 与浏览器之间的 WebSocket 传输基础',
-    'settings.credits.ccswitch': 'farion1231 出品的 Claude Code / Codex / Gemini 等 AI Agent 多账号配置切换原型',
-    'settings.credits.ccswitchcli':
-        'cc-switch 的 Rust TUI/CLI 衍生版,作为 sidecar 被 1agents 编译并随发行版分发,负责供应商与会话管理',
     'settings.credits.skillmanager':
         '本地优先的扩展管理平台；1agents 使用受控 fork，并作为 modules/HarnessKit 一级模块集成',
     'settings.credits.sqlite': '纯 Go 实现的 SQLite,无需 CGO,支撑工作空间与会话持久化',
@@ -3549,10 +3546,6 @@ export const enUS: Record<string, string> = {
     'settings.credits.feishu': 'Official Feishu open-platform SDK',
     'settings.credits.dingtalk': 'DingTalk stream-connection SDK',
     'settings.credits.websocket': 'WebSocket transport between cc-connect and the browser',
-    'settings.credits.ccswitch':
-        "farion1231's original prototype for multi-account configuration switching across Claude Code, Codex, Gemini, and other AI agents",
-    'settings.credits.ccswitchcli':
-        'Rust TUI/CLI derivative of cc-switch — compiled by 1agents and shipped as a sidecar binary for provider and session management',
     'settings.credits.skillmanager':
         'Local-first extension manager; 1agents carries a controlled fork as the first-class modules/HarnessKit module',
     'settings.credits.sqlite': 'Pure-Go SQLite (no CGO) backing workspace and session persistence',

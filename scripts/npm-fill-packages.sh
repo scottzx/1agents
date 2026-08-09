@@ -8,7 +8,7 @@
 #
 # Env:
 #   NPM_PLAT          linux-x64 | linux-arm64 | darwin-arm64  (required)
-#   CORE_BIN_DIR      dir containing 1agents, ttyd, hk, cc-connect, cc-switch
+#   CORE_BIN_DIR      dir containing 1agents, ttyd, hk, cc-connect
 #   WEB_DIST          frontend dist dir
 #   HAPPY_OUT         dir with happy-cli/ + adapter/ from build-happy-bundle (optional)
 set -euo pipefail
@@ -43,9 +43,8 @@ echo "  + $PKG/core-$PLAT/config/agent-extension-map.json"
 "$ROOT/scripts/stage-harnesskit-compliance.sh" "$PKG/core-$PLAT/licenses"
 echo "  + $PKG/core-$PLAT/licenses"
 
-# cc-connect / cc-switch platform packages
+# cc-connect platform package
 copy_bin "$CORE_BIN_DIR/cc-connect" "$PKG/cc-connect-$PLAT/bin" "cc-connect"
-copy_bin "$CORE_BIN_DIR/cc-switch" "$PKG/cc-switch-$PLAT/bin" "cc-switch"
 
 # web (once, shared)
 if [ -d "$WEB_DIST" ]; then

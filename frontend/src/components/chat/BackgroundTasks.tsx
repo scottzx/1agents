@@ -3,7 +3,7 @@ import { useState } from 'preact/hooks';
 import { t, getLang } from '../../i18n';
 import type { BackgroundTask } from './hooks';
 
-function StatusIcon({ status }: { status: BackgroundTask['status'] }) {
+export function StatusIcon({ status }: { status: BackgroundTask['status'] }) {
     if (status === 'completed') {
         return (
             <svg

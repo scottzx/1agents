@@ -746,18 +746,6 @@ export function SystemSettings(props: SystemSettingsProps) {
             key: 'agents',
             items: [
                 {
-                    name: 'cc-switch',
-                    descKey: 'settings.credits.ccswitch',
-                    license: 'MIT',
-                    url: 'https://github.com/farion1231/cc-switch',
-                },
-                {
-                    name: 'cc-switch-cli',
-                    descKey: 'settings.credits.ccswitchcli',
-                    license: 'MIT',
-                    url: 'https://github.com/SaladDay/cc-switch-cli',
-                },
-                {
                     name: 'HarnessKit',
                     descKey: 'settings.credits.skillmanager',
                     license: 'Apache-2.0',

@@ -51,7 +51,7 @@ if [ -f "build/1agents.exe" ] || [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "c
     EXE_SUFFIX=".exe"
 fi
 
-if [ ! -f "build/1agents$EXE_SUFFIX" ] || [ ! -f "build/ttyd$EXE_SUFFIX" ] || [ ! -f "build/cc-connect$EXE_SUFFIX" ] || [ ! -f "build/cc-switch$EXE_SUFFIX" ] || [ ! -f "build/hk$EXE_SUFFIX" ]; then
+if [ ! -f "build/1agents$EXE_SUFFIX" ] || [ ! -f "build/ttyd$EXE_SUFFIX" ] || [ ! -f "build/cc-connect$EXE_SUFFIX" ] || [ ! -f "build/hk$EXE_SUFFIX" ]; then
     echo "WARNING: Precompiled binaries not found in build/. Running build first..."
     make all
 fi
@@ -59,12 +59,11 @@ fi
 cp "build/1agents$EXE_SUFFIX" "$BIN_DIR/1agents$EXE_SUFFIX"
 cp "build/ttyd$EXE_SUFFIX" "$BIN_DIR/ttyd$EXE_SUFFIX"
 cp "build/cc-connect$EXE_SUFFIX" "$BIN_DIR/cc-connect$EXE_SUFFIX"
-cp "build/cc-switch$EXE_SUFFIX" "$BIN_DIR/cc-switch$EXE_SUFFIX"
 cp "build/hk$EXE_SUFFIX" "$BIN_DIR/hk$EXE_SUFFIX"
 cp "config/agent-extension-map.json" "$CONFIG_DIR/agent-extension-map.json"
 ./scripts/stage-harnesskit-compliance.sh "$RESOURCE_DIR/licenses"
 
-chmod +x "$BIN_DIR/1agents$EXE_SUFFIX" "$BIN_DIR/ttyd$EXE_SUFFIX" "$BIN_DIR/cc-connect$EXE_SUFFIX" "$BIN_DIR/cc-switch$EXE_SUFFIX" "$BIN_DIR/hk$EXE_SUFFIX"
+chmod +x "$BIN_DIR/1agents$EXE_SUFFIX" "$BIN_DIR/ttyd$EXE_SUFFIX" "$BIN_DIR/cc-connect$EXE_SUFFIX" "$BIN_DIR/hk$EXE_SUFFIX"
 
 # Copy the happy bundle (relay/C2 sidecar + RPC adapter) if built.
 # build-happy-bundle.sh produces build/happy-cli, build/adapter, build/happy.
@@ -94,7 +93,6 @@ if [ "$(uname)" = "Darwin" ]; then
     codesign --force --deep --sign - "$BIN_DIR/1agents"
     codesign --force --deep --sign - "$BIN_DIR/ttyd"
     codesign --force --deep --sign - "$BIN_DIR/cc-connect"
-    codesign --force --deep --sign - "$BIN_DIR/cc-switch"
     codesign --force --deep --sign - "$BIN_DIR/hk"
     codesign --force --deep --sign - "$NODE_DIR/node"
 fi

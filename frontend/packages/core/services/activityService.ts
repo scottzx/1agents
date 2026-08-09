@@ -8,6 +8,7 @@ export interface AgentTurn {
     projectId: string;
     sessionId: string;
     clientRequestId?: string;
+    runtimeRequestId?: string;
     initiatingReplyId?: string;
     agentType?: string;
     status: AgentTurnStatus;

@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -18,7 +17,6 @@ import (
 
 const proxyPrefix = "/api/harnesskit"
 
-// Runtime is the narrow supervisor surface required by the HTTP boundary.
 type Runtime interface {
 	Status() supervisor.HarnessKitStatus
 	Endpoint() (baseURL, token string, ready bool)
@@ -142,7 +140,7 @@ func (h *Handler) serveStatus(w http.ResponseWriter, r *http.Request, correlatio
 	baseURL, token, ready := h.runtime.Endpoint()
 	webURL := ""
 	if ready && baseURL != "" && token != "" {
-		webURL = fmt.Sprintf("%s?token=%s", baseURL, token)
+		webURL = proxyPrefix + "/"
 	}
 	resp := map[string]any{
 		"mode":          status.Mode,

@@ -908,7 +908,9 @@ export class ChatBridgeManager {
                 }
                 case 'history_response': {
                     const history = normalizeHistory(payload.items, payload.messages);
-                    const persistedTurnIds = new Set(history.map(item => item.turnId).filter(Boolean));
+                    const persistedTurnIds = new Set<string>(
+                        history.map(item => item.turnId).filter((id): id is string => Boolean(id))
+                    );
                     // History items carry the runtime request id as their turnId
                     // (the bridge's `turn_results` key), while live bubbles carry
                     // the canonical Turn id — selectOptimisticUsers matches on

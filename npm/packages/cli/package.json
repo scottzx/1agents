@@ -20,7 +20,6 @@
   "dependencies": {
     "@1agents/web": "0.0.0-dev",
     "@1agents/cc-connect": "0.0.0-dev",
-    "@1agents/cc-switch": "0.0.0-dev",
     "@1agents/acp-bridge": "0.0.0-dev"
   },
   "optionalDependencies": {

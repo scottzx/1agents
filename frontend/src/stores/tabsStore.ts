@@ -90,7 +90,7 @@ const initialDrawerTab = (): RightDrawerTab => {
 };
 export const activeDrawerTab = signal<RightDrawerTab>(initialDrawerTab());
 
-export type SidePanelTabType = 'tasks' | 'files' | 'browser' | 'git' | 'terminal';
+export type SidePanelTabType = 'tasks' | 'files' | 'browser' | 'git' | 'terminal' | 'background';
 
 export interface SidePanelTab {
     id: string;
@@ -117,7 +117,7 @@ interface SidePanelState {
 
 export const SIDE_PANEL_IDLE_CLEANUP_MS = 30 * 60 * 1000;
 const SIDE_PANEL_STORAGE_PREFIX = '1agents-side-panel-tabs:v1:';
-const SIDE_PANEL_TYPES: SidePanelTabType[] = ['tasks', 'files', 'browser', 'git', 'terminal'];
+const SIDE_PANEL_TYPES: SidePanelTabType[] = ['tasks', 'files', 'browser', 'git', 'terminal', 'background'];
 // Read localStorage only at module init — do NOT touch wsStore.activeWorkspaceId
 // here. workspaceStore imports tabsStore, so evaluating that live binding during
 // tabsStore load hits the TDZ ("Cannot access '_' before initialization").
@@ -144,6 +144,8 @@ const defaultSidePanelTitle = (type: SidePanelTabType): string => {
             return t('sidePanel.tab.git', ui.language.value);
         case 'terminal':
             return t('sidePanel.tab.terminal', ui.language.value);
+        case 'background':
+            return t('sidePanel.tab.background', ui.language.value);
     }
 };
 

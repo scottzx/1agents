@@ -98,3 +98,22 @@ func TestProviderStore_CRUD(t *testing.T) {
 		t.Errorf("Expected error after deleting provider, got nil")
 	}
 }
+
+func TestDefaultStoreOnlyWritesOneAgentsDirectory(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	store := NewStore("")
+	if _, err := store.Load(); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(filepath.Join(home, ".1agents", "providers.json"))
+	if err != nil {
+		t.Fatalf("expected canonical provider file: %v", err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("provider file permission = %o, want 600", info.Mode().Perm())
+	}
+	if _, err := os.Stat(filepath.Join(home, ".agents", "providers.json")); !os.IsNotExist(err) {
+		t.Fatalf("unexpected ~/.agents/providers.json: %v", err)
+	}
+}
