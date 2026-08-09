@@ -162,6 +162,29 @@ export function normalizeHistory(
     return historyItems.map((it, idx) => historyItemToChatItem(it, idx));
 }
 
+/**
+ * Among live items, keep only the user bubbles that represent turns still in
+ * flight (queued/running) and NOT yet present in the persisted history — those
+ * are optimistic prompts that must survive a reconnect mid-turn.
+ *
+ * History items carry the RUNTIME request id as their turnId (the bridge's
+ * `turn_results` key), while live bubbles carry the canonical Turn id — so a
+ * bubble counts as persisted when EITHER id appears in `persistedTurnIds`.
+ * Without the clientRequestId check, an interrupted turn (e.g. a backend/1ACP
+ * restart) keeps a duplicate `running` user bubble appended at the end of the
+ * timeline on every history reload, dragging that turn's receipts down with it.
+ */
+export function selectOptimisticUsers(items: ChatItem[], persistedTurnIds: ReadonlySet<string>): ChatItem[] {
+    return items.filter(
+        item =>
+            item.kind === 'user' &&
+            !!item.turnId &&
+            (item.turnStatus === 'queued' || item.turnStatus === 'running') &&
+            !persistedTurnIds.has(item.turnId) &&
+            !(item.clientRequestId && persistedTurnIds.has(item.clientRequestId))
+    );
+}
+
 // Flush the streaming cursor on the trailing assistant_text block. Called
 // whenever a non-text_delta event arrives, so the blink stops at the boundary
 // between text and whatever comes next (tool, permission, ...). Returns the same

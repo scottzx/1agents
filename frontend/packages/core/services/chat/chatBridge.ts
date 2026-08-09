@@ -34,6 +34,7 @@ import {
     applyPromptQueued,
     applyPromptCancelled,
     applyTurnState,
+    selectOptimisticUsers,
     applyToolCall,
     applyToolResult,
     applyPermissionRequest,
@@ -908,13 +909,14 @@ export class ChatBridgeManager {
                 case 'history_response': {
                     const history = normalizeHistory(payload.items, payload.messages);
                     const persistedTurnIds = new Set(history.map(item => item.turnId).filter(Boolean));
-                    const optimistic = state.items.filter(
-                        item =>
-                            item.kind === 'user' &&
-                            !!item.turnId &&
-                            (item.turnStatus === 'queued' || item.turnStatus === 'running') &&
-                            !persistedTurnIds.has(item.turnId)
-                    );
+                    // History items carry the runtime request id as their turnId
+                    // (the bridge's `turn_results` key), while live bubbles carry
+                    // the canonical Turn id — selectOptimisticUsers matches on
+                    // both id spaces so a stale in-flight copy from an
+                    // interrupted turn (e.g. backend/1ACP restart) is dropped
+                    // instead of being appended at the end of the timeline
+                    // forever, dragging its turn's receipts down with it.
+                    const optimistic = selectOptimisticUsers(state.items, persistedTurnIds);
                     state.items = [...history, ...optimistic];
                     // History is authoritative: drop the realtime holding pools so
                     // the renderer stops showing the "待分配" group once the

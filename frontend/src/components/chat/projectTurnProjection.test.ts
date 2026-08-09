@@ -114,3 +114,43 @@ test('surfaces failed and cancelled terminal states even without an assistant an
     assert.equal(receipt.status, 'failed');
     assert.equal(receipt.content, '权限不足');
 });
+
+test('matches history turnIds that carry the runtime request id, not the canonical id', () => {
+    // The bridge's history items carry the RUNTIME request id (the turn's
+    // clientRequestId) as turnId, while /api/agent/turns returns the canonical
+    // Turn id. The receipt must follow the failed turn's segment — between its
+    // own content and the next user prompt — not drift to the timeline end.
+    const failedTurn = {
+        ...turn('turn-failed', 'merge branch', '2026-01-01T00:00:00Z'),
+        clientRequestId: 'runtime-1',
+        runtimeRequestId: 'runtime-1',
+        status: 'failed' as const,
+        errorCode: 'runtime_restarted',
+        errorText: '1ACP restarted before the Turn reached a durable terminal state.',
+        completedAt: '2026-01-01T00:00:10Z',
+    };
+    const nextTurn = {
+        ...turn('turn-next', '继续', '2026-01-01T00:00:20Z'),
+        clientRequestId: 'runtime-2',
+        runtimeRequestId: 'runtime-2',
+    };
+    const items: ChatItem[] = [
+        { ...user('u1', 'merge branch'), turnId: 'runtime-1' },
+        { ...answer('a1'), turnId: 'runtime-1' },
+        { ...user('u2', '继续'), turnId: 'runtime-2' },
+        { ...answer('a2'), turnId: 'runtime-2' },
+    ];
+
+    const projected = projectChatTurns(items, [nextTurn, failedTurn], []);
+    const kinds = projected.map(item => item.kind);
+    const receiptIndex = projected.findIndex(item => item.kind === 'turn_receipt');
+
+    assert.deepEqual(kinds, ['user', 'assistant_text', 'turn_receipt', 'user', 'assistant_text']);
+    assert.equal(receiptIndex, 2, 'receipt lands inside the failed turn segment, not at the end');
+    const receipt = projected[receiptIndex];
+    assert.ok(receipt && receipt.kind === 'turn_receipt');
+    assert.equal(receipt.turnId, 'turn-failed');
+    assert.equal(receipt.content, '1ACP restarted before the Turn reached a durable terminal state.');
+    assert.equal(projected[3].kind, 'user');
+    assert.equal(projected[3].turnId, 'turn-next');
+});
