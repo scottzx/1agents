@@ -31,3 +31,9 @@
 [submodule "modules/transcribe.cpp"]
 	path = modules/transcribe.cpp
 	url = https://github.com/handy-computer/transcribe.cpp.git
+[submodule "modules/gbrain"]
+	path = modules/gbrain
+	url = https://github.com/garrytan/gbrain
+[submodule "modules/clawbox"]
+	path = modules/clawbox
+	url = https://github.com/zhaolianghz/clawbox
