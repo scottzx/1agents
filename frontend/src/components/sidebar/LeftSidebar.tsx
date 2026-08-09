@@ -38,6 +38,7 @@ import type { RoundtableSeat } from '@1agents/core/services/roundtableService';
 import { enterL1App, exitL1App, archiveL1App, layoutMode, projectOverview } from '../../stores/stageStore';
 import { projectItemService } from '@1agents/core/services/taskService';
 import { openSearch } from '../../stores/searchStore';
+import { ShellSwitcher } from '../header/ShellSwitcher';
 import type { ChatSession } from '../types';
 
 /** Short label for assistant filter chips (first grapheme of name). */
@@ -663,7 +664,7 @@ export function LeftSidebar({
                 <div class="coze-brand">
                     <div class="brand-left">
                         <img class="brand-logo-img" src="/logo.png" />
-                        <span>1agents</span>
+                        <ShellSwitcher language={language} />
                     </div>
                     <div class="brand-right">
                         <button

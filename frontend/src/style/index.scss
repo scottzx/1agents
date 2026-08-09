@@ -945,6 +945,8 @@ body {
     display: flex;
     flex-direction: column;
     gap: 14px;
+    position: relative;
+    z-index: 10;
     
     .coze-brand {
       display: flex;
@@ -955,12 +957,13 @@ body {
       .brand-left {
         display: flex;
         align-items: center;
-        gap: 8px;
-        font-size: 16px;
+        gap: 6px;
+        font-size: 15px;
         font-weight: 700;
         letter-spacing: 0.5px;
         color: var(--text-sidebar);
-        
+        min-width: 0;
+
         .brand-icon {
           display: flex;
           align-items: center;
@@ -982,6 +985,37 @@ body {
           object-position: 50% 10%;
           border: 1px solid var(--border-sidebar);
           background-color: #ffffff;
+          flex-shrink: 0;
+        }
+
+        .shell-switcher {
+          min-width: 0;
+
+          .shell-switcher-btn,
+          &.shell-switcher-single {
+            border: none;
+            background: transparent;
+            padding: 2px 6px;
+            height: 26px;
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text-sidebar);
+            gap: 4px;
+            border-radius: 6px;
+            max-width: 140px;
+
+            &:hover,
+            &.open {
+              background-color: var(--bg-sidebar-hover);
+              color: var(--text-sidebar);
+              border-color: transparent;
+            }
+          }
+
+          .shell-switcher-name {
+            font-size: 15px;
+            font-weight: 700;
+          }
         }
       }
 
@@ -2233,6 +2267,136 @@ body {
   background-color: var(--bg-page);
 }
 
+/* Global Product Shell switcher (#328). Floating overlay menu & pill/brand trigger. */
+.shell-switcher {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+
+  .shell-switcher-btn,
+  &.shell-switcher-single {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-card);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    font-family: var(--font-sans);
+    max-width: 180px;
+    transition: all 0.2s;
+  }
+
+  .shell-switcher-btn {
+    cursor: pointer;
+
+    &:hover,
+    &.open {
+      background-color: var(--btn-hover);
+      color: var(--text-main);
+      border-color: var(--text-main);
+    }
+  }
+
+  &.shell-switcher-single {
+    cursor: default;
+  }
+
+  .shell-switcher-icon {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+
+    svg {
+      width: 14px;
+      height: 14px;
+    }
+  }
+
+  .shell-switcher-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .shell-switcher-caret {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+  }
+
+  .shell-switcher-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 998;
+    background: transparent;
+  }
+
+  .shell-switcher-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 999;
+    min-width: 220px;
+    max-width: 300px;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--bento-radius, 10px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  }
+
+  .shell-switcher-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-main);
+    font-family: var(--font-sans);
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+
+    &:hover {
+      background-color: var(--btn-hover);
+    }
+
+    &.active {
+      color: var(--accent-color);
+    }
+
+    .shell-switcher-item-name {
+      flex: 1;
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .shell-switcher-check {
+      display: inline-flex;
+      align-items: center;
+      flex-shrink: 0;
+
+      svg {
+        width: 14px;
+        height: 14px;
+      }
+    }
+  }
+}
+
 /* ==========================================================================
    COZE INTEGRATED PAGE HEADER (Replaces top global header)
    ========================================================================== */
@@ -2311,137 +2475,6 @@ body {
       svg {
         width: 14px;
         height: 14px;
-      }
-    }
-
-    /* Global Product Shell switcher (#328). Pill control in the header; the
-       dropdown is a genuinely floating overlay, so it keeps a shadow. */
-    .shell-switcher {
-      position: relative;
-      display: inline-flex;
-      align-items: center;
-      flex-shrink: 0;
-
-      .shell-switcher-btn,
-      &.shell-switcher-single {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        height: 28px;
-        padding: 0 10px;
-        border-radius: 999px;
-        border: 1px solid var(--border-color);
-        background-color: var(--bg-card);
-        color: var(--text-secondary);
-        font-size: 12px;
-        font-weight: 600;
-        font-family: var(--font-sans);
-        max-width: 180px;
-        transition: all 0.2s;
-      }
-
-      .shell-switcher-btn {
-        cursor: pointer;
-
-        &:hover,
-        &.open {
-          background-color: var(--btn-hover);
-          color: var(--text-main);
-          border-color: var(--text-main);
-        }
-      }
-
-      &.shell-switcher-single {
-        cursor: default;
-      }
-
-      .shell-switcher-icon {
-        display: inline-flex;
-        align-items: center;
-        flex-shrink: 0;
-
-        svg {
-          width: 14px;
-          height: 14px;
-        }
-      }
-
-      .shell-switcher-name {
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-
-      .shell-switcher-caret {
-        width: 12px;
-        height: 12px;
-        flex-shrink: 0;
-      }
-
-      .shell-switcher-backdrop {
-        position: fixed;
-        inset: 0;
-        z-index: 98;
-        background: transparent;
-      }
-
-      .shell-switcher-menu {
-        position: absolute;
-        top: calc(100% + 6px);
-        left: 0;
-        z-index: 99;
-        min-width: 220px;
-        max-width: 300px;
-        padding: 4px;
-        display: flex;
-        flex-direction: column;
-        background-color: var(--bg-card);
-        border: 1px solid var(--border-color);
-        border-radius: var(--bento-radius, 10px);
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
-      }
-
-      .shell-switcher-item {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 10px;
-        border: 0;
-        border-radius: 8px;
-        background: transparent;
-        color: var(--text-main);
-        font-family: var(--font-sans);
-        text-align: left;
-        cursor: pointer;
-        transition: background-color 0.15s ease;
-
-        &:hover {
-          background-color: var(--btn-hover);
-        }
-
-        &.active {
-          color: var(--accent-color);
-        }
-
-        .shell-switcher-item-name {
-          flex: 1;
-          font-size: 13px;
-          font-weight: 600;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        .shell-switcher-check {
-          display: inline-flex;
-          align-items: center;
-          flex-shrink: 0;
-
-          svg {
-            width: 14px;
-            height: 14px;
-          }
-        }
       }
     }
 

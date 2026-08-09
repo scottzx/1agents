@@ -8,11 +8,10 @@ import { AgentAvatar } from '../chat/AgentAvatar';
 import { CrumbTrail, type Crumb } from '../platform/ShellNav';
 import * as stage from '../../stores/stageStore';
 import * as tabsStore from '../../stores/tabsStore';
-import { isBeginnerMode, isMobile } from '../../stores/uiStore';
+import { isBeginnerMode } from '../../stores/uiStore';
 import * as taskNav from '../../stores/taskNavStore';
 import { activeWorkspaceDeviceId, activeWorkspaceId, remoteDevices, workspaces } from '../../stores/workspaceStore';
 import * as shellStore from '../../stores/productShellStore';
-import { ShellSwitcher } from './ShellSwitcher';
 import { ShellIcon } from '../settings/ProductShellPanel';
 
 interface WorkspaceHeaderProps {
@@ -379,9 +378,6 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                             </button>
                         )
                     )}
-                    {/* Global Product Shell switcher (#328) — desktop only; narrow
-                        screens switch shells from the menu drawer below. */}
-                    {!isMobile.value && <ShellSwitcher language={language} />}
                     {taskNav.headerCrumbs.value ? (
                         // Drill-in breadcrumb published by a per-tab surface
                         // (SkillsTab, AssistantsPage, DataSources, …) — wins over
