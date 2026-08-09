@@ -105,13 +105,16 @@ jobs:
       # Always ensure they exist (covers cache hits that predate this step).
       - name: Build and stage module embeds
         run: |
-          if [ ! -f frontend/dist/embed/harnesskit-embed.js ] || [ ! -f frontend/dist/embed/cc-connect-embed.js ]; then
+          if [ ! -f frontend/dist/embed/harnesskit/index.html ] || [ ! -f frontend/dist/embed/cc-connect-embed.js ]; then
             FORCE_EMBED_REBUILD=1 ./scripts/build-module-embeds.sh
           else
             echo "embed bundles already present under frontend/dist/embed/"
             ls -la frontend/dist/embed/
           fi
-          test -s frontend/dist/embed/harnesskit-embed.js
+          # HarnessKit ships as a static SPA staged under embed/harnesskit/
+          # (no ESM embed bundle yet — see scripts/build-module-embeds.sh).
+          test -d frontend/dist/embed/harnesskit
+          test -s frontend/dist/embed/harnesskit/index.html
           test -s frontend/dist/embed/cc-connect-embed.js
 
       - name: Audit HarnessKit frontend artifacts
