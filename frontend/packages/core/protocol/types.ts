@@ -223,6 +223,25 @@ export type ChatItem = (
           status: 'succeeded' | 'rejected' | 'failed' | 'cancelled';
           createdAt: number;
       }
+    | {
+          id: string;
+          kind: 'subagent_turn';
+          /**
+           * The adapter's per-turn id (grok `_meta.promptId`). One card per
+           * spawned subagent; the main agent turn never carries this.
+           */
+          agentTurnId: string;
+          /** Short display label, e.g. "subagent". */
+          label: string;
+          /** Accumulated subagent thought text. */
+          thinking: string;
+          /** Accumulated subagent spoken output. */
+          output: string;
+          /** The subagent's own tool calls, folded from tool_call/tool_result. */
+          calls: ToolCallInfo[];
+          streaming: boolean;
+          createdAt: number;
+      }
 ) &
     ChatTurnMetadata;
 

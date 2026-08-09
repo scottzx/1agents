@@ -346,7 +346,8 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
                 item.kind === 'user' ||
                 item.kind === 'error' ||
                 item.kind === 'assistant_text' ||
-                item.kind === 'turn_receipt'
+                item.kind === 'turn_receipt' ||
+                item.kind === 'subagent_turn'
             ) {
                 currentProcessGroup = null;
             }

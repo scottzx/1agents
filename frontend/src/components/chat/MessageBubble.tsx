@@ -14,6 +14,7 @@ import type {
     AskUserQuestionState,
     ExitPlanModeState,
     ExitPlanOutcome,
+    ToolCallInfo,
 } from '@1agents/core/protocol/types';
 import { renderMarkdown } from '../../utils/markdown';
 import { renderMermaidBlocks } from '../../utils/mermaid';
@@ -120,6 +121,19 @@ export type TurnContentItem =
           createdAt: number;
           turnId?: string;
           turnStatus?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+      }
+    | {
+          id: string;
+          kind: 'subagent_turn';
+          agentTurnId: string;
+          label: string;
+          thinking: string;
+          output: string;
+          calls: ToolCallInfo[];
+          streaming: boolean;
+          createdAt: number;
+          turnId?: string;
+          turnStatus?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
       };
 
 export type GroupedChatItem =
@@ -197,6 +211,18 @@ export function MessageBubble({
             return <HistoricalTurnBubble items={item.items} outcomeId={item.outcomeId} turnStatus={item.turnStatus} />;
         case 'turn_receipt':
             return <TurnReceiptBubble content={item.content} status={item.status} />;
+        case 'subagent_turn':
+            return (
+                <SubagentTurnBubble
+                    agentTurnId={item.agentTurnId}
+                    label={item.label}
+                    thinking={item.thinking}
+                    output={item.output}
+                    calls={item.calls}
+                    streaming={item.streaming}
+                    active={active}
+                />
+            );
         case 'error':
             return <ErrorBubble content={item.content} />;
     }
@@ -820,6 +846,86 @@ function kindCategoryLabel(category: KindCategory, lang: ReturnType<typeof getLa
         case 'tool':
             return t('chat.tool.kind.tool', lang);
     }
+}
+
+/**
+ * A spawned subagent turn (grok emits subagent text/tools as main-feed
+ * events stamped with a distinct `_meta.promptId`). Everything the subagent
+ * produced — thinking, spoken output, its own tool calls — lives inside this
+ * collapsible card so it never mixes with the main agent's stream.
+ */
+function SubagentTurnBubble({
+    agentTurnId,
+    label,
+    thinking,
+    output,
+    calls,
+    streaming,
+    active,
+}: {
+    agentTurnId: string;
+    label: string;
+    thinking: string;
+    output: string;
+    calls: ToolCallInfo[];
+    streaming: boolean;
+    active?: boolean;
+}) {
+    const isExpanded = useSignal(false);
+    const toggle = () => {
+        isExpanded.value = !isExpanded.value;
+    };
+    const expanded = isExpanded.value;
+    const shortId = agentTurnId.slice(0, 8);
+    const running = streaming || !!active;
+    return (
+        <div
+            class={`chat-bubble chat-bubble-tool-group chat-content-outer ${expanded ? 'is-expanded' : 'is-collapsed'} ${running ? 'is-streaming' : ''}`}
+        >
+            <button
+                type="button"
+                class={`chat-tool-group-header ${expanded || running ? 'is-current' : ''}`}
+                aria-expanded={expanded}
+                onClick={toggle}
+            >
+                <span class="chat-bubble-caret" aria-hidden="true">
+                    {expanded ? '▾' : '▸'}
+                </span>
+                <span class="chat-tool-group-title">
+                    {label} · {shortId}
+                </span>
+                {calls.length > 0 && <span class="chat-tool-group-count">{calls.length}</span>}
+                {running ? (
+                    <span class="chat-tool-group-summary status-running">
+                        <span class="chat-tool-spinner" aria-hidden="true" />
+                        运行中
+                    </span>
+                ) : (
+                    <span class="chat-tool-group-processed">完成</span>
+                )}
+            </button>
+            {expanded && (
+                <div class="chat-tool-calls-list">
+                    {thinking.length > 0 && <div class="chat-tool-output-box subagent-thinking">{thinking}</div>}
+                    {output.length > 0 && <div class="chat-tool-output-box subagent-output">{output}</div>}
+                    {calls.map((call, idx) => (
+                        <div class="chat-tool-row is-expanded" key={call.toolCallId ?? call.id ?? idx}>
+                            <div class="chat-tool-row-header">
+                                <span class="chat-tool-name">{call.toolName}</span>
+                                {call.status && <span class="chat-tool-group-processed">{call.status}</span>}
+                            </div>
+                            {call.input && <pre class="chat-tool-pre chat-tool-output">{call.input}</pre>}
+                            {call.output !== undefined && (
+                                <pre class={`chat-tool-pre chat-tool-output ${call.isError ? 'has-error' : ''}`}>
+                                    {call.output}
+                                </pre>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
 }
 
 function GroupedThinkingItem({ content, streaming }: { content: string; streaming: boolean }) {

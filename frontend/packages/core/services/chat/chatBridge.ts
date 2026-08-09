@@ -149,6 +149,12 @@ export interface SessionBridgeState {
     activeTurnId: string | null;
     lastTurnSequence: Record<string, number>;
     /**
+     * Per host turn: the first agentTurnId seen (grok `_meta.promptId`).
+     * The main agent's turn sets the entry; any later agentTurnId that
+     * differs belongs to a spawned subagent and renders in its own card.
+     */
+    mainAgentTurnByHost: Record<string, string>;
+    /**
      * Real-time-only holding pen for tool_result and permission_request
      * events that arrived before (or without) their matching tool_call.
      * Each new tool_call re-scans these lists and folds any matching
@@ -276,6 +282,7 @@ export class ChatBridgeManager {
                 turnStarted: false,
                 activeTurnId: null,
                 lastTurnSequence: {},
+                mainAgentTurnByHost: {},
                 pendingResults: [],
                 pendingPermissions: [],
                 // New sessions stay `ready: false` until the bridge-server
@@ -706,17 +713,26 @@ export class ChatBridgeManager {
                     const delta = payload.text;
                     if (!delta) break;
                     const deltaType = payload.type || 'output';
+                    const agent = this.classifyAgentTurn(state, payload.turnId, payload.agentTurnId);
                     // First chunk of a new assistant text block (not thought,
                     // not an extension of an already-streaming block) → bump
-                    // sidebar recency once per block.
-                    if (deltaType !== 'thought') {
+                    // sidebar recency once per block. Subagent chatter is
+                    // excluded — only main-agent replies should re-sort.
+                    if (deltaType !== 'thought' && !agent.isSubagent) {
                         const last = state.items[state.items.length - 1];
                         const isNewTextBlock = !(last && last.kind === 'assistant_text' && last.streaming);
                         if (isNewTextBlock) {
                             this.opts.onAssistantText?.(state.sessionId);
                         }
                     }
-                    state.items = applyTextDelta(state.items, delta, deltaType, payload.turnId);
+                    state.items = applyTextDelta(
+                        state.items,
+                        delta,
+                        deltaType,
+                        payload.turnId,
+                        agent.agentTurnId,
+                        agent.isSubagent
+                    );
                     this.notify(state);
                     break;
                 }
@@ -737,7 +753,8 @@ export class ChatBridgeManager {
                         payload.status
                     );
                     if (!hasRenderableArguments(payload.arguments) && !hasMeta) break;
-                    const next = applyToolCall(state, payload);
+                    const agent = this.classifyAgentTurn(state, payload.turnId, payload.agentTurnId);
+                    const next = applyToolCall(state, payload, agent.agentTurnId, agent.isSubagent);
                     state.items = bindEventTurn(state.items, next.items, payload.turnId);
                     state.pendingResults = bindEventTurn(state.pendingResults, next.pendingResults, payload.turnId);
                     state.pendingPermissions = bindEventTurn(
@@ -750,7 +767,8 @@ export class ChatBridgeManager {
                 }
                 case 'tool_result': {
                     if (!this.acceptTurnEvent(state, payload)) break;
-                    const next = applyToolResult(state, payload);
+                    const agent = this.classifyAgentTurn(state, payload.turnId, payload.agentTurnId);
+                    const next = applyToolResult(state, payload, agent.agentTurnId, agent.isSubagent);
                     state.items = bindEventTurn(state.items, next.items, payload.turnId);
                     state.pendingResults = bindEventTurn(state.pendingResults, next.pendingResults, payload.turnId);
                     state.pendingPermissions = bindEventTurn(
@@ -1378,6 +1396,27 @@ export class ChatBridgeManager {
      *     few deltas before it honors the cancel, and re-adopting them would
      *     resurrect a turn the user just stopped.
      */
+    /**
+     * Classify a chunk by its adapter-level turn id (grok `_meta.promptId`).
+     * The first agentTurnId seen for a host turn is the MAIN agent's turn;
+     * any different id belongs to a spawned subagent. Returns undefined for
+     * agents that never stamp an id (Claude Code) — everything stays main.
+     */
+    private classifyAgentTurn(
+        state: SessionBridgeState,
+        turnId: string | undefined,
+        agentTurnId: string | undefined
+    ): { agentTurnId?: string; isSubagent?: boolean } {
+        if (!agentTurnId) return {};
+        if (!turnId) return { agentTurnId, isSubagent: false };
+        const main = state.mainAgentTurnByHost[turnId];
+        if (!main) {
+            state.mainAgentTurnByHost[turnId] = agentTurnId;
+            return { agentTurnId, isSubagent: false };
+        }
+        return { agentTurnId, isSubagent: agentTurnId !== main };
+    }
+
     private acceptTurnEvent(state: SessionBridgeState, payload: BridgeEventPayload): boolean {
         if (payload.turnId) {
             if (state.activeTurnId && state.activeTurnId !== payload.turnId) {

@@ -2489,6 +2489,7 @@ async function runPromptTurn(session, sessionId, promptItem) {
             event: "text_delta",
             text: event.text,
             type: event.stream || "output", // 'thought' or 'output'
+            ...(event.agentTurnId ? { agentTurnId: event.agentTurnId } : {}),
           });
         } else if (event.type === "tool_call") {
           console.log(
@@ -2511,6 +2512,7 @@ async function runPromptTurn(session, sessionId, promptItem) {
             event: "tool_call",
             toolName: resolveToolDisplayName(event),
             toolCallId: event.toolCallId,
+            ...(event.agentTurnId ? { agentTurnId: event.agentTurnId } : {}),
             ...(event.rawInput !== undefined ? { arguments: event.rawInput } : {}),
             ...(event.kind ? { kind: event.kind } : {}),
             ...(toolStatus ? { status: toolStatus } : {}),
@@ -2540,6 +2542,7 @@ async function runPromptTurn(session, sessionId, promptItem) {
               toolName: resolveToolDisplayName(event),
               text: textContent,
               isError: toolStatus === "failed",
+              ...(event.agentTurnId ? { agentTurnId: event.agentTurnId } : {}),
             });
           }
         } else if (event.type === "error") {

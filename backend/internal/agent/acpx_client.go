@@ -96,6 +96,10 @@ type ActiveBridge struct {
 	// current turn; reset on each tool call so that at `done` it holds the
 	// final assistant message (text after the last tool call).
 	turnText []string
+	// mainAgentTurnID is the first agentTurnId seen on this bridge (grok's
+	// per-prompt `_meta.promptId`). Chunks carrying a DIFFERENT id belong to a
+	// spawned subagent turn and are excluded from the accumulated final text.
+	mainAgentTurnID string
 }
 
 // TurnContext binds one persisted Turn to the exact prompt frame forwarded to
@@ -232,6 +236,7 @@ type WsMessage struct {
 	TurnProtocolVersion int              `json:"turnProtocolVersion,omitempty"`
 	ID                  string           `json:"id,omitempty"`
 	TurnID              string           `json:"turnId,omitempty"`
+	AgentTurnID         string           `json:"agentTurnId,omitempty"`
 	Sequence            int64            `json:"sequence,omitempty"`
 	JournalSequence     int64            `json:"journalSequence,omitempty"`
 	LastEventSeq        int64            `json:"lastEventSeq,omitempty"`
@@ -672,7 +677,19 @@ func (c *AcpxClient) readFromServerLoop(bridge *ActiveBridge, scheduler *Schedul
 			// final message). First non-thought chunk of a text block also
 			// bumps last_event_at so the sidebar sorts by last assistant
 			// reply (newest first).
-			if msg.Type != "thought" && msg.Text != "" {
+			//
+			// Chunks stamped with a subagent's agentTurnId (grok's
+			// per-prompt `_meta.promptId`, different from the main turn's)
+			// are excluded: subagent prose is rendered separately by the
+			// frontend and must not leak into the main assistant message.
+			isSubagentChunk := false
+			if msg.AgentTurnID != "" {
+				if bridge.mainAgentTurnID == "" {
+					bridge.mainAgentTurnID = msg.AgentTurnID
+				}
+				isSubagentChunk = msg.AgentTurnID != bridge.mainAgentTurnID
+			}
+			if msg.Type != "thought" && msg.Text != "" && !isSubagentChunk {
 				if first := bridge.appendTurnText(msg.Text); first && chatStore != nil {
 					if err := chatStore.Touch(bridge.SessionID); err != nil {
 						log.Printf("[acpx_client] Touch(%s) after assistant text: %v", bridge.SessionID, err)

@@ -195,7 +195,65 @@ export function flushStreamingCursor(items: ChatItem[]): ChatItem[] {
     if (last && last.kind === 'assistant_text' && last.streaming) {
         return [...items.slice(0, -1), { ...last, streaming: false }];
     }
+    if (last && last.kind === 'subagent_turn' && last.streaming) {
+        return [...items.slice(0, -1), { ...last, streaming: false }];
+    }
     return items;
+}
+
+type SubagentTurnItem = Extract<ChatItem, { kind: 'subagent_turn' }>;
+
+/** Reverse-scan for the subagent card of a given agent turn (grok promptId). */
+function findSubagentTurn(
+    items: ChatItem[],
+    agentTurnId: string
+): { index: number; item: SubagentTurnItem } | undefined {
+    for (let i = items.length - 1; i >= 0; i--) {
+        const it = items[i];
+        if (it.kind === 'subagent_turn' && it.agentTurnId === agentTurnId) {
+            return { index: i, item: it };
+        }
+    }
+    return undefined;
+}
+
+/** Fresh subagent card; `thinking`/`output` are filled in by the caller. */
+function createSubagentTurn(agentTurnId: string): SubagentTurnItem {
+    return {
+        id: cryptoId(),
+        kind: 'subagent_turn',
+        agentTurnId,
+        label: 'subagent',
+        thinking: '',
+        output: '',
+        calls: [],
+        streaming: true,
+        createdAt: Date.now(),
+    };
+}
+
+/** Fold one tool call into a call list (same merge rules as tool_use.calls). */
+function foldToolCall(calls: ToolCallInfo[], newCall: ToolCallInfo): ToolCallInfo[] {
+    if (newCall.toolCallId) {
+        const idx = calls.findIndex(c => c.toolCallId === newCall.toolCallId);
+        if (idx >= 0) {
+            return calls.map((c, i) =>
+                i === idx
+                    ? {
+                          ...c,
+                          toolName: newCall.toolName,
+                          // Preserve prior input when this event carried none.
+                          input: newCall.input || c.input,
+                          ...(newCall.kind ? { kind: newCall.kind } : {}),
+                          ...(newCall.status ? { status: newCall.status } : {}),
+                          ...(newCall.locations ? { locations: newCall.locations } : {}),
+                          ...(newCall.diffs ? { diffs: newCall.diffs } : {}),
+                      }
+                    : c
+            );
+        }
+    }
+    return [...calls, newCall];
 }
 
 /**
@@ -203,9 +261,39 @@ export function flushStreamingCursor(items: ChatItem[]): ChatItem[] {
  * extends a thinking block; otherwise it extends the trailing streaming
  * assistant_text, or starts a new one — clearing the queue badge off the oldest
  * still-queued user bubble (the bridge drains its promptQueue FIFO).
+ *
+ * When `isSubagent` is set the chunk belongs to a spawned subagent turn
+ * (grok stamps `_meta.promptId` on each ACP prompt; subagent turns differ).
+ * Subagent text never touches the main thinking/assistant blocks — it folds
+ * into a dedicated `subagent_turn` card keyed by `agentTurnId`.
  */
-export function applyTextDelta(items: ChatItem[], delta: string, type: string, turnId?: string): ChatItem[] {
+export function applyTextDelta(
+    items: ChatItem[],
+    delta: string,
+    type: string,
+    turnId?: string,
+    agentTurnId?: string,
+    isSubagent?: boolean
+): ChatItem[] {
     const next = [...items];
+    if (isSubagent && agentTurnId) {
+        const existing = findSubagentTurn(next, agentTurnId);
+        if (existing) {
+            next[existing.index] = {
+                ...existing.item,
+                thinking: type === 'thought' ? existing.item.thinking + delta : existing.item.thinking,
+                output: type !== 'thought' ? existing.item.output + delta : existing.item.output,
+                streaming: true,
+            };
+        } else {
+            next.push({
+                ...createSubagentTurn(agentTurnId),
+                thinking: type === 'thought' ? delta : '',
+                output: type !== 'thought' ? delta : '',
+            });
+        }
+        return next;
+    }
     const last = next[next.length - 1];
     if (type === 'thought') {
         if (last && last.kind === 'thinking' && (!turnId || last.turnId === turnId)) {
@@ -474,6 +562,9 @@ export function tryAssignPending(s: PendingState): PendingState {
  * Fold a `tool_call` event: flush the streaming cursor, then update the trailing
  * tool_use in place (same toolCallId) or append a new call / tool_use block, and
  * re-scan the pending pools so out-of-order results/permissions reconcile.
+ *
+ * Subagent tool calls (isSubagent, grok stamps the subagent's `_meta.promptId`)
+ * fold into the matching `subagent_turn` card instead of the main message.
  */
 export function applyToolCall(
     s: PendingState,
@@ -485,7 +576,9 @@ export function applyToolCall(
         status?: string;
         locations?: ToolCallInfo['locations'];
         diffs?: ToolCallInfo['diffs'];
-    }
+    },
+    agentTurnId?: string,
+    isSubagent?: boolean
 ): PendingState {
     const items0 = flushStreamingCursor(s.items);
     // A tool_call_update carrying only new metadata (kind/locations/diffs/status)
@@ -508,6 +601,34 @@ export function applyToolCall(
     };
     if (ev.toolCallId) {
         newCall.toolCallId = ev.toolCallId;
+    }
+    if (isSubagent && agentTurnId) {
+        const existing = findSubagentTurn(items0, agentTurnId);
+        if (existing) {
+            const next = [...items0];
+            next[existing.index] = {
+                ...existing.item,
+                calls: foldToolCall(existing.item.calls, newCall),
+            };
+            return tryAssignPending({
+                items: next,
+                pendingResults: s.pendingResults,
+                pendingPermissions: s.pendingPermissions,
+            });
+        }
+        // Tool call arrived before any subagent text (e.g. a tool-first
+        // subagent) — create the card so the call has a home.
+        return tryAssignPending({
+            items: [
+                ...items0,
+                {
+                    ...createSubagentTurn(agentTurnId),
+                    calls: [newCall],
+                },
+            ],
+            pendingResults: s.pendingResults,
+            pendingPermissions: s.pendingPermissions,
+        });
     }
     const next = [...items0];
     const last = next[next.length - 1];
@@ -562,11 +683,56 @@ export function applyToolCall(
  * Fold a `tool_result` event: flush the streaming cursor, then attach the output
  * to the matching tool_use/call (reverse scan). If no tool_use exists yet, park
  * the result in pendingResults for a later tool_call to reconcile.
+ *
+ * Subagent results attach to the subagent card's own calls by toolCallId.
  */
 export function applyToolResult(
     s: PendingState,
-    ev: { text?: string; isError?: boolean; toolCallId?: string; toolName?: string }
+    ev: { text?: string; isError?: boolean; toolCallId?: string; toolName?: string },
+    agentTurnId?: string,
+    isSubagent?: boolean
 ): PendingState {
+    if (isSubagent && agentTurnId) {
+        const items = [...flushStreamingCursor(s.items)];
+        const existing = findSubagentTurn(items, agentTurnId);
+        if (existing && ev.toolCallId) {
+            const callIdx = existing.item.calls.findIndex(c => c.toolCallId === ev.toolCallId);
+            if (callIdx >= 0) {
+                items[existing.index] = {
+                    ...existing.item,
+                    calls: existing.item.calls.map((c, idx) =>
+                        idx === callIdx
+                            ? {
+                                  ...c,
+                                  output: ev.text || '',
+                                  isError: !!ev.isError,
+                                  status: (ev.isError ? 'failed' : 'completed') as ToolCallStatus,
+                              }
+                            : c
+                    ),
+                };
+                return { items, pendingResults: s.pendingResults, pendingPermissions: s.pendingPermissions };
+            }
+        }
+        // No matching call yet (result raced ahead of the call). Park it like
+        // the main path does — tryAssignPending reconciles once the call lands.
+        return {
+            items,
+            pendingResults: [
+                ...s.pendingResults,
+                {
+                    id: cryptoId(),
+                    kind: 'tool_result',
+                    toolCallId: ev.toolCallId,
+                    toolName: ev.toolName,
+                    content: ev.text || '',
+                    isError: !!ev.isError,
+                    createdAt: Date.now(),
+                },
+            ],
+            pendingPermissions: s.pendingPermissions,
+        };
+    }
     const items = [...flushStreamingCursor(s.items)];
     let matched = false;
     for (let i = items.length - 1; i >= 0; i--) {

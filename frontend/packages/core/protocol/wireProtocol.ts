@@ -55,6 +55,13 @@ export interface BridgeEventPayload {
     arguments?: unknown;
     requestId?: string;
     turnId?: string;
+    /**
+     * The adapter's per-turn id (grok `_meta.promptId`). Present on
+     * text_delta / tool_call frames; subagent turns carry an id that
+     * differs from the main turn's, letting the client isolate subagent
+     * content into its own card.
+     */
+    agentTurnId?: string;
     sequence?: number;
     journalSequence?: number;
     acceptedNew?: boolean;
