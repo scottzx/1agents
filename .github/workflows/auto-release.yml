@@ -255,18 +255,9 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: cargo-${{ matrix.rust_target }}-${{ hashFiles('modules/cc-switch-cli/src-tauri/Cargo.lock', 'modules/HarnessKit/Cargo.lock') }}
+          key: cargo-${{ matrix.rust_target }}-${{ hashFiles('modules/HarnessKit/Cargo.lock') }}
           restore-keys: |
             cargo-${{ matrix.rust_target }}-
-
-      - name: Build cc-switch CLI
-        run: |
-          cargo build \
-            --manifest-path modules/cc-switch-cli/src-tauri/Cargo.toml \
-            --release \
-            --target ${{ matrix.rust_target }}
-          mkdir -p build
-          cp modules/cc-switch-cli/src-tauri/target/${{ matrix.rust_target }}/release/cc-switch build/cc-switch
 
       - name: Build HarnessKit CLI
         run: |
@@ -290,7 +281,6 @@ jobs:
           cp build/1agents release-pkg/bin/
           cp build/ttyd release-pkg/bin/
           cp build/cc-connect release-pkg/bin/
-          cp build/cc-switch release-pkg/bin/
           cp build/hk release-pkg/bin/
           cp build/happy release-pkg/bin/
           cp -r build/happy-cli release-pkg/bin/happy-cli
@@ -322,14 +312,12 @@ jobs:
           path: |
             npm/packages/core-${{ matrix.arch == 'amd64' && 'linux-x64' || 'linux-arm64' }}
             npm/packages/cc-connect-${{ matrix.arch == 'amd64' && 'linux-x64' || 'linux-arm64' }}
-            npm/packages/cc-switch-${{ matrix.arch == 'amd64' && 'linux-x64' || 'linux-arm64' }}
             npm/packages/web
             npm/packages/happy
             npm/packages/acpx
             npm/packages/acp-bridge
             npm/packages/cli
             npm/packages/cc-connect
-            npm/packages/cc-switch
 
   build-macos:
     runs-on: macos-latest
@@ -428,16 +416,9 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: cargo-darwin-arm64-${{ hashFiles('modules/cc-switch-cli/src-tauri/Cargo.lock', 'modules/HarnessKit/Cargo.lock') }}
+          key: cargo-darwin-arm64-${{ hashFiles('modules/HarnessKit/Cargo.lock') }}
           restore-keys: |
             cargo-darwin-arm64-
-
-      - name: Build cc-switch CLI
-        run: |
-          cargo build \
-            --manifest-path modules/cc-switch-cli/src-tauri/Cargo.toml \
-            --release
-          cp modules/cc-switch-cli/src-tauri/target/release/cc-switch build-ttyd/cc-switch
 
       - name: Build HarnessKit CLI
         run: |
@@ -456,7 +437,6 @@ jobs:
           cp build-ttyd/1agents release-pkg/bin/
           cp build-ttyd/ttyd release-pkg/bin/
           cp build-ttyd/cc-connect release-pkg/bin/
-          cp build-ttyd/cc-switch release-pkg/bin/
           cp build-ttyd/hk release-pkg/bin/
           cp build-ttyd/happy release-pkg/bin/
           cp -r build-ttyd/happy-cli release-pkg/bin/happy-cli
@@ -488,14 +468,12 @@ jobs:
           path: |
             npm/packages/core-darwin-arm64
             npm/packages/cc-connect-darwin-arm64
-            npm/packages/cc-switch-darwin-arm64
             npm/packages/web
             npm/packages/happy
             npm/packages/acpx
             npm/packages/acp-bridge
             npm/packages/cli
             npm/packages/cc-connect
-            npm/packages/cc-switch
 
   build-desktop:
     strategy:
@@ -631,26 +609,9 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: cargo-desktop-${{ matrix.os_name }}-${{ hashFiles('modules/cc-switch-cli/src-tauri/Cargo.lock', 'modules/HarnessKit/Cargo.lock') }}
+          key: cargo-desktop-${{ matrix.os_name }}-${{ hashFiles('modules/HarnessKit/Cargo.lock') }}
           restore-keys: |
             cargo-desktop-${{ matrix.os_name }}-
-
-      - name: Build cc-switch CLI (macOS)
-        if: matrix.os_name == 'macos'
-        run: |
-          cargo build \
-            --manifest-path modules/cc-switch-cli/src-tauri/Cargo.toml \
-            --release
-          cp modules/cc-switch-cli/src-tauri/target/release/cc-switch build/cc-switch
-
-      - name: Build cc-switch CLI (Windows)
-        if: matrix.os_name == 'windows'
-        shell: bash
-        run: |
-          cargo build \
-            --manifest-path modules/cc-switch-cli/src-tauri/Cargo.toml \
-            --release
-          cp modules/cc-switch-cli/src-tauri/target/release/cc-switch.exe build/cc-switch.exe
 
       - name: Build HarnessKit CLI
         shell: bash
@@ -716,13 +677,13 @@ jobs:
               d=$(dirname "$(dirname "$p")")
               name=$(basename "$d")
               case "$name" in
-                core-*|cc-connect-*|cc-switch-*)
+                core-*|cc-connect-*)
                   rm -rf "npm/packages/$name"
                   cp -a "$d" "npm/packages/$name"
                   ;;
               esac
-            done < <(find artifacts -type f -path '*/bin/1agents' -o -type f -path '*/bin/cc-connect' -o -type f -path '*/bin/cc-switch')
-            for shared in web happy acpx acp-bridge cli cc-connect cc-switch; do
+            done < <(find artifacts -type f -path '*/bin/1agents' -o -type f -path '*/bin/cc-connect')
+            for shared in web happy acpx acp-bridge cli cc-connect; do
               found=$(find artifacts -type d -name "$shared" | head -1 || true)
               if [ -n "$found" ] && [ -f "$found/package.json" ]; then
                 rm -rf "npm/packages/$shared"
