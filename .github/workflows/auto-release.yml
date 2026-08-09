@@ -259,6 +259,12 @@ jobs:
           restore-keys: |
             cargo-${{ matrix.rust_target }}-
 
+      - name: Build HarnessKit frontend (embedded into hk CLI)
+        run: |
+          cd modules/HarnessKit
+          npm ci --ignore-scripts
+          npm run build
+
       - name: Build HarnessKit CLI
         run: |
           cargo build \
@@ -419,6 +425,12 @@ jobs:
           key: cargo-darwin-arm64-${{ hashFiles('modules/HarnessKit/Cargo.lock') }}
           restore-keys: |
             cargo-darwin-arm64-
+
+      - name: Build HarnessKit frontend (embedded into hk CLI)
+        run: |
+          cd modules/HarnessKit
+          npm ci --ignore-scripts
+          npm run build
 
       - name: Build HarnessKit CLI
         run: |
@@ -612,6 +624,13 @@ jobs:
           key: cargo-desktop-${{ matrix.os_name }}-${{ hashFiles('modules/HarnessKit/Cargo.lock') }}
           restore-keys: |
             cargo-desktop-${{ matrix.os_name }}-
+
+      - name: Build HarnessKit frontend (embedded into hk CLI)
+        shell: bash
+        run: |
+          cd modules/HarnessKit
+          npm ci --ignore-scripts
+          npm run build
 
       - name: Build HarnessKit CLI
         shell: bash
