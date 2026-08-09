@@ -22147,6 +22147,181 @@ body {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
 }
+
+// ── 副看板「任务状态」面板 (BackgroundTaskPanel) ──
+// Live view of the active chat session's background bash tasks. Flat cards on
+// the side-panel background; reuses the chat task badges for consistency.
+.background-task-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.background-task-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 12px;
+
+  .background-task-empty-title {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+}
+
+.background-task-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+
+  .background-task-done-badge {
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: rgba(var(--success-rgb), 0.1);
+    color: var(--success-fg);
+  }
+
+  .background-task-summary-total {
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+    margin-left: auto;
+  }
+}
+
+.background-task-panel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.background-task-card {
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius-sm, 10px);
+  background: var(--bg-card);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+
+  .background-task-card-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+
+    .chat-background-task-item-icon {
+      flex-shrink: 0;
+      display: inline-flex;
+    }
+  }
+
+  &[data-status='running'] .chat-background-task-item-icon {
+    color: var(--accent-color);
+    animation: pulse 2s infinite;
+  }
+
+  &[data-status='completed'] .chat-background-task-item-icon {
+    color: var(--success-emphasis);
+  }
+
+  &[data-status='failed'],
+  &[data-status='cancelled'],
+  &[data-status='killed'] .chat-background-task-item-icon {
+    color: var(--danger-emphasis);
+  }
+
+  .background-task-card-command {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-main);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .background-task-card-elapsed {
+    flex-shrink: 0;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+
+    &[data-running='true'] {
+      color: var(--accent-fg);
+    }
+  }
+
+  .background-task-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    .background-task-card-id {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .background-task-card-exit {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-secondary);
+
+      &[data-error='true'] {
+        color: var(--danger-fg);
+      }
+    }
+  }
+
+  .background-task-card-toggle {
+    align-self: flex-start;
+    border: none;
+    background: transparent;
+    padding: 0;
+    font-size: 12px;
+    color: var(--accent-fg);
+    cursor: pointer;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  .background-task-card-truncated {
+    font-size: 11px;
+    color: var(--text-muted);
+    padding: 2px 0;
+  }
+
+  .background-task-card-output {
+    margin: 0;
+    padding: 8px 12px;
+    max-height: 180px;
+    overflow-y: auto;
+    background-color: rgba(var(--accent-color-rgb), 0.04);
+    color: var(--text-main);
+    border: 1px solid rgba(var(--accent-color-rgb), 0.14);
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+}
 .chat-panel[data-session-mode="bypassPermissions"] .chat-composer-frame,
 .chat-panel[data-session-mode="dontAsk"] .chat-composer-frame,
 .chat-panel[data-session-mode="agent-full-access"] .chat-composer-frame {

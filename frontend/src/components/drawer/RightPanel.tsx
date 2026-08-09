@@ -23,6 +23,7 @@ import * as appStore from '../../stores/appManifestStore';
 import { isOneshotWorkspaceId } from '../../utils/oneshot';
 import { terminalService } from '@1agents/core/services/terminalService';
 import { Terminal } from '../terminal';
+import { BackgroundTaskPanel } from './BackgroundTaskPanel';
 import {
     lightTermTheme,
     darkTermTheme,
@@ -93,7 +94,8 @@ export function RightPanel({
         activeDrawerTab === 'files' ||
         activeDrawerTab === 'browser' ||
         activeDrawerTab === 'git' ||
-        activeDrawerTab === 'terminal';
+        activeDrawerTab === 'terminal' ||
+        activeDrawerTab === 'background';
     const sidePanelMode = !ui.isMobile.value && tabsStore.sidePanelOpen.value && sidePanelDrawerActive;
     const sidePanelEmpty = sidePanelMode && sideTabs.length === 0;
     const panelType = (
@@ -362,6 +364,17 @@ export function RightPanel({
                 )}
             </div>
 
+            {/* Live background-task status (peer of 终端/任务, driven by the
+                active chat session's bridge state) */}
+            <div
+                class="panel-body-background"
+                style={`flex: 1; overflow: hidden; display: ${
+                    panelType === 'background' ? 'flex' : 'none'
+                }; flex-direction: column; height: 100%; min-height: 0;`}
+            >
+                {panelType === 'background' && <BackgroundTaskPanel language={language} />}
+            </div>
+
             {/* Other drawer tab contents (files, git, settings) */}
             <div
                 class="panel-body-scroll"
@@ -489,6 +502,8 @@ function legacyDrawerTitle(tab: RightDrawerTab, language: typeof ui.language.val
             return t('header.col.tasks', language);
         case 'terminal':
             return t('sidePanel.tab.terminal', language);
+        case 'background':
+            return t('sidePanel.tab.background', language);
         default:
             return '';
     }
@@ -520,6 +535,7 @@ function SidePanelAddMenu({ language }: { language: typeof ui.language.value }) 
         { type: 'browser', label: t('sidePanel.tab.browser', language) },
         { type: 'git', label: t('sidePanel.tab.git', language) },
         { type: 'terminal', label: t('sidePanel.tab.terminal', language) },
+        { type: 'background', label: t('sidePanel.tab.background', language) },
     ];
     return (
         <div class="side-panel-add-menu">
@@ -565,6 +581,11 @@ function SidePanelEmpty({ language }: { language: typeof ui.language.value }) {
             type: 'terminal',
             label: t('sidePanel.tab.terminal', language),
             desc: t('sidePanel.empty.terminal', language),
+        },
+        {
+            type: 'background',
+            label: t('sidePanel.tab.background', language),
+            desc: t('sidePanel.empty.background', language),
         },
     ];
     return (
