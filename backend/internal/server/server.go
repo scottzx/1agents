@@ -117,6 +117,12 @@ func NewRouter(cfg *config.Config, harnessKitRuntime ...harnesskit.Runtime) http
 	mux.HandleFunc("/api/apps", appregistry.HandleList)  // GET → {apps:[...]}
 	mux.HandleFunc("/api/apps/", appregistryItemHandler) // POST /{id}/enable|disable
 
+	// ── LLM Provider API (ClawBox / ~/.1agents/providers.json) ─────────────
+	mux.HandleFunc("/api/providers", handleProviders)                // GET, POST, DELETE
+	mux.HandleFunc("/api/providers/switch", handleProviderSwitch)     // POST {id}
+	mux.HandleFunc("/api/providers/fetch-models", handleFetchModels) // POST {base_url, api_key}
+	mux.HandleFunc("/api/agents/switch", handleAgentSwitch)           // POST {agent, provider_id, model, ...}
+
 	// ── Domain ownership gate (C0, design §7/§13.3) ────────────────────────
 	// Registers the kernel ownership ledger, ensures the denial-audit table
 	// and installs the persistent sink so cross-domain access denials are
