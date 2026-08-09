@@ -78,10 +78,6 @@ submodule-harnesskit:
 	@echo "=== Ensuring controlled HarnessKit submodule is checked out..."
 	git submodule update --init modules/HarnessKit
 
-submodule-clawbox:
-	@echo "=== Ensuring clawbox submodule is checked out..."
-	git submodule update --init modules/clawbox
-
 
 frontend: frontend/dist/index.html
 

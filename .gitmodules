@@ -34,6 +34,3 @@
 [submodule "modules/gbrain"]
 	path = modules/gbrain
 	url = https://github.com/garrytan/gbrain
-[submodule "modules/clawbox"]
-	path = modules/clawbox
-	url = https://github.com/zhaolianghz/clawbox
