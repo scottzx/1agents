@@ -68,72 +68,75 @@ const runtime = createAcpRuntime({
 });
 const turnJournal = createTurnJournal({ stateDir: DEFAULT_STATE_DIR });
 
-// Trigger initial background pre-warm for grok-build
+// Trigger initial background pre-warm for grok-build and deepseek-build
+const PREWARM_AGENTS = ["grok-build", "deepseek-build"];
+
 setTimeout(() => {
-  prewarmGrokSession().catch((err) => {
-    console.warn("[PRE-WARM] Initial background pre-warm caught:", err.message);
-  });
+  for (const agentType of PREWARM_AGENTS) {
+    prewarmAgentSession(agentType).catch((err) => {
+      console.warn(`[PRE-WARM] Initial background pre-warm caught for ${agentType}:`, err.message);
+    });
+  }
 }, 1500);
 
 // Map of active session handles and turn contexts
 // sessionId -> { handle, activeTurn }
 const activeSessions = new Map();
 
-// Phase 2 Pre-warm pool for grok-build (scoped to the most recent CWD)
-let prewarmedGrokHandle = null;
-let prewarmedGrokCwd = null;
+// Phase 2 Pre-warm pool for agents (scoped to the most recent CWD per agent)
+// agentType -> { handle, cwd }
+const prewarmedSessions = new Map();
 let lastUsedCwd = process.cwd();
-let isWarmingGrok = false;
+const isWarmingAgent = new Map();
 
-async function prewarmGrokSession(targetCwd) {
+async function prewarmAgentSession(agentType, targetCwd) {
   const cwdToUse = targetCwd || lastUsedCwd || process.cwd();
-  if (isWarmingGrok) {
+  if (isWarmingAgent.get(agentType)) {
     return;
   }
 
+  const existing = prewarmedSessions.get(agentType);
   // If we already have a pre-warmed handle for this exact CWD, keep it
-  if (prewarmedGrokHandle && prewarmedGrokCwd === cwdToUse) {
+  if (existing && existing.handle && existing.cwd === cwdToUse) {
     return;
   }
 
-  isWarmingGrok = true;
+  isWarmingAgent.set(agentType, true);
   try {
     // If there was an old pre-warmed handle for a different CWD, close it first
-    if (prewarmedGrokHandle && prewarmedGrokCwd !== cwdToUse) {
+    if (existing && existing.handle && existing.cwd !== cwdToUse) {
       console.log(
-        `[PRE-WARM] Closing previous pre-warm handle for obsolete CWD: ${prewarmedGrokCwd}`,
+        `[PRE-WARM] Closing previous pre-warm handle for obsolete CWD: ${existing.cwd} (${agentType})`,
       );
       try {
         await runtime.close({
-          handle: prewarmedGrokHandle,
+          handle: existing.handle,
           reason: "CWD mismatch pre-warm refresh",
         });
       } catch {
         // ignore close errors
       }
-      prewarmedGrokHandle = null;
-      prewarmedGrokCwd = null;
+      prewarmedSessions.delete(agentType);
     }
 
-    const prewarmKey = `prewarm_grok_${Date.now()}`;
+    const prewarmKey = `prewarm_${agentType.replace(/[^a-zA-Z0-9_]/g, "_")}_${Date.now()}`;
     console.log(
-      `[PRE-WARM] Background pre-warming grok-build session for CWD: ${cwdToUse} (${prewarmKey})...`,
+      `[PRE-WARM] Background pre-warming ${agentType} session for CWD: ${cwdToUse} (${prewarmKey})...`,
     );
     const handle = await runtime.ensureSession({
       sessionKey: prewarmKey,
-      agent: "grok-build",
+      agent: agentType,
       mode: "persistent",
       cwd: cwdToUse,
     });
-    prewarmedGrokHandle = handle;
-    prewarmedGrokCwd = cwdToUse;
+    prewarmedSessions.set(agentType, { handle, cwd: cwdToUse });
     console.log(
-      `[PRE-WARM] Background grok-build pre-warm ready for CWD=${cwdToUse} (${handle.agentSessionId || handle.backendSessionId})!`,
+      `[PRE-WARM] Background ${agentType} pre-warm ready for CWD=${cwdToUse} (${handle.agentSessionId || handle.backendSessionId})!`,
     );
   } catch (err) {
-    console.warn("[PRE-WARM] Pre-warm failed:", err.message);
+    console.warn(`[PRE-WARM] Pre-warm failed for ${agentType}:`, err.message);
   } finally {
-    isWarmingGrok = false;
+    isWarmingAgent.set(agentType, false);
   }
 }
 
@@ -1210,23 +1213,23 @@ wss.on("connection", (ws) => {
             lastUsedCwd = normalizedPath;
           }
 
-          // Phase 2: Instant pre-warm hit for fresh grok-build sessions if CWD matches!
-          if (agentType === "grok-build" && !resumeId && prewarmedGrokHandle) {
-            if (prewarmedGrokCwd === normalizedPath) {
+          // Phase 2: Instant pre-warm hit for fresh sessions (grok-build, deepseek-build) if CWD matches!
+          const prewarmed = prewarmedSessions.get(agentType);
+          if (PREWARM_AGENTS.includes(agentType) && !resumeId && prewarmed && prewarmed.handle) {
+            if (prewarmed.cwd === normalizedPath) {
               console.time(`ensure_session_${sessionId}`);
               console.log(
-                `[PRE-WARM] 🚀 Instant hit! Reusing pre-warmed grok-build handle for CWD=${normalizedPath}, session=${sessionId}`,
+                `[PRE-WARM] 🚀 Instant hit! Reusing pre-warmed ${agentType} handle for CWD=${normalizedPath}, session=${sessionId}`,
               );
               const handle = await runtime.adoptSession({
-                handle: prewarmedGrokHandle,
+                handle: prewarmed.handle,
                 sessionKey: sessionId,
               });
-              prewarmedGrokHandle = null;
-              prewarmedGrokCwd = null;
+              prewarmedSessions.delete(agentType);
               console.timeEnd(`ensure_session_${sessionId}`);
 
               // Asynchronously trigger background pre-warm for the next session using the same CWD
-              setTimeout(() => prewarmGrokSession(normalizedPath), 500);
+              setTimeout(() => prewarmAgentSession(agentType, normalizedPath), 500);
 
               activeSessions.set(sessionId, {
                 handle,
@@ -1251,15 +1254,14 @@ wss.on("connection", (ws) => {
               break;
             } else {
               console.log(
-                `[PRE-WARM] CWD mismatch (prewarmed=${prewarmedGrokCwd}, requested=${normalizedPath}). Discarding obsolete pre-warm handle.`,
+                `[PRE-WARM] CWD mismatch (prewarmed=${prewarmed.cwd}, requested=${normalizedPath}). Discarding obsolete pre-warm handle for ${agentType}.`,
               );
               try {
-                void runtime.close({ handle: prewarmedGrokHandle, reason: "CWD mismatch" });
+                void runtime.close({ handle: prewarmed.handle, reason: "CWD mismatch" });
               } catch {
                 // ignore
               }
-              prewarmedGrokHandle = null;
-              prewarmedGrokCwd = null;
+              prewarmedSessions.delete(agentType);
             }
           }
 
@@ -1284,8 +1286,8 @@ wss.on("connection", (ws) => {
             console.log(`[DEBUG] ensure_session finished for session=${sessionId}`);
 
             // Asynchronously trigger background pre-warm after a cold spawn using the new CWD
-            if (agentType === "grok-build") {
-              setTimeout(() => prewarmGrokSession(normalizedPath), 500);
+            if (PREWARM_AGENTS.includes(agentType)) {
+              setTimeout(() => prewarmAgentSession(agentType, normalizedPath), 500);
             }
 
             activeSessions.set(sessionId, {
@@ -2250,7 +2252,7 @@ async function sendSessionMeta(ws, sessionId, handle) {
 const DEFAULT_GROK_PERMISSION_MODE = "acceptEdits";
 
 async function resolveGrokPermissionMode(handle, agentType) {
-  if (agentType !== "grok-build") {
+  if (agentType !== "grok-build" && agentType !== "deepseek-build") {
     return undefined;
   }
   try {
@@ -2272,7 +2274,10 @@ function leavePlanModeAfterExit(sessionId, ws) {
   if (!session || session.sessionMode !== "plan") {
     return;
   }
-  const nextMode = session.agentType === "grok-build" ? DEFAULT_GROK_PERMISSION_MODE : "default";
+  const nextMode =
+    session.agentType === "grok-build" || session.agentType === "deepseek-build"
+      ? DEFAULT_GROK_PERMISSION_MODE
+      : "default";
   session.sessionMode = nextMode;
   console.log(`[acpx-server] exit_plan_mode left plan → ${nextMode} for ${sessionId}`);
   try {
@@ -2956,7 +2961,9 @@ async function handlePermissionRequestCallback(req, ctx) {
   // three-state shield for Grok so a stale persisted approve-all value cannot
   // silently override the visible native "Ask" mode.
   const grokMode =
-    session.agentType === "grok-build" ? session.sessionMode || DEFAULT_GROK_PERMISSION_MODE : null;
+    session.agentType === "grok-build" || session.agentType === "deepseek-build"
+      ? session.sessionMode || DEFAULT_GROK_PERMISSION_MODE
+      : null;
   if (grokMode === "bypassPermissions") {
     return { outcome: "allow_once" };
   }

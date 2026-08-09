@@ -25,7 +25,7 @@ export class AgentTypePicker extends Component<AgentTypePickerProps> {
         const pickable = pickableAgents.value;
         const options: { type: AgentType; label: string }[] = pickable.length
             ? pickable.map(a => ({ type: a.type, label: a.label }))
-            : AGENT_TYPES.filter(t => t !== 'grok-build').map(t => ({
+            : AGENT_TYPES.filter(t => t !== 'grok-build' && t !== 'deepseek-build').map(t => ({
                   type: t,
                   label: AGENT_TYPE_LABELS[t] ?? t,
               }));
