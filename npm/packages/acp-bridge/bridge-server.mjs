@@ -40,6 +40,58 @@ const META_UPDATE_TAGS = new Set([
   "session_info_update",
 ]);
 
+// Background-task completion reminders: the grok/deepseek runtime does not
+// emit structured `background_task` session updates. Instead, when a task
+// finishes it wakes the session with an out-of-turn `user_message_chunk`
+// whose text carries a `<system-reminder>` block:
+//
+//   <system-reminder>
+//   Background task "a5521c46-..." completed (exit code: 0).
+//   Command: /bin/bash -lc 'sleep 30' | Duration: 30.1s
+//   Use get_command_or_subagent_output("...") to see the full output.
+//   </system-reminder>
+//
+// Convert that reminder into the same `background_task` snapshot the client's
+// task panel consumes. statuses mirror the runtime's wording (canceled vs
+// cancelled normalized to the contract spelling).
+function parseBackgroundTaskReminder(update) {
+  const content =
+    update && typeof update.content === "object" && update.content !== null
+      ? update.content
+      : undefined;
+  const text = content && typeof content.text === "string" ? content.text : undefined;
+  if (!text) {
+    return null;
+  }
+  const match = text.match(
+    /Background task "([^"]+)"\s+(completed|failed|cancelled|canceled|killed)(?:\s*\(exit code:\s*(-?\d+)\))?/,
+  );
+  if (!match) {
+    return null;
+  }
+  const task = {
+    id: match[1],
+    status: match[2] === "canceled" ? "cancelled" : match[2],
+  };
+  if (match[3] !== undefined) {
+    task.exitCode = Number(match[3]);
+  }
+  const command = text.match(/Command:\s*([^|\n]+)/);
+  if (command) {
+    task.command = command[1].trim();
+  }
+  const duration = text.match(/Duration:\s*([0-9.]+)s/);
+  if (duration) {
+    task.duration = `${duration[1]}s`;
+  }
+  return task;
+}
+
+// Accumulated completed/failed background tasks per session. The snapshot is
+// a full list (the client replaces wholesale), so keep every task finished in
+// this session instead of letting later completions wipe earlier ones.
+const sessionBackgroundTasks = new Map();
+
 // Setup session runtime manager options
 const runtime = createAcpRuntime({
   cwd: process.cwd(),
@@ -53,10 +105,48 @@ const runtime = createAcpRuntime({
   // available_commands_update) lands in the record, re-send the capability
   // snapshot so the client's `/` palette lights up without waiting for a turn.
   // sessionKey === the client sessionId for persistent sessions.
-  onOutOfTurnSessionUpdate: (sessionKey, updateTag) => {
+  onOutOfTurnSessionUpdate: (sessionKey, updateTag, update) => {
     const session = activeSessions.get(sessionKey);
     if (!session) {
       return;
+    }
+    if (updateTag === "background_task" && Array.isArray(update?.tasks)) {
+      // Background-task snapshots can arrive between turns (a task finishing
+      // long after the turn that started it). Forward the full snapshot so
+      // the client's task panel stays live.
+      const ws = session.ws;
+      if (ws && ws.readyState === 1 /* OPEN */) {
+        ws.send(
+          JSON.stringify({
+            event: "background_task",
+            sessionId: sessionKey,
+            payload: { tasks: update.tasks },
+          }),
+        );
+      }
+      return;
+    }
+    if (updateTag === "user_message_chunk") {
+      // Background-task completion reminders arrive as out-of-turn
+      // user_message_chunk notifications carrying a <system-reminder> block.
+      // Convert them into the task snapshot the panel consumes. Falls through
+      // to the history push below so the chat transcript updates too.
+      const task = parseBackgroundTaskReminder(update);
+      if (task) {
+        const tasks = sessionBackgroundTasks.get(sessionKey) ?? [];
+        tasks.push(task);
+        sessionBackgroundTasks.set(sessionKey, tasks);
+        const ws = session.ws;
+        if (ws && ws.readyState === 1 /* OPEN */) {
+          ws.send(
+            JSON.stringify({
+              event: "background_task",
+              sessionId: sessionKey,
+              payload: { tasks },
+            }),
+          );
+        }
+      }
     }
     if (META_UPDATE_TAGS.has(updateTag)) {
       void sendSessionMeta(session.ws, sessionKey, session.handle);
@@ -68,75 +158,72 @@ const runtime = createAcpRuntime({
 });
 const turnJournal = createTurnJournal({ stateDir: DEFAULT_STATE_DIR });
 
-// Trigger initial background pre-warm for grok-build and deepseek-build
-const PREWARM_AGENTS = ["grok-build", "deepseek-build"];
-
+// Trigger initial background pre-warm for grok-build
 setTimeout(() => {
-  for (const agentType of PREWARM_AGENTS) {
-    prewarmAgentSession(agentType).catch((err) => {
-      console.warn(`[PRE-WARM] Initial background pre-warm caught for ${agentType}:`, err.message);
-    });
-  }
+  prewarmGrokSession().catch((err) => {
+    console.warn("[PRE-WARM] Initial background pre-warm caught:", err.message);
+  });
 }, 1500);
 
 // Map of active session handles and turn contexts
 // sessionId -> { handle, activeTurn }
 const activeSessions = new Map();
 
-// Phase 2 Pre-warm pool for agents (scoped to the most recent CWD per agent)
-// agentType -> { handle, cwd }
-const prewarmedSessions = new Map();
+// Phase 2 Pre-warm pool for grok-build (scoped to the most recent CWD)
+let prewarmedGrokHandle = null;
+let prewarmedGrokCwd = null;
 let lastUsedCwd = process.cwd();
-const isWarmingAgent = new Map();
+let isWarmingGrok = false;
 
-async function prewarmAgentSession(agentType, targetCwd) {
+async function prewarmGrokSession(targetCwd) {
   const cwdToUse = targetCwd || lastUsedCwd || process.cwd();
-  if (isWarmingAgent.get(agentType)) {
+  if (isWarmingGrok) {
     return;
   }
 
-  const existing = prewarmedSessions.get(agentType);
   // If we already have a pre-warmed handle for this exact CWD, keep it
-  if (existing && existing.handle && existing.cwd === cwdToUse) {
+  if (prewarmedGrokHandle && prewarmedGrokCwd === cwdToUse) {
     return;
   }
 
-  isWarmingAgent.set(agentType, true);
+  isWarmingGrok = true;
   try {
     // If there was an old pre-warmed handle for a different CWD, close it first
-    if (existing && existing.handle && existing.cwd !== cwdToUse) {
+    if (prewarmedGrokHandle && prewarmedGrokCwd !== cwdToUse) {
       console.log(
-        `[PRE-WARM] Closing previous pre-warm handle for obsolete CWD: ${existing.cwd} (${agentType})`,
+        `[PRE-WARM] Closing previous pre-warm handle for obsolete CWD: ${prewarmedGrokCwd}`,
       );
       try {
         await runtime.close({
-          handle: existing.handle,
+          handle: prewarmedGrokHandle,
           reason: "CWD mismatch pre-warm refresh",
         });
       } catch {
         // ignore close errors
       }
-      prewarmedSessions.delete(agentType);
+      prewarmedGrokHandle = null;
+      prewarmedGrokCwd = null;
     }
 
-    const prewarmKey = `prewarm_${agentType.replace(/[^a-zA-Z0-9_]/g, "_")}_${Date.now()}`;
+    const prewarmKey = `prewarm_grok_${Date.now()}`;
     console.log(
-      `[PRE-WARM] Background pre-warming ${agentType} session for CWD: ${cwdToUse} (${prewarmKey})...`,
+      `[PRE-WARM] Background pre-warming grok-build session for CWD: ${cwdToUse} (${prewarmKey})...`,
     );
     const handle = await runtime.ensureSession({
       sessionKey: prewarmKey,
-      agent: agentType,
+      agent: "grok-build",
       mode: "persistent",
       cwd: cwdToUse,
     });
-    prewarmedSessions.set(agentType, { handle, cwd: cwdToUse });
+    prewarmedGrokHandle = handle;
+    prewarmedGrokCwd = cwdToUse;
     console.log(
-      `[PRE-WARM] Background ${agentType} pre-warm ready for CWD=${cwdToUse} (${handle.agentSessionId || handle.backendSessionId})!`,
+      `[PRE-WARM] Background grok-build pre-warm ready for CWD=${cwdToUse} (${handle.agentSessionId || handle.backendSessionId})!`,
     );
   } catch (err) {
-    console.warn(`[PRE-WARM] Pre-warm failed for ${agentType}:`, err.message);
+    console.warn("[PRE-WARM] Pre-warm failed:", err.message);
   } finally {
-    isWarmingAgent.set(agentType, false);
+    isWarmingGrok = false;
   }
 }
 
@@ -1203,7 +1290,7 @@ wss.on("connection", (ws) => {
               );
               void sendSessionMeta(ws, sessionId, handle);
             } catch (err) {
-              sendError(ws, sessionId, "INITIALIZATION_FAILED", err.message);
+              sendError(ws, sessionId, "INITIALIZATION_FAILED", describeActionError(err));
             }
             break;
           }
@@ -1213,23 +1300,23 @@ wss.on("connection", (ws) => {
             lastUsedCwd = normalizedPath;
           }
 
-          // Phase 2: Instant pre-warm hit for fresh sessions (grok-build, deepseek-build) if CWD matches!
-          const prewarmed = prewarmedSessions.get(agentType);
-          if (PREWARM_AGENTS.includes(agentType) && !resumeId && prewarmed && prewarmed.handle) {
-            if (prewarmed.cwd === normalizedPath) {
+          // Phase 2: Instant pre-warm hit for fresh grok-build sessions if CWD matches!
+          if (agentType === "grok-build" && !resumeId && prewarmedGrokHandle) {
+            if (prewarmedGrokCwd === normalizedPath) {
               console.time(`ensure_session_${sessionId}`);
               console.log(
-                `[PRE-WARM] 🚀 Instant hit! Reusing pre-warmed ${agentType} handle for CWD=${normalizedPath}, session=${sessionId}`,
+                `[PRE-WARM] 🚀 Instant hit! Reusing pre-warmed grok-build handle for CWD=${normalizedPath}, session=${sessionId}`,
               );
               const handle = await runtime.adoptSession({
-                handle: prewarmed.handle,
+                handle: prewarmedGrokHandle,
                 sessionKey: sessionId,
               });
-              prewarmedSessions.delete(agentType);
+              prewarmedGrokHandle = null;
+              prewarmedGrokCwd = null;
               console.timeEnd(`ensure_session_${sessionId}`);
 
               // Asynchronously trigger background pre-warm for the next session using the same CWD
-              setTimeout(() => prewarmAgentSession(agentType, normalizedPath), 500);
+              setTimeout(() => prewarmGrokSession(normalizedPath), 500);
 
               activeSessions.set(sessionId, {
                 handle,
@@ -1254,14 +1341,15 @@ wss.on("connection", (ws) => {
               break;
             } else {
               console.log(
-                `[PRE-WARM] CWD mismatch (prewarmed=${prewarmed.cwd}, requested=${normalizedPath}). Discarding obsolete pre-warm handle for ${agentType}.`,
+                `[PRE-WARM] CWD mismatch (prewarmed=${prewarmedGrokCwd}, requested=${normalizedPath}). Discarding obsolete pre-warm handle.`,
               );
               try {
-                void runtime.close({ handle: prewarmed.handle, reason: "CWD mismatch" });
+                void runtime.close({ handle: prewarmedGrokHandle, reason: "CWD mismatch" });
               } catch {
                 // ignore
               }
-              prewarmedSessions.delete(agentType);
+              prewarmedGrokHandle = null;
+              prewarmedGrokCwd = null;
             }
           }
 
@@ -1286,8 +1374,8 @@ wss.on("connection", (ws) => {
             console.log(`[DEBUG] ensure_session finished for session=${sessionId}`);
 
             // Asynchronously trigger background pre-warm after a cold spawn using the new CWD
-            if (PREWARM_AGENTS.includes(agentType)) {
-              setTimeout(() => prewarmAgentSession(agentType, normalizedPath), 500);
+            if (agentType === "grok-build") {
+              setTimeout(() => prewarmGrokSession(normalizedPath), 500);
             }
 
             activeSessions.set(sessionId, {
@@ -1890,6 +1978,7 @@ wss.on("connection", (ws) => {
               console.error(`[acpx-server] Error closing runtime handle:`, err);
             }
             activeSessions.delete(sessionId);
+            sessionBackgroundTasks.delete(sessionId);
           }
           clearSessionHistoryPush(sessionId);
           break;
@@ -2105,6 +2194,7 @@ wss.on("connection", (ws) => {
 
             if (activeSession) {
               activeSessions.delete(sessionId);
+              sessionBackgroundTasks.delete(sessionId);
             }
             clearSessionHistoryPush(sessionId);
 
@@ -2160,7 +2250,7 @@ wss.on("connection", (ws) => {
                 type: "error",
                 sessionId,
                 code: "auth_failed",
-                message: err?.message || String(err),
+                message: describeActionError(err),
               }),
             );
           }
@@ -2200,7 +2290,7 @@ wss.on("connection", (ws) => {
             `Underlying: ${err.stderrSummary || err.message}`,
         );
       } else {
-        sendError(ws, sessionId, "ACTION_FAILED", err.message);
+        sendError(ws, sessionId, "ACTION_FAILED", describeActionError(err));
       }
     }
   });
@@ -2252,7 +2342,7 @@ async function sendSessionMeta(ws, sessionId, handle) {
 const DEFAULT_GROK_PERMISSION_MODE = "acceptEdits";
 
 async function resolveGrokPermissionMode(handle, agentType) {
-  if (agentType !== "grok-build" && agentType !== "deepseek-build") {
+  if (agentType !== "grok-build") {
     return undefined;
   }
   try {
@@ -2274,10 +2364,7 @@ function leavePlanModeAfterExit(sessionId, ws) {
   if (!session || session.sessionMode !== "plan") {
     return;
   }
-  const nextMode =
-    session.agentType === "grok-build" || session.agentType === "deepseek-build"
-      ? DEFAULT_GROK_PERMISSION_MODE
-      : "default";
+  const nextMode = session.agentType === "grok-build" ? DEFAULT_GROK_PERMISSION_MODE : "default";
   session.sessionMode = nextMode;
   console.log(`[acpx-server] exit_plan_mode left plan → ${nextMode} for ${sessionId}`);
   try {
@@ -2335,6 +2422,26 @@ function sendError(ws, sessionId, errorCode, message) {
       terminal: false,
     }),
   );
+}
+
+// ACP SDK RequestErrors wrap the agent's real failure reason in
+// `data.details` while `message` stays JSON-RPC boilerplate (e.g.
+// "Internal error" for code -32603). Merge the details in so clients see
+// an actionable cause instead of an opaque generic error.
+function describeActionError(err) {
+  const base = err?.message || String(err);
+  let details = "";
+  if (typeof err?.data === "string") {
+    details = err.data.trim();
+  } else if (typeof err?.data?.details === "string") {
+    details = err.data.details.trim();
+  } else if (typeof err?.data?.message === "string") {
+    details = err.data.message.trim();
+  }
+  if (details && !base.includes(details)) {
+    return `${base}: ${details}`;
+  }
+  return base;
 }
 
 // sendLogoutError emits the {type:'error', sessionId, code, message} envelope
@@ -2591,6 +2698,13 @@ async function runPromptTurn(session, sessionId, promptItem) {
           sendRuntimeTurnEvent(targetWs, sessionId, turn, {
             event: "plan",
             payload: { entries: event.planEntries },
+          });
+        } else if (event.type === "background_task" && Array.isArray(event.tasks)) {
+          // Background bash task snapshots (Grok Build runtime): full list on
+          // every update — the client replaces its task cards wholesale.
+          sendRuntimeTurnEvent(targetWs, sessionId, turn, {
+            event: "background_task",
+            payload: { tasks: event.tasks },
           });
         } else if (event.type === "status" && event.tag === "usage_update") {
           // Token/context usage + cost for the composer badge. used/size feed
@@ -2964,9 +3078,7 @@ async function handlePermissionRequestCallback(req, ctx) {
   // three-state shield for Grok so a stale persisted approve-all value cannot
   // silently override the visible native "Ask" mode.
   const grokMode =
-    session.agentType === "grok-build" || session.agentType === "deepseek-build"
-      ? session.sessionMode || DEFAULT_GROK_PERMISSION_MODE
-      : null;
+    session.agentType === "grok-build" ? session.sessionMode || DEFAULT_GROK_PERMISSION_MODE : null;
   if (grokMode === "bypassPermissions") {
     return { outcome: "allow_once" };
   }
@@ -3130,6 +3242,7 @@ async function killAllManagedAgents() {
     clearSessionHistoryPush(sessionId);
   }
   activeSessions.clear();
+  sessionBackgroundTasks.clear();
   agentSessionToClientSession.clear();
 }
 
