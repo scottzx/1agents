@@ -12,6 +12,7 @@ docs/
 ├── guides/           编译打包、OAuth、ACP 环境配置
 ├── tips/             证书、语音等实操技巧
 ├── experience/       实战经验沉淀（非规格）
+├── insights/         核心观察、心得感悟与架构反思
 ├── GOAI/            Agent Infra 参赛方案与长期演进记录
 ├── discussions/      讨论稿与落地蓝图
 ├── assets/           图示、营销页静态资源
@@ -108,10 +109,12 @@ docs/
 
 ---
 
-## 6. 经验、讨论与归档
+## 6. 经验、心得与讨论
 
 | 目录 | 文档 | 说明 |
 |------|------|------|
+| `insights/` | [01-spec驱动编程与Agent自动化执行模式思考.md](./insights/01-spec驱动编程与Agent自动化执行模式思考.md) | **核心观察**：被动对话模式的极限与 Spec 驱动编程在任务看板+自动触发下的重塑 |
+| `insights/` | [02-1agents系统闭环反思与事件驱动缩短差距路径.md](./insights/02-1agents系统闭环反思与事件驱动缩短差距路径.md) | **系统深度反思**：1agents 现存 5 大节点断层诊断与 Event-Driven 闭环演进路径 |
 | `experience/` | [三执行者实战案例.md](./experience/三执行者实战案例.md) | agent / function / human 经验（认知层） |
 | `experience/` | [builtin-browser-webproxy-remotion.md](./experience/builtin-browser-webproxy-remotion.md) | 内置浏览器 path 反代 + Remotion composition 路由（成功经验） |
 | `GOAI/` | [技术方案v1.md](./GOAI/技术方案v1.md) | AgentTeams 粗粒度 Team Runtime 参赛方案（当前决策） |
