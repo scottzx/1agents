@@ -266,9 +266,8 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
         case 'channels':
             return <ChannelsPane theme={theme} language={language} />;
         case 'providers':
-            return wsStore.ccProvidersUrl.value ? (
+            return (
                 <CcProvidersPanel
-                    ccProvidersUrl={wsStore.ccProvidersUrl.value}
                     panelStyle={{
                         width: '100%',
                         height: '100%',
@@ -278,7 +277,7 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                         overflow: 'hidden',
                     }}
                 />
-            ) : null;
+            );
         case 'skills':
             return renderSkills(theme, language);
         case 'discovery': {
