@@ -13,6 +13,7 @@ export type AgentType =
     | 'claudecode'
     | 'codex'
     | 'grok-build'
+    | 'deepseek-build'
     | 'acp'
     | 'gemini'
     | 'cursor'
@@ -34,6 +35,7 @@ export const AGENT_TYPES: AgentType[] = [
     'claudecode',
     'codex',
     'grok-build',
+    'deepseek-build',
     'acp',
     'gemini',
     'cursor',
@@ -51,6 +53,7 @@ export const AGENT_TYPE_LABELS: Record<AgentType, string> = {
     claudecode: 'Claude',
     codex: 'Codex',
     'grok-build': 'Grok',
+    'deepseek-build': 'DeepSeek',
     acp: 'ACP (通用)',
     gemini: 'Gemini CLI',
     cursor: 'Cursor',

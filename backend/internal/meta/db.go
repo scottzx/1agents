@@ -105,7 +105,7 @@ func (db *DB) Close() error { return db.sql.Close() }
 // migrations without touching the global schemaVersion counter.
 func (db *DB) SQL() *sql.DB { return db.sql }
 
-const schemaVersion = 29
+const schemaVersion = 30
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -276,6 +276,15 @@ func (db *DB) migrateSchema() error {
 			return fmt.Errorf("meta: apply schema v29: %w", err)
 		}
 	}
+	// v30 (#322) adds the WorkCase kernel tables (work_cases + work_case_links).
+	// The DDL is reconciled by ensureWorkCaseSchema below (unconditional CREATE
+	// IF NOT EXISTS, same rationale as the turn/task-run schema) so databases
+	// whose user_version was advanced on a sibling branch also heal.
+	if version < 30 {
+		if _, err := db.sql.Exec(schemaV30); err != nil {
+			return fmt.Errorf("meta: apply schema v30: %w", err)
+		}
+	}
 	// Schema v9–v12 only add project_items columns, but the v9 branch collision
 	// between #47 (source, user_confirm) and #50 (verifier/review fields) left
 	// some DBs with user_version bumped to the latest while the other branch's
@@ -335,6 +344,12 @@ func (db *DB) migrateSchema() error {
 	}
 	if err := db.ensureTaskRunSchema(); err != nil {
 		return fmt.Errorf("meta: reconcile task run schema: %w", err)
+	}
+	// v30 (#322): WorkCase kernel tables. Reconciled unconditionally so a
+	// database whose user_version was advanced by a sibling branch still heals
+	// missing tables/indexes. Idempotent (CREATE IF NOT EXISTS).
+	if err := db.ensureWorkCaseSchema(); err != nil {
+		return fmt.Errorf("meta: reconcile work case schema: %w", err)
 	}
 	// v28 (#290) adds the feature catalog tables and milestones.version.
 	// Reconcile unconditionally so databases whose user_version was advanced by
@@ -999,6 +1014,11 @@ const schemaV28 = ``
 // database whose user_version was advanced on another branch also heals.
 const schemaV29 = ``
 
+// schemaV30 (#322) adds the WorkCase kernel tables (§4.3). The const body is
+// intentionally empty — the DDL is reconciled by ensureWorkCaseSchema so a
+// database whose user_version was advanced on another branch also heals.
+const schemaV30 = ``
+
 func (db *DB) ensureFeatureCatalogSchema() error {
 	if _, err := db.sql.Exec(`
 		CREATE TABLE IF NOT EXISTS feature_nodes (
@@ -1150,6 +1170,55 @@ func (db *DB) ensureTaskRunSchema() error {
 		}
 	}
 	return nil
+}
+
+// ensureWorkCaseSchema creates the WorkCase kernel tables (v30, #322) when
+// missing. Idempotent (CREATE IF NOT EXISTS) and independent of user_version:
+// re-running migrations never fails and a DB left half-migrated by a sibling
+// branch heals on next Open.
+//
+// Schema neutrality (§3.1): the columns carry no domain vocabulary — no
+// presales stage, budget, SKU or listing fields. current_phase is an opaque
+// application projection; case_definition names the app-side case type that
+// interprets it.
+func (db *DB) ensureWorkCaseSchema() error {
+	_, err := db.sql.Exec(`
+		CREATE TABLE IF NOT EXISTS work_cases (
+			id                TEXT PRIMARY KEY,
+			project_id        TEXT NOT NULL,
+			case_definition   TEXT NOT NULL DEFAULT '',
+			status            TEXT NOT NULL DEFAULT 'open' CHECK (
+				status IN ('open','suspended','closed','cancelled')
+			),
+			title             TEXT NOT NULL DEFAULT '',
+			objective         TEXT NOT NULL DEFAULT '',
+			owner             TEXT NOT NULL DEFAULT '',
+			created_by        TEXT NOT NULL DEFAULT '',
+			current_phase     TEXT NOT NULL DEFAULT '',
+			primary_subject   TEXT NOT NULL DEFAULT '',
+			subject_refs      TEXT NOT NULL DEFAULT '[]',
+			participants      TEXT NOT NULL DEFAULT '[]',
+			expected_close_at TEXT,
+			version           INTEGER NOT NULL DEFAULT 1,
+			close_reason      TEXT NOT NULL DEFAULT '',
+			closed_at         TEXT,
+			created_at        TEXT NOT NULL,
+			updated_at        TEXT NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_work_cases_project
+			ON work_cases(project_id, status, created_at DESC, id DESC);
+
+		CREATE TABLE IF NOT EXISTS work_case_links (
+			case_id    TEXT NOT NULL,
+			link_kind  TEXT NOT NULL CHECK (link_kind IN ('task','session','artifact')),
+			target_id  TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			PRIMARY KEY (case_id, link_kind, target_id)
+		);
+		CREATE INDEX IF NOT EXISTS idx_work_case_links_target
+			ON work_case_links(link_kind, target_id);
+	`)
+	return err
 }
 
 func (db *DB) ensureTurnModelSchema() error {

@@ -39,3 +39,16 @@ func (a *API) IssueTasksFromBusiness(namespace, ref, stage string, specs []Dispa
 func (a *API) ListTasksForBusiness(ref string) ([]meta.Task, error) {
 	return a.store.ListTasksByBusinessRef(ref)
 }
+
+// QueryTasksByCase returns the tasks linked to a WorkCase (#322: Task 可按
+// Case 查询). WorkCase is kernel-owned, so this read path is open to every
+// application — the case aggregate is shared coordination state (§4.3).
+func (a *API) QueryTasksByCase(caseID string) ([]meta.Task, error) {
+	return meta.NewWorkCaseStore(a.store.DB()).ListTasksByCase(caseID)
+}
+
+// QueryTaskRunsByCase returns every execution/verification run of the case's
+// linked tasks, newest first (#322: TaskRun 可按 Case 查询).
+func (a *API) QueryTaskRunsByCase(caseID string) ([]meta.TaskRun, error) {
+	return meta.NewWorkCaseStore(a.store.DB()).ListTaskRunsByCase(caseID)
+}

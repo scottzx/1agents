@@ -38,6 +38,7 @@ import type { RoundtableSeat } from '@1agents/core/services/roundtableService';
 import { enterL1App, exitL1App, archiveL1App, layoutMode, projectOverview } from '../../stores/stageStore';
 import { projectItemService } from '@1agents/core/services/taskService';
 import { openSearch } from '../../stores/searchStore';
+import { ShellSwitcher } from '../header/ShellSwitcher';
 import type { ChatSession } from '../types';
 
 /** Short label for assistant filter chips (first grapheme of name). */
@@ -663,7 +664,7 @@ export function LeftSidebar({
                 <div class="coze-brand">
                     <div class="brand-left">
                         <img class="brand-logo-img" src="/logo.png" />
-                        <span>1agents</span>
+                        <ShellSwitcher language={language} />
                     </div>
                     <div class="brand-right">
                         <button
@@ -783,6 +784,25 @@ export function LeftSidebar({
                             <line x1="3" y1="10" x2="21" y2="10" />
                         </svg>
                         <span>{t('sidebar.navCtrl.scheduledTasks', language)}</span>
+                    </div>
+                    <div
+                        class={`nav-control-item${activeDrawerTab === 'aggregate' ? ' active' : ''}`}
+                        onClick={() => toggleDrawerTab('aggregate')}
+                    >
+                        <svg
+                            class="btn-icon"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                            <polyline points="2 17 12 22 22 17" />
+                            <polyline points="2 12 12 17 22 12" />
+                        </svg>
+                        <span>{t('sidebar.navCtrl.aggregate', language)}</span>
                     </div>
                 </div>
             </div>

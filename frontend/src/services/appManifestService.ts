@@ -9,10 +9,26 @@ import * as wsStore from '../stores/workspaceStore';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+/**
+ * Product Shell placement fields (C0, design §8). All optional — mounts
+ * without them keep the legacy behavior: visible in every enabled shell,
+ * placed by type, declaration order, no permission gate.
+ */
+export interface MountPointShellFields {
+    /** Product shell ids this mount contributes to; empty = every shell. */
+    shells?: string[];
+    /** Placement zone within a shell; empty = derived from type. */
+    slot?: string;
+    /** Sort order within a slot (ascending, 0 default). */
+    order?: number;
+    /** Permission key required to see this mount; empty = everyone. */
+    permission?: string;
+}
+
 export type MountPoint =
-    | { type: 'project-tab'; id: string; label: string; view: string }
-    | { type: 'l1-page'; id: string; label: string; view: string; icon?: string }
-    | { type: 'lens'; id: string; label: string; view: string; scope: 'project' | 'home' };
+    | ({ type: 'project-tab'; id: string; label: string; view: string } & MountPointShellFields)
+    | ({ type: 'l1-page'; id: string; label: string; view: string; icon?: string } & MountPointShellFields)
+    | ({ type: 'lens'; id: string; label: string; view: string; scope: 'project' | 'home' } & MountPointShellFields);
 
 export interface AppManifest {
     id: string;

@@ -12,7 +12,7 @@
       }
     },
     {
-      "files": ["**/RemotionPlayerIsland.tsx"],
+      "files": ["**/RemotionPlayerIsland.tsx", "**/ContentViewHost.tsx"],
       "parserOptions": {
         "jsxPragma": "React"
       },

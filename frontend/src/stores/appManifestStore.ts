@@ -15,6 +15,7 @@
 
 import { signal, computed } from '@preact/signals';
 import { getApps, type AppManifest, type MountPoint } from '../services/appManifestService';
+import * as shellStore from './productShellStore';
 import type { RoundtableRoom, RoundtableSeat } from '@1agents/core/services/roundtableService';
 
 // ── Manifest state ────────────────────────────────────────────────────────────
@@ -57,40 +58,44 @@ export const loadApps = async (): Promise<void> => {
 /** Only the enabled apps. */
 export const enabledApps = computed<AppManifest[]>(() => appManifests.value.filter(a => a.enabled));
 
-/** All project-tab mount points from enabled apps. */
-export const projectTabMounts = computed<Array<{ app: AppManifest; mount: MountPoint & { type: 'project-tab' } }>>(
-    () => {
-        const result: Array<{ app: AppManifest; mount: MountPoint & { type: 'project-tab' } }> = [];
-        for (const app of enabledApps.value) {
-            for (const mp of app.mountPoints) {
-                if (mp.type === 'project-tab') result.push({ app, mount: mp as MountPoint & { type: 'project-tab' } });
-            }
+/**
+ * Product Shell awareness (design §8): mounts targeted at other shells are
+ * hidden from the active shell's navigation, and explicit `order` sorts
+ * mounts within their slot. Legacy mounts (no `shells` list) and legacy
+ * mode (no shell info) keep the existing rendering — filter passes, order
+ * defaults to 0, so declaration order is preserved.
+ */
+const collectMounts = <T extends MountPoint['type']>(
+    type: T
+): Array<{ app: AppManifest; mount: MountPoint & { type: T } }> => {
+    const result: Array<{ app: AppManifest; mount: MountPoint & { type: T } }> = [];
+    for (const app of enabledApps.value) {
+        for (const mp of app.mountPoints) {
+            if (mp.type !== type) continue;
+            if (!shellStore.mountVisibleInActiveShell(mp.shells)) continue;
+            result.push({ app, mount: mp as MountPoint & { type: T } });
         }
-        return result;
     }
+    // Array.prototype.sort is stable: equal (slot, order) keys keep
+    // declaration order.
+    result.sort((a, b) => shellStore.compareMountPlacement(a.mount, b.mount));
+    return result;
+};
+
+/** All project-tab mount points from enabled apps, composed for the active shell. */
+export const projectTabMounts = computed<Array<{ app: AppManifest; mount: MountPoint & { type: 'project-tab' } }>>(() =>
+    collectMounts('project-tab')
 );
 
-/** All l1-page mount points from enabled apps. */
-export const l1PageMounts = computed<Array<{ app: AppManifest; mount: MountPoint & { type: 'l1-page' } }>>(() => {
-    const result: Array<{ app: AppManifest; mount: MountPoint & { type: 'l1-page' } }> = [];
-    for (const app of enabledApps.value) {
-        for (const mp of app.mountPoints) {
-            if (mp.type === 'l1-page') result.push({ app, mount: mp as MountPoint & { type: 'l1-page' } });
-        }
-    }
-    return result;
-});
+/** All l1-page mount points from enabled apps, composed for the active shell. */
+export const l1PageMounts = computed<Array<{ app: AppManifest; mount: MountPoint & { type: 'l1-page' } }>>(() =>
+    collectMounts('l1-page')
+);
 
-/** All lens mount points from enabled apps. */
-export const lensMounts = computed<Array<{ app: AppManifest; mount: MountPoint & { type: 'lens' } }>>(() => {
-    const result: Array<{ app: AppManifest; mount: MountPoint & { type: 'lens' } }> = [];
-    for (const app of enabledApps.value) {
-        for (const mp of app.mountPoints) {
-            if (mp.type === 'lens') result.push({ app, mount: mp as MountPoint & { type: 'lens' } });
-        }
-    }
-    return result;
-});
+/** All lens mount points from enabled apps, composed for the active shell. */
+export const lensMounts = computed<Array<{ app: AppManifest; mount: MountPoint & { type: 'lens' } }>>(() =>
+    collectMounts('lens')
+);
 
 // ── Co-pilot context injection (#332) ────────────────────────────────────────
 

@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -15,7 +16,9 @@ import (
 	"time"
 
 	"github.com/scottzx/1Agents/backend/internal/agent/permission"
+	"github.com/scottzx/1Agents/backend/internal/commandbus"
 	"github.com/scottzx/1Agents/backend/internal/meta"
+	"github.com/scottzx/1Agents/backend/internal/outbox"
 	"github.com/scottzx/1Agents/backend/internal/workspace"
 )
 
@@ -27,9 +30,20 @@ type Handler struct {
 	activityStore *meta.ProjectActivityStore
 	taskRunStore  *meta.TaskRunStore
 	featureStore  *meta.FeatureCatalogStore
-	acpxClient    *AcpxClient
-	scheduler     *Scheduler
-	catalog       *CatalogStore
+	workCaseStore *meta.WorkCaseStore
+	eventStore    *meta.ProjectEventStore
+	// commandBus is the unified Command Gateway (#323, §5 D3): every case
+	// mutation dispatched from this REST surface goes through it, so Web,
+	// Agent, Function, Human, IM and external API share one write path with
+	// actor attribution, idempotency, optimistic concurrency and audit.
+	commandBus *commandbus.Gateway
+	// outboxDispatcher delivers the Outbox Events the command gateway appends
+	// atomically with each committed case mutation (#324, §5 D3): at-least-once
+	// with retry/backoff and per-consumer receipt dedup.
+	outboxDispatcher *outbox.Dispatcher
+	acpxClient       *AcpxClient
+	scheduler        *Scheduler
+	catalog          *CatalogStore
 	// selfBaseURL is this daemon's own loopback HTTP base (e.g.
 	// http://127.0.0.1:8080), injected into the AI Project Manager's
 	// task-tool MCP subprocess so it can call back into the task API.
@@ -43,6 +57,10 @@ func NewHandler(store *Store, tasksStore *TasksStore, acpxClient *AcpxClient, sc
 	var activityStore *meta.ProjectActivityStore
 	var taskRunStore *meta.TaskRunStore
 	var featureStore *meta.FeatureCatalogStore
+	var workCaseStore *meta.WorkCaseStore
+	var eventStore *meta.ProjectEventStore
+	var commandBus *commandbus.Gateway
+	var outboxDispatcher *outbox.Dispatcher
 	if acpxClient != nil {
 		turnStore = acpxClient.turnStore
 	}
@@ -50,22 +68,58 @@ func NewHandler(store *Store, tasksStore *TasksStore, acpxClient *AcpxClient, sc
 		activityStore = meta.NewProjectActivityStore(db)
 		taskRunStore = meta.NewTaskRunStore(db)
 		featureStore = meta.NewFeatureCatalogStore(db)
+		workCaseStore = meta.NewWorkCaseStore(db)
+		eventStore = meta.NewProjectEventStore(db)
 		if turnStore == nil {
 			turnStore = meta.NewAgentTurnStore(db)
 		}
+		// Unified Command Gateway (#323): the single write path for case
+		// state. Construction failure leaves it nil and the work-case
+		// mutation endpoints answer 500 (requireCommandBus).
+		if bus, err := commandbus.New(db.SQL()); err == nil {
+			if err := meta.RegisterWorkCaseCommands(bus, workCaseStore); err != nil {
+				log.Printf("[agent] register work case commands: %v", err)
+			} else {
+				commandBus = bus
+			}
+		} else {
+			log.Printf("[agent] command gateway unavailable: %v", err)
+		}
+		// Outbox dispatcher (#324): delivers the events the gateway appends
+		// atomically with each committed case mutation. Constructed here so
+		// it shares the command bus's database; the delivery loop itself is
+		// started by the server via StartOutboxDispatcher.
+		if disp, err := outbox.NewDispatcher(db.SQL()); err == nil {
+			outboxDispatcher = disp
+		} else {
+			log.Printf("[agent] outbox dispatcher unavailable: %v", err)
+		}
 	}
 	return &Handler{
-		store:         store,
-		tasksStore:    tasksStore,
-		turnStore:     turnStore,
-		activityStore: activityStore,
-		taskRunStore:  taskRunStore,
-		featureStore:  featureStore,
-		acpxClient:    acpxClient,
-		scheduler:     scheduler,
-		catalog:       catalog,
-		selfBaseURL:   selfBaseURL,
+		store:            store,
+		tasksStore:       tasksStore,
+		turnStore:        turnStore,
+		activityStore:    activityStore,
+		taskRunStore:     taskRunStore,
+		featureStore:     featureStore,
+		workCaseStore:    workCaseStore,
+		eventStore:       eventStore,
+		commandBus:       commandBus,
+		outboxDispatcher: outboxDispatcher,
+		acpxClient:       acpxClient,
+		scheduler:        scheduler,
+		catalog:          catalog,
+		selfBaseURL:      selfBaseURL,
 	}
+}
+
+// StartOutboxDispatcher launches the background delivery loop for Outbox
+// Events (#324). No-op when the dispatcher could not be constructed.
+func (h *Handler) StartOutboxDispatcher(interval time.Duration) {
+	if h.outboxDispatcher == nil {
+		return
+	}
+	go h.outboxDispatcher.Run(context.Background(), interval)
 }
 
 // resolveWorkspacePath resolves workspaceID to its absolute physical path on host

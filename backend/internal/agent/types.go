@@ -8,19 +8,20 @@ import "github.com/scottzx/1Agents/backend/internal/meta"
 type AgentType = string
 
 const (
-	AgentTypeClaudecode AgentType = "claudecode"
-	AgentTypeCodex      AgentType = "codex"
-	AgentTypeGrokBuild  AgentType = "grok-build"
-	AgentTypeAcp        AgentType = "acp"
-	AgentTypeGemini     AgentType = "gemini"
-	AgentTypeCursor     AgentType = "cursor"
-	AgentTypeDevin      AgentType = "devin"
-	AgentTypeIflow      AgentType = "iflow"
-	AgentTypeKimi       AgentType = "kimi"
-	AgentTypeOpencode   AgentType = "opencode"
-	AgentTypePi         AgentType = "pi"
-	AgentTypeQoder      AgentType = "qoder"
-	AgentTypeTmux       AgentType = "tmux"
+	AgentTypeClaudecode    AgentType = "claudecode"
+	AgentTypeCodex          AgentType = "codex"
+	AgentTypeGrokBuild      AgentType = "grok-build"
+	AgentTypeDeepSeekBuild  AgentType = "deepseek-build"
+	AgentTypeAcp            AgentType = "acp"
+	AgentTypeGemini         AgentType = "gemini"
+	AgentTypeCursor         AgentType = "cursor"
+	AgentTypeDevin          AgentType = "devin"
+	AgentTypeIflow          AgentType = "iflow"
+	AgentTypeKimi           AgentType = "kimi"
+	AgentTypeOpencode       AgentType = "opencode"
+	AgentTypePi             AgentType = "pi"
+	AgentTypeQoder          AgentType = "qoder"
+	AgentTypeTmux           AgentType = "tmux"
 )
 
 // SupportedAgentTypes is the canonical list served by /api/agent/agent-types.
@@ -29,6 +30,7 @@ var SupportedAgentTypes = []AgentType{
 	AgentTypeClaudecode,
 	AgentTypeCodex,
 	AgentTypeGrokBuild,
+	AgentTypeDeepSeekBuild,
 	AgentTypeAcp,
 	AgentTypeGemini,
 	AgentTypeCursor,

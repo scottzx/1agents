@@ -71,6 +71,7 @@ var AgentCatalog = []AgentDescriptor{
 	// adapter-backed entries above, it is chat-ready only when the Grok CLI is
 	// discoverable on the host.
 	{Type: AgentTypeGrokBuild, Label: "Grok", Binary: "grok", AcpCapable: true, CliCapable: true, CcTransport: TransportACP, Integrated: true, InstallCommand: "curl -fsSL https://x.ai/cli/install.sh | bash"},
+	{Type: AgentTypeDeepSeekBuild, Label: "DeepSeek", Binary: "grok", AcpCapable: true, CliCapable: true, CcTransport: TransportACP, Integrated: true, InstallCommand: "curl -fsSL https://x.ai/cli/install.sh | bash"},
 	{Type: AgentTypeCursor, Label: "Cursor Agent", Binary: "agent", AcpCapable: true, CliCapable: true, CcTransport: TransportCLIStream, Integrated: true, InstallCommand: "curl https://cursor.com/install -fsS | bash"},
 	{Type: AgentTypeGemini, Label: "Gemini", Binary: "gemini", AcpCapable: true, CliCapable: true, CcTransport: TransportCLIStream, Integrated: true, InstallCommand: "npm install -g @google/gemini-cli"},
 	{Type: AgentTypeDevin, Label: "Devin", Binary: "devin", AcpCapable: true, CliCapable: true, CcTransport: TransportACP, Integrated: true, InstallCommand: "curl -fsSL https://cli.devin.ai/install.sh | bash"},

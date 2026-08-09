@@ -10,6 +10,7 @@ export * from '../protocol/session';
 export * from '../protocol/permission';
 export * from './featureCatalog';
 export * from './task';
+export * from './workcase';
 
 /** A single file or directory entry returned by /api/fs/list */
 export interface FsEntry {

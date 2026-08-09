@@ -886,19 +886,12 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                     {/* ── Tab 2: Providers (Model Management) ── */}
                     {activeMobileTab === 'providers' && (
                         <div class="mobile-tab-content">
-                            {ccProvidersUrl ? (
-                                <div class="mobile-iframe-container" style="flex: 1; min-height: 0; overflow: hidden;">
-                                    <CcProvidersPanel
-                                        ccProvidersUrl={ccProvidersUrl}
-                                        panelStyle="width: 100%; height: 100%; display: flex; flex-direction: column;"
-                                    />
-                                </div>
-                            ) : (
-                                <div class="fb-loading">
-                                    <div class="fb-loading-spinner" />
-                                    <span>正在加载模型管理...</span>
-                                </div>
-                            )}
+                            <div class="mobile-iframe-container" style="flex: 1; min-height: 0; overflow: hidden;">
+                                <CcProvidersPanel
+                                    ccProvidersUrl={ccProvidersUrl}
+                                    panelStyle="width: 100%; height: 100%; display: flex; flex-direction: column;"
+                                />
+                            </div>
                         </div>
                     )}
 
@@ -1010,11 +1003,11 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                     <div class="mobile-subview-content" style="overflow: hidden;">
                                         <iframe
                                             id="harnesskit-iframe"
-                                            src={
-                                                `/api/harnesskit/#${(activeMobileTab === 'skills' && tabsStore.activeModulePath.value) ||
+                                            src={`/api/harnesskit/#${
+                                                (activeMobileTab === 'skills' && tabsStore.activeModulePath.value) ||
                                                 this.state.mountedSkillsPath ||
-                                                '/overview'}`
-                                            }
+                                                '/overview'
+                                            }`}
                                             allow="clipboard-read; clipboard-write"
                                             style="width: 100%; height: 100%; border: none; display: block;"
                                         />

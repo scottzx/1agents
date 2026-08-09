@@ -51,7 +51,11 @@ export function TaskPreviewDrawer({ open, task, onClose, onOpenFull }: TaskPrevi
     return (
         <Fragment>
             <div class="task-preview-backdrop" onClick={onClose} />
-            <aside class="preview-drawer task-preview-drawer task-preview" role="dialog" aria-label={`任务详情预览：${task.title}`}>
+            <aside
+                class="preview-drawer task-preview-drawer task-preview"
+                role="dialog"
+                aria-label={`任务详情预览：${task.title}`}
+            >
                 <header class="task-preview-head">
                     <div class="task-preview-head-main">
                         <div class="task-preview-badges">
