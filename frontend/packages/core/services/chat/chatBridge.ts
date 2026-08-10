@@ -145,6 +145,8 @@ export interface SessionBridgeState {
     typing: boolean;
     ws: ChatTransport | null;
     listeners: Set<() => void>;
+    notifyTimer: ReturnType<typeof setTimeout> | null;
+    lastNotifyAt: number;
     turnStarted: boolean;
     activeTurnId: string | null;
     lastTurnSequence: Record<string, number>;
@@ -279,6 +281,8 @@ export class ChatBridgeManager {
                 typing: false,
                 ws: null,
                 listeners: new Set(),
+                notifyTimer: null,
+                lastNotifyAt: 0,
                 turnStarted: false,
                 activeTurnId: null,
                 lastTurnSequence: {},
@@ -341,12 +345,20 @@ export class ChatBridgeManager {
                 clearTimeout(state.reconnectTimer);
                 state.reconnectTimer = null;
             }
+            if (state.notifyTimer) {
+                clearTimeout(state.notifyTimer);
+                state.notifyTimer = null;
+            }
             if (state.ws) {
                 if (state.ws.readyState === WS_OPEN) {
                     state.ws.send(JSON.stringify({ action: 'close_session', sessionId }));
                 }
                 state.ws.close();
             }
+            state.listeners.clear();
+            state.items = [];
+            state.pendingResults = [];
+            state.pendingPermissions = [];
             this.sessions.delete(sessionId);
             this.opts.onStatus?.(sessionId, null);
             this.opts.onConnection?.(sessionId, null);
@@ -932,7 +944,7 @@ export class ChatBridgeManager {
                     // Turn is over — a pending 停止 has been honored (or the turn
                     // finished on its own), so drop the cancel guard.
                     state.cancelling = false;
-                    this.notify(state);
+                    this.notify(state, true);
                     this.reloadHistory(session, state);
                     break;
                 }
@@ -955,7 +967,7 @@ export class ChatBridgeManager {
                     // on-disk record has been replayed.
                     state.pendingResults = [];
                     state.pendingPermissions = [];
-                    this.notify(state);
+                    this.notify(state, true);
                     break;
                 }
                 case 'protocol_error':
@@ -1375,6 +1387,9 @@ export class ChatBridgeManager {
     }
 
     private reloadHistory(session: ChatSession, state: SessionBridgeState) {
+        state.items = [];
+        state.pendingResults = [];
+        state.pendingPermissions = [];
         if (state.ws && state.ws.readyState === WS_OPEN) {
             state.ws.send(
                 JSON.stringify(
@@ -1449,17 +1464,38 @@ export class ChatBridgeManager {
         return true;
     }
 
-    private notify(state: SessionBridgeState) {
-        // Publish the derived live status into the host store so the sidebar dot
-        // tracks this session in real time, then repaint the chat subscribers.
+    private notify(state: SessionBridgeState, immediate: boolean = false) {
+        // High-priority metadata updates are published immediately to host callbacks
         this.opts.onStatus?.(state.sessionId, deriveLiveStatus(state));
-        // Also mirror the raw WS connection state so the workspace header can
-        // show the active session's connection status.
         this.opts.onConnection?.(state.sessionId, state.connection);
-        // Mirror auth state too — the ChatHeader badge reads this to render
-        // its red/grey/green state and decide whether to show a 重新认证/登录
-        // button at all.
         this.opts.onAuthState?.(state.sessionId, state.auth);
+
+        if (immediate || !state.turnStarted) {
+            this.flushNotifyListeners(state);
+            return;
+        }
+
+        const now = Date.now();
+        const elapsed = now - (state.lastNotifyAt || 0);
+        if (elapsed >= 60) {
+            this.flushNotifyListeners(state);
+            return;
+        }
+
+        if (!state.notifyTimer) {
+            state.notifyTimer = setTimeout(() => {
+                state.notifyTimer = null;
+                this.flushNotifyListeners(state);
+            }, 60 - elapsed);
+        }
+    }
+
+    private flushNotifyListeners(state: SessionBridgeState) {
+        if (state.notifyTimer) {
+            clearTimeout(state.notifyTimer);
+            state.notifyTimer = null;
+        }
+        state.lastNotifyAt = Date.now();
         for (const listener of state.listeners) {
             listener();
         }
