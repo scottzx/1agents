@@ -47,11 +47,13 @@ export function ModalHost() {
                     terminalDir={modal.wsModalTerminalDir.value}
                     chatChannel={modal.wsModalChatChannel.value}
                     defaultAgent={modal.wsModalDefaultAgent.value}
+                    defaultProfileId={modal.wsModalDefaultProfileId.value}
                     onNameChange={val => (modal.wsModalName.value = val)}
                     onPathChange={val => (modal.wsModalPath.value = val)}
                     onTerminalDirChange={val => (modal.wsModalTerminalDir.value = val)}
                     onChatChannelChange={val => (modal.wsModalChatChannel.value = val)}
                     onDefaultAgentChange={val => (modal.wsModalDefaultAgent.value = val)}
+                    onDefaultProfileChange={val => (modal.wsModalDefaultProfileId.value = val)}
                     onClose={modal.closeWsModal}
                     onBrowse={modal.openDirPickerForModal}
                     onSubmit={wsStore.submitWsModal}
@@ -99,6 +101,7 @@ export function ModalHost() {
                             workspaces={workspaces}
                             defaultWorkspaceId={defaultWsId}
                             defaultAgent={sessionSetupOpts.defaultAgent || ws?.defaultAgent || DEFAULT_AGENT_TYPE}
+                            defaultProfileId={sessionSetupOpts.defaultProfileId || ws?.defaultProfileId}
                             locked={locked}
                             workspaceName={locked ? ws?.name || '' : ''}
                             initialAgentRef={sessionSetupOpts.agentRef}
@@ -110,6 +113,7 @@ export function ModalHost() {
                                 void sess.createFromSessionSetup({
                                     workspaceId: values.workspaceId || defaultWsId,
                                     agentType: values.agentType,
+                                    profileId: values.profileId,
                                     name: values.name,
                                     initialMessage: opts.initialMessage,
                                     taskId: opts.taskId,

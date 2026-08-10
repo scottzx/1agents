@@ -33,6 +33,7 @@ export interface Workspace {
     terminalDir?: string;
     chatChannel?: string;
     defaultAgent?: import('../protocol/session').AgentType;
+    defaultProfileId?: string;
     builtin?: boolean;
     /**
      * "workforce" | "project" | "tmp" | "app" —

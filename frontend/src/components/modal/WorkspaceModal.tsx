@@ -3,6 +3,7 @@ import { t, type Lang } from '../i18n';
 import { AgentTypePicker } from '../chat/AgentTypePicker';
 import { type AgentType } from '../types';
 import { DEFAULT_AGENT_TYPE } from '../../services/agentService';
+import { AgentProfilePicker } from '../chat/AgentProfilePicker';
 
 interface WorkspaceModalProps {
     mode: 'create' | 'rename';
@@ -11,11 +12,13 @@ interface WorkspaceModalProps {
     terminalDir: string;
     chatChannel: string;
     defaultAgent: AgentType;
+    defaultProfileId: string;
     onNameChange: (val: string) => void;
     onPathChange: (val: string) => void;
     onTerminalDirChange: (val: string) => void;
     onChatChannelChange: (val: string) => void;
     onDefaultAgentChange: (val: AgentType) => void;
+    onDefaultProfileChange: (val: string) => void;
     onClose: () => void;
     onBrowse: () => void;
     onSubmit: () => void;
@@ -31,11 +34,13 @@ export class WorkspaceModal extends Component<WorkspaceModalProps> {
             terminalDir,
             chatChannel,
             defaultAgent,
+            defaultProfileId,
             onNameChange,
             onPathChange,
             onTerminalDirChange,
             onChatChannelChange,
             onDefaultAgentChange,
+            onDefaultProfileChange,
             onClose,
             onBrowse,
             onSubmit,
@@ -99,7 +104,9 @@ export class WorkspaceModal extends Component<WorkspaceModalProps> {
                         />
                         <label class="ws-modal-label">默认智能体</label>
                         <AgentTypePicker value={defaultAgent || DEFAULT_AGENT_TYPE} onChange={onDefaultAgentChange} />
-                        <p class="ws-modal-hint">新建聊天会话时默认使用此智能体；可以在创建会话时改为其他类型。</p>
+                        <label class="ws-modal-label">默认 Agent Profile</label>
+                        <AgentProfilePicker value={defaultProfileId} onChange={onDefaultProfileChange} allowLegacy />
+                        <p class="ws-modal-hint">Profile 优先于上方的传统智能体；留空则继续使用传统绑定。</p>
                         <label class="ws-modal-label">{t('modal.workspace.chatChannel', language)}</label>
                         <input
                             class="ws-modal-input"

@@ -430,6 +430,7 @@ export class ChatBridgeManager {
                 taskId: session.taskId,
                 sessionId: session.id,
                 agentType: session.agentType,
+                profileId: session.profileId,
                 replyId: session.replyId,
                 agentRef: session.agentRef,
             });
@@ -437,7 +438,8 @@ export class ChatBridgeManager {
             const taskId = session.taskId || '';
             const replyId = session.replyId || '';
             const agentRef = session.agentRef || '';
-            const wsUrl = `${this.opts.directWsOrigin()}/api/agent/chat/ws?workspace_id=${encodeURIComponent(session.workspaceId)}&task_id=${encodeURIComponent(taskId)}&session_id=${encodeURIComponent(session.id)}&agent_type=${encodeURIComponent(session.agentType)}&reply_id=${encodeURIComponent(replyId)}&agent_ref=${encodeURIComponent(agentRef)}`;
+            const profileId = session.profileId || '';
+            const wsUrl = `${this.opts.directWsOrigin()}/api/agent/chat/ws?workspace_id=${encodeURIComponent(session.workspaceId)}&task_id=${encodeURIComponent(taskId)}&session_id=${encodeURIComponent(session.id)}&agent_type=${encodeURIComponent(session.agentType)}&profile_id=${encodeURIComponent(profileId)}&reply_id=${encodeURIComponent(replyId)}&agent_ref=${encodeURIComponent(agentRef)}`;
             console.log('[ChatBridgeManager] Connecting to backend websocket:', wsUrl);
             // Route through the platform transport seam so weapp uses
             // Taro.connectSocket while web/Tauri use the browser WebSocket.
@@ -491,6 +493,16 @@ export class ChatBridgeManager {
                     // Re-fetch once ready so resume doesn't stay blank until
                     // the user hits header refresh.
                     this.reloadHistory(session, state);
+                    break;
+                }
+                case 'profile_upgraded': {
+                    state.items = appendError(
+                        state.items,
+                        payload.resumed
+                            ? `Agent Profile 已升级到 ${payload.profileId || ''} revision ${payload.profileRevision || ''}，已恢复原 ACP 会话。`
+                            : `Agent Profile 已升级到 ${payload.profileId || ''} revision ${payload.profileRevision || ''}；原 ACP 会话无法恢复，已创建新会话。`
+                    );
+                    this.notify(state);
                     break;
                 }
                 case 'session_meta': {

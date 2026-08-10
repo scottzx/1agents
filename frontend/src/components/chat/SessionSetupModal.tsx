@@ -16,6 +16,7 @@ interface SessionSetupModalProps {
     workspaces: Workspace[];
     defaultWorkspaceId: string;
     defaultAgent?: AgentType;
+    defaultProfileId?: string;
     locked?: boolean;
     workspaceName?: string;
     initialAgentRef?: string;
@@ -28,6 +29,7 @@ export function SessionSetupModal({
     workspaces,
     defaultWorkspaceId,
     defaultAgent,
+    defaultProfileId,
     locked = false,
     workspaceName = '',
     initialAgentRef,
@@ -92,6 +94,7 @@ export function SessionSetupModal({
                         defaultWorkspaceId={defaultWorkspaceId}
                         locked={locked}
                         defaultAgent={defaultAgent}
+                        defaultProfileId={defaultProfileId}
                         initialAgentRef={initialAgentRef}
                         teamMembers={teamMembers}
                         language={language}

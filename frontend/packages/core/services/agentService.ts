@@ -12,6 +12,7 @@ export interface IndexChatSessionRequest {
     workspace_id: string;
     name: string;
     agent_type: AgentType;
+    profile_id?: string;
     /** Optional issue-model soft link — set for sessions spawned from a task timeline. */
     task_id?: string;
     /** Special-purpose session role. 'pm' = in-app AI Project Manager (project-locked task tools + PM system prompt). */
@@ -178,6 +179,8 @@ interface RawChatSession {
     workspace_id: string | number;
     name?: string;
     agent_type?: string;
+    profile_id?: string;
+    profile_revision?: number;
     task_id?: string;
     cc_project?: string;
     cc_session_id?: string;
@@ -241,6 +244,8 @@ function normalizeChatSession(raw: RawChatSession): ChatSession {
         taskId: raw.task_id ? String(raw.task_id) : undefined,
         name: String(raw.name ?? ''),
         agentType: (raw.agent_type ?? DEFAULT_AGENT_TYPE) as AgentType,
+        profileId: raw.profile_id || undefined,
+        profileRevision: raw.profile_revision || undefined,
         ccProject: String(raw.cc_project ?? ''),
         ccSessionId: String(raw.cc_session_id ?? ''),
         acpSessionId: raw.acp_session_id ? String(raw.acp_session_id) : undefined,

@@ -22,6 +22,7 @@ export const wsModalPath = signal('');
 export const wsModalTerminalDir = signal('');
 export const wsModalChatChannel = signal('');
 export const wsModalDefaultAgent = signal<AgentType>(DEFAULT_AGENT_TYPE);
+export const wsModalDefaultProfileId = signal('');
 
 // ── Assistant create modal ─────────────────────────────────────────────────
 // Assistants ARE workspaces (the "对话" concept, extended to N of them). Their
@@ -62,6 +63,8 @@ export interface SessionSetupOpenOpts {
     locked?: boolean;
     /** Seed agent type (e.g. task assignee). */
     defaultAgent?: AgentType;
+    /** Seed a concrete Runtime + Provider + Model profile. */
+    defaultProfileId?: string;
     /** Bind created chat to a project-item task. */
     taskId?: string;
     /** Auto-send after create (Task replyMode=new). */
@@ -162,6 +165,7 @@ export const openCreateWorkspacePicker = () => {
         wsModalTerminalDir.value = '';
         wsModalChatChannel.value = '';
         wsModalDefaultAgent.value = DEFAULT_AGENT_TYPE;
+        wsModalDefaultProfileId.value = '';
     });
 };
 
@@ -188,6 +192,7 @@ export const openRenameWorkspaceModal = (ws: Workspace) => {
     wsModalTerminalDir.value = ws.terminalDir || '';
     wsModalChatChannel.value = ws.chatChannel || '';
     wsModalDefaultAgent.value = ws.defaultAgent || DEFAULT_AGENT_TYPE;
+    wsModalDefaultProfileId.value = ws.defaultProfileId || '';
 };
 
 export const closeWsModal = () => {
@@ -198,6 +203,7 @@ export const closeWsModal = () => {
     wsModalTerminalDir.value = '';
     wsModalChatChannel.value = '';
     wsModalDefaultAgent.value = DEFAULT_AGENT_TYPE;
+    wsModalDefaultProfileId.value = '';
 };
 
 /**

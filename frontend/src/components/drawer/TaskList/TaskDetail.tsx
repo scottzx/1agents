@@ -20,6 +20,7 @@ import * as ui from '../../../stores/uiStore';
 import { ProjectActivityTimeline } from '../../activity/ProjectActivityTimeline';
 import { TaskRunAuditTrail } from '../../activity/TaskRunAuditTrail';
 import { linkedFeatureEntries } from './featureCatalogModel';
+import { AgentProfilePicker } from '../../chat/AgentProfilePicker';
 
 // Tab / control icons — feather-style outline, inherit color via currentColor
 // (matches the inline-SVG convention in SessionsView/TaskTable).
@@ -517,6 +518,7 @@ export function TaskDetail({
         userConfirm?: boolean;
         checklist?: ChecklistItem[];
         assignee?: string;
+        target?: ProjectItem['target'];
     }) => {
         setTask(await projectItemService.patch(taskId, patch));
     };
@@ -666,6 +668,7 @@ export function TaskDetail({
             workspaceId,
             locked: true,
             defaultAgent: (agentType || task.assignee || 'claudecode') as AgentType,
+            defaultProfileId: task.target?.profile_id,
             initialMessage: initialMessage || seedMessage,
             taskId: taskId || task.id,
         });
@@ -1455,6 +1458,18 @@ export function TaskDetail({
                                             : t('task.detail.closeIssue', lang)}
                                     </button>
                                 </div>
+                                <label class="ws-modal-label" style={{ marginTop: 10 }}>
+                                    执行 Profile
+                                </label>
+                                <AgentProfilePicker
+                                    value={task.target?.profile_id}
+                                    allowLegacy
+                                    onChange={profileId =>
+                                        patchTask({
+                                            target: { ...task.target, profile_id: profileId || undefined },
+                                        }).catch(err => alert((err as Error).message))
+                                    }
+                                />
                             </div>
                         </div>
                     )}

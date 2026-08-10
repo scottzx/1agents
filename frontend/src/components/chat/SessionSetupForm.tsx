@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'preact/hooks';
 import { t, type Lang } from '../../i18n';
 import type { Workspace, AgentType } from '../types';
 import { AgentTypePicker } from './AgentTypePicker';
+import { AgentProfilePicker } from './AgentProfilePicker';
 import { WorkspaceScopePicker, ONESHOT_WORKSPACE_ID } from './WorkspaceScopePicker';
 import { sessionSetupDefaults, saveSessionSetupDefaults } from '../../stores/sessionSetupDefaults';
 import { agentCatalog, agentCatalogLoading, pickableAgents } from '../../stores/agentCatalogStore';
@@ -16,6 +17,7 @@ import { agentCatalog, agentCatalogLoading, pickableAgents } from '../../stores/
 export interface SessionSetupFormValues {
     mode: 'chat';
     agentType: AgentType;
+    profileId?: string;
     name: string;
     workspaceId: string;
     /** Team expert file ref; empty = primary. */
@@ -36,6 +38,7 @@ interface SessionSetupFormProps {
     /** Hidden workspace row when locked (assistant / project / task). */
     locked?: boolean;
     defaultAgent?: AgentType;
+    defaultProfileId?: string;
     initialAgentRef?: string;
     /** Team experts for the selected workspace. */
     teamMembers?: TeamMemberOption[];
@@ -66,6 +69,7 @@ export function SessionSetupForm({
     defaultWorkspaceId,
     locked = false,
     defaultAgent,
+    defaultProfileId,
     initialAgentRef,
     teamMembers = [],
     variant = 'create',
@@ -85,6 +89,7 @@ export function SessionSetupForm({
     );
 
     const [agentType, setAgentType] = useState<AgentType>(defaultAgent ?? stored.agentType ?? 'claudecode');
+    const [profileId, setProfileId] = useState(defaultProfileId ?? '');
     const [name, setName] = useState('');
     const [workspaceId, setWorkspaceId] = useState<string>(initialWorkspaceId);
     const [agentRef, setAgentRef] = useState(initialAgentRef ?? '');
@@ -99,6 +104,8 @@ export function SessionSetupForm({
         if (defaultAgent) setAgentType(defaultAgent);
     }, [defaultAgent]);
 
+    useEffect(() => setProfileId(defaultProfileId ?? ''), [defaultProfileId]);
+
     // Catalog still loading with no data → block confirm.
     const catalogBlocking = agentCatalogLoading.value && agentCatalog.value.length === 0;
     const noPickableAgent =
@@ -112,6 +119,7 @@ export function SessionSetupForm({
         const values: SessionSetupFormValues = {
             mode: 'chat',
             agentType,
+            profileId: profileId || undefined,
             name: name.trim(),
             workspaceId: effectiveWorkspaceId,
             agentRef: isOneshot ? undefined : agentRef || undefined,
@@ -148,6 +156,8 @@ export function SessionSetupForm({
         <div class="session-setup-form" onKeyDown={onKeyDown}>
             <label class="ws-modal-label">{t('sessionSetup.agent.label', language)}</label>
             <AgentTypePicker value={agentType} onChange={setAgentType} disabled={catalogBlocking} />
+            <label class="ws-modal-label">Agent Profile</label>
+            <AgentProfilePicker value={profileId} onChange={setProfileId} allowLegacy disabled={catalogBlocking} />
 
             {teamMembers.length > 0 && !isOneshot && (
                 <Fragment>

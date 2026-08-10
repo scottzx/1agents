@@ -3,6 +3,7 @@ import { useSignal } from '@preact/signals';
 import * as ui from '../../stores/uiStore';
 import { LlmProviderPanel } from '../settings/LlmProviderPanel';
 import { AgentSwitchPanel } from '../settings/AgentSwitchPanel';
+import { AgentProfilePanel } from '../settings/AgentProfilePanel';
 
 export interface CcProvidersPanelProps {
     ccProvidersUrl?: string;
@@ -13,7 +14,7 @@ export function CcProvidersPanel(props: CcProvidersPanelProps) {
     const { ccProvidersUrl, panelStyle } = props;
     void ccProvidersUrl;
     void panelStyle;
-    const activeTab = useSignal<'agents' | 'providers'>('agents');
+    const activeTab = useSignal<'profiles' | 'agents' | 'providers'>('profiles');
 
     return (
         <div
@@ -35,6 +36,22 @@ export function CcProvidersPanel(props: CcProvidersPanelProps) {
                     background: 'var(--bg-header, #fafafa)',
                 }}
             >
+                <button
+                    onClick={() => (activeTab.value = 'profiles')}
+                    style={{
+                        padding: '12px 18px',
+                        border: 'none',
+                        borderBottom:
+                            activeTab.value === 'profiles'
+                                ? '2px solid var(--accent, #0066cc)'
+                                : '2px solid transparent',
+                        background: 'transparent',
+                        color: activeTab.value === 'profiles' ? 'var(--accent, #0066cc)' : 'var(--fg-muted, #666)',
+                        cursor: 'pointer',
+                    }}
+                >
+                    Agent Profiles
+                </button>
                 <button
                     onClick={() => (activeTab.value = 'agents')}
                     style={{
@@ -73,7 +90,9 @@ export function CcProvidersPanel(props: CcProvidersPanelProps) {
 
             {/* Tab Content */}
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-                {activeTab.value === 'agents' ? (
+                {activeTab.value === 'profiles' ? (
+                    <AgentProfilePanel />
+                ) : activeTab.value === 'agents' ? (
                     <AgentSwitchPanel />
                 ) : (
                     <LlmProviderPanel language={ui.language.value} />

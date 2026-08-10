@@ -335,6 +335,7 @@ export interface RelayChatParams {
     taskId?: string;
     sessionId: string; // 1Agents chat session id
     agentType: string;
+    profileId?: string;
     replyId?: string;
     agentRef?: string; // team expert persona pick (forwarded to the node bridge)
 }

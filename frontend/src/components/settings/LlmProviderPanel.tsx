@@ -19,10 +19,13 @@ export interface ProviderItem {
     created_at?: number;
     updated_at?: number;
     endpoints?: ProviderEndpointItem[];
+    status?: string;
 }
 
 export interface ProviderEndpointItem {
-    agent_id: string;
+    family?: 'openai' | 'anthropic';
+    /** schema v3 compatibility only. */
+    agent_id?: string;
     protocol: string;
     base_url: string;
     api_key?: string;
@@ -43,9 +46,12 @@ interface ProviderModelItem {
 }
 
 const ENDPOINT_TYPES = [
-    { id: 'claude', label: 'Anthropic', protocol: 'anthropic' },
-    { id: 'codex', label: 'OpenAI', protocol: 'openai_responses' },
+    { id: 'anthropic', label: 'Anthropic', protocol: 'anthropic_messages' },
+    { id: 'openai', label: 'OpenAI', protocol: 'openai_responses' },
 ];
+
+const endpointFamily = (endpoint: ProviderEndpointItem): 'openai' | 'anthropic' =>
+    endpoint.family || (endpoint.agent_id === 'claude' ? 'anthropic' : 'openai');
 
 const formatTimestamp = (timestamp?: number) => (timestamp ? new Date(timestamp * 1000).toLocaleString() : '尚未刷新');
 
@@ -145,14 +151,22 @@ export function LlmProviderPanel(props: LlmProviderPanelProps) {
             formProtocol.value = preset.protocol;
             formModel.value = preset.model;
             formApiKey.value = '';
-            formEndpoints.value = [
-                preset.anthropic_base_url
-                    ? { agent_id: 'claude', protocol: 'anthropic', base_url: preset.anthropic_base_url }
-                    : undefined,
-                preset.openai_base_url
-                    ? { agent_id: 'codex', protocol: 'openai_responses', base_url: preset.openai_base_url }
-                    : undefined,
-            ].filter((endpoint): endpoint is ProviderEndpointItem => endpoint !== undefined);
+            const endpoints: ProviderEndpointItem[] = [];
+            if (preset.anthropic_base_url) {
+                endpoints.push({
+                    family: 'anthropic',
+                    protocol: 'anthropic_messages',
+                    base_url: preset.anthropic_base_url,
+                });
+            }
+            if (preset.openai_base_url) {
+                endpoints.push({
+                    family: 'openai',
+                    protocol: 'openai_responses',
+                    base_url: preset.openai_base_url,
+                });
+            }
+            formEndpoints.value = endpoints;
         } else {
             formName.value = '';
             formProtocol.value = 'dual';
@@ -169,18 +183,19 @@ export function LlmProviderPanel(props: LlmProviderPanelProps) {
         formName.value = p.name;
         formProtocol.value = p.protocol || 'openai';
         formApiKey.value = p.api_key || '';
-        const endpoints = p.endpoints?.length
-            ? p.endpoints
-            : [
-                  p.anthropic_base_url
-                      ? { agent_id: 'claude', protocol: 'anthropic', base_url: p.anthropic_base_url }
-                      : undefined,
-                  p.openai_base_url
-                      ? { agent_id: 'codex', protocol: 'openai_responses', base_url: p.openai_base_url }
-                      : undefined,
-              ].filter((endpoint): endpoint is ProviderEndpointItem => endpoint !== undefined);
+        const endpoints: ProviderEndpointItem[] = p.endpoints?.length ? [...p.endpoints] : [];
+        if (!p.endpoints?.length && p.anthropic_base_url) {
+            endpoints.push({
+                family: 'anthropic',
+                protocol: 'anthropic_messages',
+                base_url: p.anthropic_base_url,
+            });
+        }
+        if (!p.endpoints?.length && p.openai_base_url) {
+            endpoints.push({ family: 'openai', protocol: 'openai_responses', base_url: p.openai_base_url });
+        }
         formEndpoints.value = endpoints
-            .filter(endpoint => ENDPOINT_TYPES.some(type => type.id === endpoint.agent_id))
+            .filter(endpoint => ENDPOINT_TYPES.some(type => type.id === endpointFamily(endpoint)))
             .map(endpoint => ({
                 ...endpoint,
                 api_key: '',
@@ -206,7 +221,11 @@ export function LlmProviderPanel(props: LlmProviderPanelProps) {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(
                         editingId.value
-                            ? { provider_id: editingId.value, agent_id: target.agent_id, base_url: target.base_url }
+                            ? {
+                                  provider_id: editingId.value,
+                                  family: endpointFamily(target),
+                                  base_url: target.base_url,
+                              }
                             : {
                                   base_url: target.base_url,
                                   api_key: target.api_key || formApiKey.value,
@@ -247,13 +266,14 @@ export function LlmProviderPanel(props: LlmProviderPanelProps) {
                 name: formName.value,
                 protocol: formProtocol.value,
                 base_url: formEndpoints.value.find(endpoint => endpoint.base_url)?.base_url || '',
-                openai_base_url: formEndpoints.value.find(endpoint => endpoint.agent_id === 'codex')?.base_url,
-                anthropic_base_url: formEndpoints.value.find(endpoint => endpoint.agent_id === 'claude')?.base_url,
+                openai_base_url: formEndpoints.value.find(endpoint => endpointFamily(endpoint) === 'openai')?.base_url,
+                anthropic_base_url: formEndpoints.value.find(endpoint => endpointFamily(endpoint) === 'anthropic')
+                    ?.base_url,
                 api_key: formApiKey.value,
                 model: formModel.value,
                 model_ids: fetchedModels.value.length > 0 ? fetchedModels.value : undefined,
                 endpoints: formEndpoints.value.map(endpoint => ({
-                    agent_id: endpoint.agent_id,
+                    family: endpointFamily(endpoint),
                     protocol: endpoint.protocol,
                     base_url: endpoint.base_url,
                     api_key: endpoint.api_key || undefined,
@@ -302,18 +322,22 @@ export function LlmProviderPanel(props: LlmProviderPanelProps) {
 
     const addEndpoint = () => {
         const nextType = ENDPOINT_TYPES.find(
-            type => !formEndpoints.value.some(endpoint => endpoint.agent_id === type.id)
+            type => !formEndpoints.value.some(endpoint => endpointFamily(endpoint) === type.id)
         );
         if (!nextType) return;
         formEndpoints.value = [
             ...formEndpoints.value,
-            { agent_id: nextType.id, protocol: nextType.protocol, base_url: '', headers: {} },
+            { family: nextType.id as 'openai' | 'anthropic', protocol: nextType.protocol, base_url: '', headers: {} },
         ];
     };
 
-    const changeEndpointType = (index: number, agentId: string) => {
-        const type = ENDPOINT_TYPES.find(item => item.id === agentId);
-        updateEndpoint(index, { agent_id: agentId, protocol: type?.protocol || 'openai' });
+    const changeEndpointType = (index: number, family: string) => {
+        const type = ENDPOINT_TYPES.find(item => item.id === family);
+        updateEndpoint(index, {
+            family: family as 'openai' | 'anthropic',
+            agent_id: undefined,
+            protocol: type?.protocol || 'openai_chat',
+        });
     };
 
     const updateEndpointHeader = (endpointIndex: number, previousName: string, name: string, value: string) => {
@@ -476,8 +500,9 @@ export function LlmProviderPanel(props: LlmProviderPanelProps) {
 
                                 <div style={{ fontSize: '0.82rem', color: '#666', wordBreak: 'break-all' }}>
                                     {(p.endpoints || []).map(endpoint => (
-                                        <div key={endpoint.agent_id}>
-                                            {endpoint.agent_id}: <code>{endpoint.base_url}</code> · {endpoint.protocol}
+                                        <div key={endpointFamily(endpoint)}>
+                                            {endpointFamily(endpoint)}: <code>{endpoint.base_url}</code> ·{' '}
+                                            {endpoint.protocol}
                                             {endpoint.has_api_key ? ' · 已保存独立凭证' : ''}
                                         </div>
                                     ))}
@@ -681,7 +706,7 @@ export function LlmProviderPanel(props: LlmProviderPanelProps) {
                                 )}
                                 {formEndpoints.value.map((endpoint, endpointIndex) => (
                                     <div
-                                        key={`${endpoint.agent_id}-${endpointIndex}`}
+                                        key={`${endpointFamily(endpoint)}-${endpointIndex}`}
                                         style={{
                                             border: '1px solid var(--border, #ddd)',
                                             borderRadius: '8px',
@@ -693,7 +718,7 @@ export function LlmProviderPanel(props: LlmProviderPanelProps) {
                                             <label style={{ fontSize: '0.78rem' }}>
                                                 协议类型
                                                 <select
-                                                    value={endpoint.agent_id}
+                                                    value={endpointFamily(endpoint)}
                                                     onChange={e =>
                                                         changeEndpointType(
                                                             endpointIndex,
@@ -708,7 +733,8 @@ export function LlmProviderPanel(props: LlmProviderPanelProps) {
                                                             value={type.id}
                                                             disabled={formEndpoints.value.some(
                                                                 (item, index) =>
-                                                                    index !== endpointIndex && item.agent_id === type.id
+                                                                    index !== endpointIndex &&
+                                                                    endpointFamily(item) === type.id
                                                             )}
                                                         >
                                                             {type.label}

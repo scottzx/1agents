@@ -558,7 +558,8 @@ export const createChatSession = async (
     permissionMode?: import('../components/types').PermissionMode,
     taskId?: string,
     agentRef?: string,
-    ephemeral?: boolean
+    ephemeral?: boolean,
+    profileId?: string
 ) => {
     const wantTmp = ephemeral || workspaceId === 'oneshot';
     const ws = wantTmp ? undefined : wsStore.workspaces.value.find(w => w.id === workspaceId);
@@ -574,6 +575,7 @@ export const createChatSession = async (
             workspace_id: wantTmp ? 'oneshot' : workspaceId,
             name: name || `${agentType} 会话`,
             agent_type: agentType,
+            profile_id: profileId || undefined,
             role,
             permission_mode: permissionMode,
             task_id: taskId,
@@ -633,6 +635,7 @@ export const createFromSessionSetup = async (args: {
     taskId?: string;
     agentRef?: string;
     ephemeral?: boolean;
+    profileId?: string;
 }) => {
     const isOneshot = args.ephemeral || args.workspaceId === 'oneshot';
     const ws = isOneshot ? undefined : wsStore.workspaces.value.find(w => w.id === args.workspaceId);
@@ -653,7 +656,8 @@ export const createFromSessionSetup = async (args: {
         undefined,
         args.taskId,
         isOneshot ? undefined : args.agentRef || undefined,
-        isOneshot
+        isOneshot,
+        args.profileId || ws?.defaultProfileId
     );
 };
 
@@ -687,6 +691,7 @@ export const openSessionSetup = async (opts: SessionSetupOpenOpts = {}) => {
             initialMessage: opts.initialMessage,
             taskId: opts.taskId,
             agentRef: opts.agentRef,
+            profileId: opts.defaultProfileId || wsStore.workspaces.value.find(w => w.id === wsId)?.defaultProfileId,
         });
         return;
     }

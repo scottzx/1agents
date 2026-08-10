@@ -105,6 +105,8 @@ export interface ChatSession {
     initialMessage?: string;
     name: string;
     agentType: AgentType;
+    profileId?: string;
+    profileRevision?: number;
     ccProject: string; // cc-connect project name
     ccSessionId: string; // cc-connect session id
     /**

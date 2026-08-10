@@ -16,6 +16,7 @@ import type { PermissionDecision, PermissionMode } from './permission';
 
 export type BridgeEvent =
     | 'session_ready'
+    | 'profile_upgraded'
     | 'session_taken_over'
     | 'session_meta'
     | 'mode_changed'
@@ -50,6 +51,9 @@ export type BridgeEvent =
 /** Union of every field the bridge may put on an inbound event. */
 export interface BridgeEventPayload {
     event: string;
+    profileId?: string;
+    profileRevision?: number;
+    resumed?: boolean;
     text?: string;
     type?: string;
     arguments?: unknown;

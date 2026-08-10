@@ -318,7 +318,8 @@ export const createWorkspace = async (
     path: string,
     terminalDir?: string,
     chatChannel?: string,
-    defaultAgent?: AgentType
+    defaultAgent?: AgentType,
+    defaultProfileId?: string
 ) => {
     let id = name
         .toLowerCase()
@@ -343,6 +344,7 @@ export const createWorkspace = async (
         terminalDir: terminalDir?.trim() || undefined,
         chatChannel: chatChannel?.trim() || undefined,
         defaultAgent: defaultAgent || DEFAULT_AGENT_TYPE,
+        defaultProfileId: defaultProfileId || undefined,
     };
     try {
         await workspaceService.create(ws);
@@ -534,6 +536,7 @@ export const submitWsModal = async () => {
     const wsModalTerminalDir = modal.wsModalTerminalDir.value;
     const wsModalChatChannel = modal.wsModalChatChannel.value;
     const wsModalDefaultAgent = modal.wsModalDefaultAgent.value;
+    const wsModalDefaultProfileId = modal.wsModalDefaultProfileId.value;
     if (!wsModalName.trim()) return;
     modal.closeWsModal();
     if (wsModalMode === 'create') {
@@ -542,7 +545,8 @@ export const submitWsModal = async () => {
             wsModalPath.trim(),
             wsModalTerminalDir.trim(),
             wsModalChatChannel.trim(),
-            wsModalDefaultAgent
+            wsModalDefaultAgent,
+            wsModalDefaultProfileId
         );
     } else if (wsModalMode === 'rename' && wsModalTarget) {
         await updateWorkspace({
@@ -552,6 +556,7 @@ export const submitWsModal = async () => {
             terminalDir: wsModalTerminalDir.trim() || undefined,
             chatChannel: wsModalChatChannel.trim() || undefined,
             defaultAgent: wsModalDefaultAgent,
+            defaultProfileId: wsModalDefaultProfileId || undefined,
         });
     }
 };

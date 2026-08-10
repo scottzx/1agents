@@ -122,6 +122,12 @@ export interface ProjectItem {
      * agent → AgentType; human → user; function → function name.
      */
     assignee?: string;
+    target?: {
+        agent?: string;
+        profile_id?: string;
+        cwd?: string;
+        capabilities?: string[];
+    };
     /** Execution channel: agent | function | human (#192 / #193). */
     executor?: TaskExecutor;
     labels?: string[];
