@@ -14,8 +14,12 @@ import (
 )
 
 func endpointFor(p Provider, agentID AgentID) ProviderEndpoint {
+	family := EndpointFamilyOpenAI
+	if agentID == AgentClaude {
+		family = EndpointFamilyAnthropic
+	}
 	for _, endpoint := range p.Endpoints {
-		if endpoint.AgentID == agentID {
+		if endpoint.Family == family || endpoint.AgentID == agentID {
 			return endpoint
 		}
 	}
@@ -26,13 +30,23 @@ func endpointFor(p Provider, agentID AgentID) ProviderEndpoint {
 	if agentID != AgentClaude && p.OpenAIBaseURL != "" {
 		baseURL = p.OpenAIBaseURL
 	}
-	return ProviderEndpoint{AgentID: agentID, Protocol: protocol, BaseURL: baseURL}
+	return ProviderEndpoint{Family: family, Protocol: protocol, BaseURL: baseURL}
 }
 
 // EndpointForAgent returns the agent-specific endpoint, falling back to the
 // provider's legacy flat fields for migrated configurations.
 func EndpointForAgent(p Provider, agentID AgentID) ProviderEndpoint {
 	return endpointFor(p, agentID)
+}
+
+// EndpointForFamily returns a protocol-family endpoint without coupling it to
+// a particular desktop runtime.
+func EndpointForFamily(p Provider, family EndpointFamily) (ProviderEndpoint, bool) {
+	endpoint := endpointForFamily(p, family)
+	if endpoint == nil {
+		return ProviderEndpoint{}, false
+	}
+	return *endpoint, true
 }
 
 func credentialFor(p Provider, endpoint ProviderEndpoint) string {

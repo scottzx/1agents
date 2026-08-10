@@ -136,6 +136,7 @@ func turnFromMessage(bridge *ActiveBridge, msg WsMessage) meta.AgentTurn {
 		SessionID:          bridge.SessionID,
 		ClientRequestID:    clientRequestID,
 		AgentType:          firstNonEmpty(msg.AgentType, bridge.AgentType),
+		ProfileSnapshot:    append(json.RawMessage(nil), bridge.ProfileSnapshot...),
 		Status:             meta.AgentTurnStatus(msg.Status),
 		PromptText:         msg.PromptText,
 		RequestFingerprint: msg.RequestFingerprint,

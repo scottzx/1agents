@@ -1,8 +1,18 @@
 package provider
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"os/exec"
+)
 
-const CurrentSchemaVersion = 3
+const CurrentSchemaVersion = 4
+
+type EndpointFamily string
+
+const (
+	EndpointFamilyOpenAI    EndpointFamily = "openai"
+	EndpointFamilyAnthropic EndpointFamily = "anthropic"
+)
 
 type AgentID string
 
@@ -13,10 +23,11 @@ const (
 	AgentOpenCode AgentID = "opencode"
 )
 
-// ProviderEndpoint describes how one desktop agent reaches a provider. A
-// provider may expose different protocols and URLs to different agents.
+// ProviderEndpoint describes one protocol-family endpoint exposed by a
+// provider. AgentID is retained only so schema v3 files can be migrated.
 type ProviderEndpoint struct {
-	AgentID        AgentID           `json:"agent_id"`
+	Family         EndpointFamily    `json:"family,omitempty"`
+	AgentID        AgentID           `json:"agent_id,omitempty"`
 	Protocol       string            `json:"protocol"`
 	BaseURL        string            `json:"base_url"`
 	APIKey         string            `json:"api_key,omitempty"`
@@ -25,6 +36,79 @@ type ProviderEndpoint struct {
 	Headers        map[string]string `json:"headers,omitempty"`
 	HasHeaders     bool              `json:"has_headers,omitempty"`
 	HeaderNames    []string          `json:"header_names,omitempty"`
+}
+
+const (
+	ProfileStatusActive   = "active"
+	ProfileStatusDisabled = "disabled"
+	ProfileStatusArchived = "archived"
+)
+
+// AgentProfile is a stable, schedulable combination of runtime, provider,
+// model and public runtime options. Secrets remain provider-owned.
+type AgentProfile struct {
+	ID         string                     `json:"id"`
+	Name       string                     `json:"name"`
+	RuntimeID  string                     `json:"runtime_id"`
+	ProviderID string                     `json:"provider_id,omitempty"`
+	ModelID    string                     `json:"model_id,omitempty"`
+	Options    map[string]json.RawMessage `json:"options,omitempty"`
+	Revision   int                        `json:"revision"`
+	Status     string                     `json:"status"`
+	System     bool                       `json:"system,omitempty"`
+	CreatedAt  int64                      `json:"created_at"`
+	UpdatedAt  int64                      `json:"updated_at"`
+}
+
+type RuntimeDefinition struct {
+	ID                        string                  `json:"id"`
+	Label                     string                  `json:"label"`
+	SupportedEndpointFamilies []EndpointFamily        `json:"supported_endpoint_families"`
+	OptionSchema              []AgentOptionDefinition `json:"option_schema,omitempty"`
+	Installed                 bool                    `json:"installed"`
+	UnavailableReason         string                  `json:"unavailable_reason,omitempty"`
+}
+
+func RuntimeDefinitions() []RuntimeDefinition {
+	_, err := exec.LookPath("grok")
+	runtime := RuntimeDefinition{
+		ID:                        "grok-build",
+		Label:                     "Grok Build",
+		SupportedEndpointFamilies: []EndpointFamily{EndpointFamilyOpenAI},
+		Installed:                 err == nil,
+	}
+	if err != nil {
+		runtime.UnavailableReason = "grok runtime is not installed"
+	}
+	return []RuntimeDefinition{runtime}
+}
+
+// ResolvedProfileSnapshot is safe to persist with tasks, turns and sessions.
+// It deliberately contains no API keys or custom header values.
+type ResolvedProfileSnapshot struct {
+	ProfileID       string                     `json:"profile_id"`
+	ProfileName     string                     `json:"profile_name"`
+	ProfileRevision int                        `json:"profile_revision"`
+	RuntimeID       string                     `json:"runtime_id"`
+	ProviderID      string                     `json:"provider_id"`
+	ProviderName    string                     `json:"provider_name"`
+	ModelID         string                     `json:"model_id"`
+	EndpointFamily  EndpointFamily             `json:"endpoint_family"`
+	Protocol        string                     `json:"protocol"`
+	BaseURL         string                     `json:"base_url"`
+	ModelsEndpoint  string                     `json:"models_endpoint,omitempty"`
+	Options         map[string]json.RawMessage `json:"options,omitempty"`
+	ResolvedAt      int64                      `json:"resolved_at"`
+}
+
+// ProfileLaunchSpec is produced by a code-owned runtime adapter. Credentials
+// are transient and intentionally excluded from JSON serialization.
+type ProfileLaunchSpec struct {
+	Snapshot    ResolvedProfileSnapshot `json:"snapshot"`
+	Argv        []string                `json:"argv"`
+	Model       string                  `json:"model"`
+	Env         map[string]string       `json:"env,omitempty"`
+	Credentials map[string]string       `json:"-"`
 }
 
 type ModelCapabilities struct {

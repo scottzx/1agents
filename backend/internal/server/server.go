@@ -127,6 +127,8 @@ func NewRouter(cfg *config.Config, harnessKitRuntime ...harnesskit.Runtime) http
 	mux.HandleFunc("/api/agents/runtime", handleAgentRuntime)                      // GET
 	mux.HandleFunc("/api/agents/options", handleAgentOptions)                      // GET
 	mux.HandleFunc("/api/agents/binding", handleAgentBinding)                      // POST {binding, apply}
+	mux.HandleFunc("/api/agent-profiles", handleAgentProfiles)                     // GET, POST
+	mux.HandleFunc("/api/agent-profiles/", handleAgentProfileItem)                 // PUT /{id}, POST /{id}/archive|restore
 
 	// ── Domain ownership gate (C0, design §7/§13.3) ────────────────────────
 	// Registers the kernel ownership ledger, ensures the denial-audit table

@@ -73,9 +73,10 @@ type ActiveBridge struct {
 	// Issue-model write-back state (issue-model §8). TaskID/AgentType are
 	// fixed at bridge creation; ReplyID is the timeline reply that
 	// triggered the current turn and is refreshed on client reconnects.
-	TaskID    string
-	AgentType string
-	ReplyID   string
+	TaskID          string
+	AgentType       string
+	ProfileSnapshot json.RawMessage
+	ReplyID         string
 	// tasksStore lets the client-read loop record each user prompt back to
 	// the task timeline (symmetric to writeAgentReply), so the conversation
 	// is captured server-side regardless of which UI sent the prompt.
@@ -227,6 +228,7 @@ type WsMessage struct {
 	SessionID           string           `json:"sessionId,omitempty"`
 	WorkspacePath       string           `json:"workspacePath,omitempty"`
 	AgentType           string           `json:"agentType,omitempty"`
+	Launch              *RuntimeLaunch   `json:"launch,omitempty"`
 	CCSessionID         string           `json:"ccSessionId,omitempty"`
 	AcpSessionID        string           `json:"acpSessionId,omitempty"`
 	SystemContext       string           `json:"systemContext,omitempty"`
@@ -305,7 +307,7 @@ type WsMessage struct {
 	PermissionMode string `json:"permissionMode,omitempty"`
 }
 
-func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, projectID, workspacePath, taskId, sessionId, agentType, systemContext string, mcpServers json.RawMessage, scheduler *Scheduler, tasksStore *TasksStore, chatStore *Store, acpSessionID, replyID string) {
+func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, projectID, workspacePath, taskId, sessionId, agentType, systemContext string, mcpServers json.RawMessage, scheduler *Scheduler, tasksStore *TasksStore, chatStore *Store, acpSessionID, replyID string, launch *RuntimeLaunch) {
 	clientConn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("[acpx_client] upgrade failed: %v", err)
@@ -355,6 +357,10 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, projectID, w
 		if replyID != "" {
 			bridge.ReplyID = replyID
 		}
+		if launch != nil {
+			bridge.AgentType = launch.RuntimeID
+			bridge.ProfileSnapshot = append(json.RawMessage(nil), launch.Snapshot...)
+		}
 		bridge.mu.Unlock()
 		c.mu.Unlock()
 
@@ -378,6 +384,7 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, projectID, w
 			McpServers:      mcpServers,
 			Env:             sessionEnv,
 			PermissionMode:  reconnectMode,
+			Launch:          launch,
 		}
 		ensureStart := time.Now()
 		bridge.mu.Lock()
@@ -416,14 +423,20 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, projectID, w
 	log.Printf("[acpx_client] Dial bridge-server succeeded for %s (took %v)", sessionId, dialDur)
 
 	bridge = &ActiveBridge{
-		SessionID:      sessionId,
-		ProjectID:      projectID,
-		WorkspacePath:  workspacePath,
-		ClientConn:     clientConn,
-		ServerConn:     serverConn,
-		MsgChan:        make(chan []byte, 100),
-		TaskID:         taskId,
-		AgentType:      agentType,
+		SessionID:     sessionId,
+		ProjectID:     projectID,
+		WorkspacePath: workspacePath,
+		ClientConn:    clientConn,
+		ServerConn:    serverConn,
+		MsgChan:       make(chan []byte, 100),
+		TaskID:        taskId,
+		AgentType:     agentType,
+		ProfileSnapshot: func() json.RawMessage {
+			if launch == nil {
+				return nil
+			}
+			return append(json.RawMessage(nil), launch.Snapshot...)
+		}(),
 		ReplyID:        replyID,
 		tasksStore:     tasksStore,
 		chatStore:      chatStore,
@@ -463,6 +476,7 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, projectID, w
 		McpServers:      mcpServers,
 		Env:             sessionEnv,
 		PermissionMode:  initialMode,
+		Launch:          launch,
 	}
 	ensureStart := time.Now()
 	if err := serverConn.WriteJSON(ensureMsg); err != nil {
@@ -790,7 +804,26 @@ func (c *AcpxClient) readFromClientLoop(bridge *ActiveBridge, clientConn *websoc
 		bridge.touch()
 		var msg WsMessage
 		if err := json.Unmarshal(raw, &msg); err != nil {
-			log.Printf("[acpx_client] Peek unmarshal of client message failed for session %s (forwarding raw): %v", bridge.SessionID, err)
+			log.Printf("[acpx_client] Reject malformed client message for session %s: %v", bridge.SessionID, err)
+			_ = clientConn.WriteJSON(WsMessage{
+				Event:     "error",
+				SessionID: bridge.SessionID,
+				Code:      "INVALID_CLIENT_MESSAGE",
+				Message:   "client message must be valid JSON",
+			})
+			continue
+		}
+		// Session launch is host-owned. Browsers may control turns and runtime
+		// interaction, but must never bypass the Go Profile Resolver by sending
+		// their own argv, environment, or credentials to 1ACP.
+		if msg.Action == "ensure_session" || msg.Launch != nil {
+			_ = clientConn.WriteJSON(WsMessage{
+				Event:     "error",
+				SessionID: bridge.SessionID,
+				Code:      "HOST_OWNED_LAUNCH",
+				Message:   "runtime launch configuration is controlled by the Go backend",
+			})
+			continue
 		}
 
 		// First prompt of a fresh session on a non-native agent: prepend the

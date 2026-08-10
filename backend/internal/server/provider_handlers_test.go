@@ -142,6 +142,56 @@ func TestAgentOptionsAPI(t *testing.T) {
 	}
 }
 
+func TestAgentProfilesCRUDArchiveAndRestore(t *testing.T) {
+	store := useTestProviderStore(t)
+	_, err := store.AddOrUpdate(provider.Provider{
+		ID:       "profile-provider",
+		Name:     "Profile Provider",
+		APIKey:   "profile-secret",
+		Model:    "model-a",
+		ModelIDs: []string{"model-a", "model-b"},
+		Endpoints: []provider.ProviderEndpoint{{
+			Family:   provider.EndpointFamilyOpenAI,
+			Protocol: "openai_chat",
+			BaseURL:  "https://example.test/v1",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	create := `{"id":"profile-build","name":"Profile Build","runtime_id":"grok-build","provider_id":"profile-provider","model_id":"model-a"}`
+	recorder := httptest.NewRecorder()
+	handleAgentProfiles(recorder, httptest.NewRequest(http.MethodPost, "/api/agent-profiles", strings.NewReader(create)))
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"revision":1`) {
+		t.Fatalf("create status = %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if strings.Contains(recorder.Body.String(), "profile-secret") {
+		t.Fatalf("profile response leaked secret: %s", recorder.Body.String())
+	}
+
+	update := `{"name":"Profile Build","runtime_id":"grok-build","provider_id":"profile-provider","model_id":"model-b","status":"active"}`
+	recorder = httptest.NewRecorder()
+	handleAgentProfileItem(recorder, httptest.NewRequest(http.MethodPut, "/api/agent-profiles/profile-build", strings.NewReader(update)))
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"revision":2`) {
+		t.Fatalf("update status = %d: %s", recorder.Code, recorder.Body.String())
+	}
+
+	for _, action := range []string{"archive", "restore"} {
+		recorder = httptest.NewRecorder()
+		handleAgentProfileItem(recorder, httptest.NewRequest(http.MethodPost, "/api/agent-profiles/profile-build/"+action, nil))
+		if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"status":"`+map[string]string{"archive": "archived", "restore": "active"}[action]+`"`) {
+			t.Fatalf("%s status = %d: %s", action, recorder.Code, recorder.Body.String())
+		}
+	}
+
+	recorder = httptest.NewRecorder()
+	handleAgentProfiles(recorder, httptest.NewRequest(http.MethodGet, "/api/agent-profiles", nil))
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"runtimes"`) || !strings.Contains(recorder.Body.String(), `"profile-build"`) {
+		t.Fatalf("list status = %d: %s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestAgentRuntimeReadsDesktopConfigFiles(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

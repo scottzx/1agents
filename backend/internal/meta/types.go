@@ -68,8 +68,11 @@ type Project struct {
 	TerminalDir  string `json:"terminalDir,omitempty"`
 	ChatChannel  string `json:"chatChannel,omitempty"`
 	DefaultAgent string `json:"defaultAgent,omitempty"`
-	Builtin      bool   `json:"builtin,omitempty"`
-	Position     int    `json:"position,omitempty"`
+	// DefaultProfileID is preferred over DefaultAgent for new task dispatch.
+	// DefaultAgent remains readable for one compatibility cycle.
+	DefaultProfileID string `json:"defaultProfileId,omitempty"`
+	Builtin          bool   `json:"builtin,omitempty"`
+	Position         int    `json:"position,omitempty"`
 	// AvailableAgents is the allowlist of agent types that may run in this
 	// workspace (e.g. ["claudecode", "codex"]). Empty means unrestricted.
 	AvailableAgents []string `json:"availableAgents,omitempty"`
@@ -147,10 +150,12 @@ func IsOneshotWorkspaceID(id string) bool {
 }
 
 type ChatSessionRecord struct {
-	ID          string `json:"id"`
-	WorkspaceID string `json:"workspace_id"`
-	Name        string `json:"name"`
-	AgentType   string `json:"agent_type"`
+	ID              string `json:"id"`
+	WorkspaceID     string `json:"workspace_id"`
+	Name            string `json:"name"`
+	AgentType       string `json:"agent_type"`
+	ProfileID       string `json:"profile_id,omitempty"`
+	ProfileRevision int    `json:"profile_revision,omitempty"`
 	// TaskID is the optional soft link to a task. Sessions spawned from a
 	// task carry it; sidebar renders a task badge when set. Empty for
 	// standalone sessions (no enforcement — issue-model decision 3).
@@ -245,6 +250,8 @@ const (
 type TaskTargetSpec struct {
 	// AgentType overrides Task.Assignee for dispatch (e.g. "claudecode").
 	AgentType string `json:"agent,omitempty"`
+	// ProfileID selects a concrete Runtime + Provider + Model profile.
+	ProfileID string `json:"profile_id,omitempty"`
 	// Cwd is the absolute working directory the agent should cd into. Defaults
 	// to the project's WorkspacePath when empty.
 	Cwd string `json:"cwd,omitempty"`

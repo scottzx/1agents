@@ -9,19 +9,19 @@ type AgentType = string
 
 const (
 	AgentTypeClaudecode    AgentType = "claudecode"
-	AgentTypeCodex          AgentType = "codex"
-	AgentTypeGrokBuild      AgentType = "grok-build"
-	AgentTypeDeepSeekBuild  AgentType = "deepseek-build"
-	AgentTypeAcp            AgentType = "acp"
-	AgentTypeGemini         AgentType = "gemini"
-	AgentTypeCursor         AgentType = "cursor"
-	AgentTypeDevin          AgentType = "devin"
-	AgentTypeIflow          AgentType = "iflow"
-	AgentTypeKimi           AgentType = "kimi"
-	AgentTypeOpencode       AgentType = "opencode"
-	AgentTypePi             AgentType = "pi"
-	AgentTypeQoder          AgentType = "qoder"
-	AgentTypeTmux           AgentType = "tmux"
+	AgentTypeCodex         AgentType = "codex"
+	AgentTypeGrokBuild     AgentType = "grok-build"
+	AgentTypeDeepSeekBuild AgentType = "deepseek-build"
+	AgentTypeAcp           AgentType = "acp"
+	AgentTypeGemini        AgentType = "gemini"
+	AgentTypeCursor        AgentType = "cursor"
+	AgentTypeDevin         AgentType = "devin"
+	AgentTypeIflow         AgentType = "iflow"
+	AgentTypeKimi          AgentType = "kimi"
+	AgentTypeOpencode      AgentType = "opencode"
+	AgentTypePi            AgentType = "pi"
+	AgentTypeQoder         AgentType = "qoder"
+	AgentTypeTmux          AgentType = "tmux"
 )
 
 // SupportedAgentTypes is the canonical list served by /api/agent/agent-types.
@@ -77,22 +77,22 @@ type (
 	Reply             = meta.Reply
 	// ProjectItem is the primary board-row type (table project_items; #197).
 	// Task is a transitional alias — prefer ProjectItem in new code.
-	ProjectItem       = meta.ProjectItem
-	Task              = meta.Task
-	TasksConfig       = meta.TasksConfig
-	Milestone         = meta.Milestone
-	Project           = meta.Project
-	MilestonePatch    = meta.MilestonePatch
-	TaskLink          = meta.TaskLink
-	LinkRel           = meta.LinkRel
-	LinkGraph         = meta.LinkGraph
-	LinkEdge          = meta.LinkEdge
-	Priority          = meta.Priority
-	Recurrence        = meta.Recurrence
-	ChecklistItem     = meta.ChecklistItem
-	WorkspaceRef      = meta.WorkspaceRef
-	ReviewVerdict     = meta.ReviewVerdict
-	CriterionResult   = meta.CriterionResult
+	ProjectItem     = meta.ProjectItem
+	Task            = meta.Task
+	TasksConfig     = meta.TasksConfig
+	Milestone       = meta.Milestone
+	Project         = meta.Project
+	MilestonePatch  = meta.MilestonePatch
+	TaskLink        = meta.TaskLink
+	LinkRel         = meta.LinkRel
+	LinkGraph       = meta.LinkGraph
+	LinkEdge        = meta.LinkEdge
+	Priority        = meta.Priority
+	Recurrence      = meta.Recurrence
+	ChecklistItem   = meta.ChecklistItem
+	WorkspaceRef    = meta.WorkspaceRef
+	ReviewVerdict   = meta.ReviewVerdict
+	CriterionResult = meta.CriterionResult
 )
 
 // PriorityRank re-exports the scheduler ordering helper.
@@ -179,6 +179,7 @@ type IndexRequest struct {
 	WorkspaceID string    `json:"workspace_id" binding:"required"`
 	Name        string    `json:"name"`
 	AgentType   AgentType `json:"agent_type" binding:"required"`
+	ProfileID   string    `json:"profile_id,omitempty"`
 	// TaskID is the optional issue-model soft link; set when the session is
 	// spawned from a task timeline so the sidebar badge shows immediately.
 	TaskID string `json:"task_id"`

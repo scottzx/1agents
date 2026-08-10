@@ -33,7 +33,7 @@ func TestFetchModelsTriesCompatibleCandidatePaths(t *testing.T) {
 
 func TestLoadMigratesLegacyProviderData(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "providers.json")
-	legacy := `{"active_provider_id":"relay","providers":[{"id":"relay","name":"Relay","protocol":"dual","base_url":"https://example.test/v1","api_key":"secret","model":"model-a","model_ids":["model-a","model-b"]}]}`
+	legacy := `{"schema_version":3,"active_provider_id":"relay","providers":[{"id":"relay","name":"Relay","protocol":"dual","base_url":"https://example.test/v1","api_key":"secret","model":"model-a","model_ids":["model-a","model-b"]}]}`
 	if err := os.WriteFile(path, []byte(legacy), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -57,8 +57,11 @@ func TestLoadMigratesLegacyProviderData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(persisted), `"schema_version": 3`) {
+	if !strings.Contains(string(persisted), `"schema_version": 4`) {
 		t.Fatalf("migration was not persisted: %s", persisted)
+	}
+	if _, err := os.Stat(path + ".v3.bak"); err != nil {
+		t.Fatalf("schema v3 backup missing: %v", err)
 	}
 }
 
@@ -72,7 +75,7 @@ func TestLoadRetiresGeminiAndCanonicalizesImportedEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(pd.Providers[0].Endpoints) != 2 || pd.Providers[0].Endpoints[0].AgentID != AgentClaude || pd.Providers[0].Endpoints[1].AgentID != AgentCodex {
+	if len(pd.Providers[0].Endpoints) != 2 || pd.Providers[0].Endpoints[0].Family != EndpointFamilyAnthropic || pd.Providers[0].Endpoints[1].Family != EndpointFamilyOpenAI {
 		t.Fatalf("canonical endpoints = %#v", pd.Providers[0].Endpoints)
 	}
 	if strings.Join(pd.Providers[0].Apps, ",") != "openclaw,opencode" {

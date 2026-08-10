@@ -11,6 +11,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/scottzx/1Agents/backend/internal/meta"
+	"github.com/scottzx/1Agents/backend/internal/provider"
 )
 
 // TaskRunner executes tasks headlessly: when the scheduler fires (trigger
@@ -24,20 +25,22 @@ type TaskRunner struct {
 	// selfBaseURL is the daemon's loopback HTTP base (e.g. http://127.0.0.1:PORT)
 	// — the verifier's tasks MCP subprocess calls back into it via submit_review.
 	// Distinct from serverPort, which is the 1acp bridge (WebSocket) port.
-	selfBaseURL string
-	tasksStore  *TasksStore
-	chatStore   *Store
-	scheduler   *Scheduler
+	selfBaseURL   string
+	tasksStore    *TasksStore
+	chatStore     *Store
+	scheduler     *Scheduler
+	providerStore *provider.Store
 }
 
 // NewTaskRunner wires a runner over the same stores the HTTP handlers use.
 func NewTaskRunner(serverPort int, selfBaseURL string, tasksStore *TasksStore, chatStore *Store, scheduler *Scheduler) *TaskRunner {
 	return &TaskRunner{
-		serverPort:  serverPort,
-		selfBaseURL: selfBaseURL,
-		tasksStore:  tasksStore,
-		chatStore:   chatStore,
-		scheduler:   scheduler,
+		serverPort:    serverPort,
+		selfBaseURL:   selfBaseURL,
+		tasksStore:    tasksStore,
+		chatStore:     chatStore,
+		scheduler:     scheduler,
+		providerStore: provider.NewStore(""),
 	}
 }
 
@@ -69,13 +72,19 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 	}()
 
 	sessionID := newID()
+	resolvedProfile, profileErr := r.resolveTaskProfile(workspaceID, task)
 	taskRun, runErr := r.tasksStore.TaskRuns().Create(workspacePath, meta.TaskRun{
 		TaskID: task.ID, SessionID: sessionID, Kind: meta.TaskRunExecution,
+		ProfileSnapshot: resolvedProfile.snapshot,
 	})
 	if runErr != nil {
 		log.Printf("[runner] create TaskRun for task %s: %v", task.ID, runErr)
 	}
 	taskRunID := taskRun.ID
+	if profileErr != nil {
+		r.finish(workspacePath, task.ID, sessionID, taskRunID, TaskStatusFailed, "profile unavailable: "+profileErr.Error())
+		return
+	}
 
 	// Card content is YAML-frontmatter Markdown: execute against the prose body,
 	// and treat acceptance from the frontmatter (or the legacy column) as the
@@ -87,6 +96,9 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 	}
 
 	agentType := task.Assignee
+	if resolvedProfile.launch != nil {
+		agentType = resolvedProfile.launch.RuntimeID
+	}
 	if agentType == "" {
 		agentType = DefaultAgentType
 	}
@@ -105,11 +117,15 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 		TaskID:      task.ID,
 		Name:        fmt.Sprintf("%s - 自动执行", task.Title),
 		AgentType:   agentType,
+		ProfileID:   resolvedProfile.profileID,
 		Role:        SessionRoleAuto,
 		// Unattended runs must not block on permission prompts: nobody is
 		// at the browser to approve, so a pending request would time out
 		// and fail the task (confirmed decision: approve-all).
 		PermissionMode: "approve-all",
+	}
+	if resolvedProfile.launch != nil {
+		rec.ProfileRevision = resolvedProfile.launch.ProfileRevision
 	}
 	if err := r.chatStore.Add(rec); err != nil {
 		log.Printf("[runner] index session for task %s: %v", task.ID, err)
@@ -131,6 +147,7 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 		AgentType:      agentType,
 		SystemContext:  buildIssueBackground(&task, workspacePath),
 		PermissionMode: "approve-all",
+		Launch:         resolvedProfile.launch,
 	}
 	if err := conn.WriteJSON(ensure); err != nil {
 		r.finish(workspacePath, task.ID, sessionID, taskRunID, TaskStatusFailed, "ensure_session failed: "+err.Error())
@@ -140,10 +157,11 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 	// Reuse the bridged-path accumulator so the timeline write-back has the
 	// exact same semantics (output deltas, reset on tool_call, flush on done).
 	bridge := &ActiveBridge{
-		SessionID:     sessionID,
-		WorkspacePath: workspacePath,
-		TaskID:        task.ID,
-		AgentType:     agentType,
+		SessionID:       sessionID,
+		WorkspacePath:   workspacePath,
+		TaskID:          task.ID,
+		AgentType:       agentType,
+		ProfileSnapshot: append(json.RawMessage(nil), resolvedProfile.snapshot...),
 	}
 
 	log.Printf("[runner] Auto-executing task %s (%q) in %s, session %s", task.ID, task.Title, workspacePath, sessionID)

@@ -19,6 +19,7 @@ func NewAgentTurnStore(db *DB) *AgentTurnStore {
 
 const agentTurnCols = `id, project_id, session_id, client_request_id,
 	initiating_reply_id, agent_type, status, prompt_text, request_fingerprint,
+	profile_snapshot_json,
 	final_answer, error_code, error_text, runtime_record_id, runtime_request_id,
 	prompt_message_id, final_reply_id, stop_reason, terminal_source,
 	last_event_seq, started_at, completed_at, created_at, updated_at`
@@ -26,11 +27,11 @@ const agentTurnCols = `id, project_id, session_id, client_request_id,
 func scanAgentTurn(row rowScanner) (AgentTurn, error) {
 	var turn AgentTurn
 	var startedAt, completedAt sql.NullString
-	var createdAt, updatedAt string
+	var createdAt, updatedAt, snapshotJSON string
 	if err := row.Scan(
 		&turn.ID, &turn.ProjectID, &turn.SessionID, &turn.ClientRequestID,
 		&turn.InitiatingReplyID, &turn.AgentType, &turn.Status,
-		&turn.PromptText, &turn.RequestFingerprint, &turn.FinalAnswer,
+		&turn.PromptText, &turn.RequestFingerprint, &snapshotJSON, &turn.FinalAnswer,
 		&turn.ErrorCode, &turn.ErrorText, &turn.RuntimeRecordID,
 		&turn.RuntimeRequestID, &turn.PromptMessageID, &turn.FinalReplyID,
 		&turn.StopReason, &turn.TerminalSource, &turn.LastEventSeq,
@@ -39,6 +40,9 @@ func scanAgentTurn(row rowScanner) (AgentTurn, error) {
 		return AgentTurn{}, err
 	}
 	turn.StartedAt = valToTimePtr(startedAt)
+	if snapshotJSON != "" {
+		turn.ProfileSnapshot = json.RawMessage(snapshotJSON)
+	}
 	turn.CompletedAt = valToTimePtr(completedAt)
 	turn.CreatedAt = strToTime(createdAt)
 	turn.UpdatedAt = strToTime(updatedAt)
@@ -113,14 +117,14 @@ func (s *AgentTurnStore) Create(turn AgentTurn) (stored AgentTurn, created bool,
 	if _, err := tx.Exec(`
 		INSERT INTO agent_turns (
 			id, project_id, session_id, client_request_id, initiating_reply_id,
-			agent_type, status, prompt_text, request_fingerprint, final_answer,
+			agent_type, status, prompt_text, request_fingerprint, profile_snapshot_json, final_answer,
 			error_code, error_text, runtime_record_id, runtime_request_id,
 			prompt_message_id, final_reply_id, stop_reason, terminal_source,
 			last_event_seq, started_at, completed_at, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		turn.ID, turn.ProjectID, turn.SessionID, turn.ClientRequestID,
 		turn.InitiatingReplyID, turn.AgentType, turn.Status, turn.PromptText,
-		turn.RequestFingerprint, turn.FinalAnswer, turn.ErrorCode, turn.ErrorText,
+		turn.RequestFingerprint, string(turn.ProfileSnapshot), turn.FinalAnswer, turn.ErrorCode, turn.ErrorText,
 		turn.RuntimeRecordID, turn.RuntimeRequestID, turn.PromptMessageID,
 		turn.FinalReplyID, turn.StopReason, turn.TerminalSource,
 		turn.LastEventSeq, nil, nil,

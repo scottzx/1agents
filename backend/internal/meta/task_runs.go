@@ -37,10 +37,12 @@ type TaskRun struct {
 	Verdict         *ReviewVerdict       `json:"verdict,omitempty"`
 	ClosedBy        *ClosedBy            `json:"closedBy,omitempty"`
 	ErrorText       string               `json:"errorText,omitempty"`
-	StartedAt       time.Time            `json:"startedAt"`
-	CompletedAt     *time.Time           `json:"completedAt,omitempty"`
-	CreatedAt       time.Time            `json:"createdAt"`
-	UpdatedAt       time.Time            `json:"updatedAt"`
+	// ProfileSnapshot is a resolved, credential-free execution snapshot.
+	ProfileSnapshot json.RawMessage `json:"profileSnapshot,omitempty"`
+	StartedAt       time.Time       `json:"startedAt"`
+	CompletedAt     *time.Time      `json:"completedAt,omitempty"`
+	CreatedAt       time.Time       `json:"createdAt"`
+	UpdatedAt       time.Time       `json:"updatedAt"`
 }
 
 type TaskRunStore struct {
@@ -126,10 +128,11 @@ func (s *TaskRunStore) Create(workspacePath string, run TaskRun) (TaskRun, error
 		INSERT INTO task_runs (
 			id, project_id, task_id, origin_turn_id, session_id, kind, status,
 			attempt, evidence_json, verdict_json, closed_by_json, error_text,
-			started_at, completed_at, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', '', ?, NULL, ?, ?)`,
+			profile_snapshot_json, started_at, completed_at, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', '', ?, ?, NULL, ?, ?)`,
 		run.ID, run.ProjectID, run.TaskID, nullableString(run.OriginTurnID),
 		run.SessionID, run.Kind, run.Status, run.Attempt, string(evidenceJSON),
+		string(run.ProfileSnapshot),
 		timeToStr(run.StartedAt), timeToStr(run.CreatedAt), timeToStr(run.UpdatedAt),
 	)
 	if err != nil {
@@ -372,21 +375,24 @@ func (s *TaskRunStore) originTurnForTask(projectID, taskID string) (string, erro
 
 const taskRunCols = `id, project_id, task_id, origin_turn_id, session_id, kind,
 	status, attempt, evidence_json, verdict_json, closed_by_json, error_text,
-	started_at, completed_at, created_at, updated_at`
+	profile_snapshot_json, started_at, completed_at, created_at, updated_at`
 
 func scanTaskRun(row rowScanner) (TaskRun, error) {
 	var run TaskRun
 	var originTurn sql.NullString
-	var evidenceJSON, verdictJSON, closedByJSON, startedAt, createdAt, updatedAt string
+	var evidenceJSON, verdictJSON, closedByJSON, snapshotJSON, startedAt, createdAt, updatedAt string
 	var completed sql.NullString
 	if err := row.Scan(
 		&run.ID, &run.ProjectID, &run.TaskID, &originTurn, &run.SessionID,
 		&run.Kind, &run.Status, &run.Attempt, &evidenceJSON, &verdictJSON,
-		&closedByJSON, &run.ErrorText, &startedAt, &completed, &createdAt, &updatedAt,
+		&closedByJSON, &run.ErrorText, &snapshotJSON, &startedAt, &completed, &createdAt, &updatedAt,
 	); err != nil {
 		return TaskRun{}, err
 	}
 	run.OriginTurnID = originTurn.String
+	if snapshotJSON != "" {
+		run.ProfileSnapshot = json.RawMessage(snapshotJSON)
+	}
 	run.StartedAt = strToTime(startedAt)
 	run.CreatedAt = strToTime(createdAt)
 	run.UpdatedAt = strToTime(updatedAt)

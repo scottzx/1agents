@@ -105,7 +105,7 @@ func (db *DB) Close() error { return db.sql.Close() }
 // migrations without touching the global schemaVersion counter.
 func (db *DB) SQL() *sql.DB { return db.sql }
 
-const schemaVersion = 30
+const schemaVersion = 31
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -443,6 +443,7 @@ func (db *DB) ensureProjectsColumns() error {
 		{"terminal_dir", "ALTER TABLE projects ADD COLUMN terminal_dir TEXT NOT NULL DEFAULT ''"},
 		{"chat_channel", "ALTER TABLE projects ADD COLUMN chat_channel TEXT NOT NULL DEFAULT ''"},
 		{"default_agent", "ALTER TABLE projects ADD COLUMN default_agent TEXT NOT NULL DEFAULT ''"},
+		{"default_profile_id", "ALTER TABLE projects ADD COLUMN default_profile_id TEXT NOT NULL DEFAULT ''"},
 		{"builtin", "ALTER TABLE projects ADD COLUMN builtin INTEGER NOT NULL DEFAULT 0"},
 		{"position", "ALTER TABLE projects ADD COLUMN position INTEGER NOT NULL DEFAULT 0"},
 		// available_agents: JSON array of allowed agent type slugs (e.g. ["claudecode"]).
@@ -587,6 +588,8 @@ func (db *DB) ensureSessionsColumns() error {
 		{"user_named", "ALTER TABLE sessions ADD COLUMN user_named INTEGER NOT NULL DEFAULT 0"},
 		// Oneshot chats store the disposable agent cwd here (not a real project path).
 		{"cwd", "ALTER TABLE sessions ADD COLUMN cwd TEXT NOT NULL DEFAULT ''"},
+		{"profile_id", "ALTER TABLE sessions ADD COLUMN profile_id TEXT NOT NULL DEFAULT ''"},
+		{"profile_revision", "ALTER TABLE sessions ADD COLUMN profile_revision INTEGER NOT NULL DEFAULT 0"},
 	}
 	for _, c := range wanted {
 		if have[c.name] {
@@ -1144,6 +1147,7 @@ func (db *DB) ensureTaskRunSchema() error {
 			verdict_json   TEXT NOT NULL DEFAULT '',
 			closed_by_json TEXT NOT NULL DEFAULT '',
 			error_text     TEXT NOT NULL DEFAULT '',
+			profile_snapshot_json TEXT NOT NULL DEFAULT '',
 			started_at     TEXT NOT NULL,
 			completed_at   TEXT,
 			created_at     TEXT NOT NULL,
@@ -1167,6 +1171,15 @@ func (db *DB) ensureTaskRunSchema() error {
 	if !have["closed_by"] {
 		if _, err := db.sql.Exec(`ALTER TABLE project_items ADD COLUMN closed_by TEXT NOT NULL DEFAULT ''`); err != nil {
 			return err
+		}
+	}
+	taskRunCols, err := db.tableColumns("task_runs")
+	if err != nil {
+		return err
+	}
+	if !taskRunCols["profile_snapshot_json"] {
+		if _, err := db.sql.Exec(`ALTER TABLE task_runs ADD COLUMN profile_snapshot_json TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add task_runs.profile_snapshot_json: %w", err)
 		}
 	}
 	return nil
@@ -1235,6 +1248,7 @@ func (db *DB) ensureTurnModelSchema() error {
 			),
 			prompt_text         TEXT NOT NULL DEFAULT '',
 			request_fingerprint TEXT NOT NULL DEFAULT '',
+			profile_snapshot_json TEXT NOT NULL DEFAULT '',
 			final_answer        TEXT NOT NULL DEFAULT '',
 			error_code          TEXT NOT NULL DEFAULT '',
 			error_text          TEXT NOT NULL DEFAULT '',
@@ -1313,6 +1327,7 @@ func (db *DB) ensureTurnModelSchema() error {
 		ddl  string
 	}{
 		{"request_fingerprint", `TEXT NOT NULL DEFAULT ''`},
+		{"profile_snapshot_json", `TEXT NOT NULL DEFAULT ''`},
 		{"runtime_record_id", `TEXT NOT NULL DEFAULT ''`},
 		{"runtime_request_id", `TEXT NOT NULL DEFAULT ''`},
 		{"prompt_message_id", `TEXT NOT NULL DEFAULT ''`},

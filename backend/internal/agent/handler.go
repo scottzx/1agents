@@ -19,6 +19,7 @@ import (
 	"github.com/scottzx/1Agents/backend/internal/commandbus"
 	"github.com/scottzx/1Agents/backend/internal/meta"
 	"github.com/scottzx/1Agents/backend/internal/outbox"
+	"github.com/scottzx/1Agents/backend/internal/provider"
 	"github.com/scottzx/1Agents/backend/internal/workspace"
 )
 
@@ -44,6 +45,7 @@ type Handler struct {
 	acpxClient       *AcpxClient
 	scheduler        *Scheduler
 	catalog          *CatalogStore
+	providerStore    *provider.Store
 	// selfBaseURL is this daemon's own loopback HTTP base (e.g.
 	// http://127.0.0.1:8080), injected into the AI Project Manager's
 	// task-tool MCP subprocess so it can call back into the task API.
@@ -109,6 +111,7 @@ func NewHandler(store *Store, tasksStore *TasksStore, acpxClient *AcpxClient, sc
 		acpxClient:       acpxClient,
 		scheduler:        scheduler,
 		catalog:          catalog,
+		providerStore:    provider.NewStore(""),
 		selfBaseURL:      selfBaseURL,
 	}
 }
@@ -378,21 +381,33 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	// session_key identify the cc-connect / IM side and stay empty for
 	// ACP-only sessions (e.g. task timeline sessions, which talk to the
 	// agent purely through the chat WS bridge).
-	if body.WorkspaceID == "" || body.AgentType == "" {
-		http.Error(w, "workspace_id and agent_type are required", http.StatusBadRequest)
+	if body.WorkspaceID == "" || (body.AgentType == "" && body.ProfileID == "") {
+		http.Error(w, "workspace_id and agent_type or profile_id are required", http.StatusBadRequest)
 		return
+	}
+	profileRevision := 0
+	if body.ProfileID != "" {
+		launch, _, err := resolveProfile(h.providerStore, body.ProfileID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			return
+		}
+		body.AgentType = launch.RuntimeID
+		profileRevision = launch.ProfileRevision
 	}
 	sessionID := newID()
 	rec := ChatSessionRecord{
-		ID:          sessionID,
-		WorkspaceID: body.WorkspaceID,
-		Name:        body.Name,
-		AgentType:   body.AgentType,
-		TaskID:      body.TaskID,
-		CcProject:   body.CcProject,
-		CcSessionID: body.CcSessionID,
-		SessionKey:  body.SessionKey,
-		Role:        body.Role,
+		ID:              sessionID,
+		WorkspaceID:     body.WorkspaceID,
+		Name:            body.Name,
+		AgentType:       body.AgentType,
+		ProfileID:       body.ProfileID,
+		ProfileRevision: profileRevision,
+		TaskID:          body.TaskID,
+		CcProject:       body.CcProject,
+		CcSessionID:     body.CcSessionID,
+		SessionKey:      body.SessionKey,
+		Role:            body.Role,
 	}
 	// 单次对话 (kind=tmp): real WorkspaceId + disposable pwd. UI may hide the path.
 	if body.Ephemeral || body.WorkspaceID == meta.OneshotWorkspaceID {
@@ -914,9 +929,10 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		GithubAssignees *[]string  `json:"githubAssignees,omitempty"`
 		LastSyncedAt    *time.Time `json:"lastSyncedAt,omitempty"`
 		// Task kernel result / summary fields (#318, #324).
-		Result  *string `json:"result,omitempty"`
-		Summary *string `json:"summary,omitempty"`
-		FeatureID *string `json:"featureId,omitempty"`
+		Result    *string         `json:"result,omitempty"`
+		Summary   *string         `json:"summary,omitempty"`
+		FeatureID *string         `json:"featureId,omitempty"`
+		Target    *TaskTargetSpec `json:"target,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -964,6 +980,12 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 	if body.Verifier != nil && *body.Verifier != "" && !IsSupportedAgentType(*body.Verifier) {
 		http.Error(w, "unknown verifier agent type: "+*body.Verifier, http.StatusBadRequest)
 		return
+	}
+	if body.Target != nil && body.Target.ProfileID != "" {
+		if _, err := h.providerStore.ResolveProfile(body.Target.ProfileID); err != nil {
+			http.Error(w, "invalid target profile: "+err.Error(), http.StatusUnprocessableEntity)
+			return
+		}
 	}
 
 	// Whole-config load/mutate/save (same path the CLI uses), so a single
@@ -1184,6 +1206,11 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		}
 		if body.Summary != nil {
 			target.Summary = *body.Summary
+		}
+		if body.Target != nil {
+			copy := *body.Target
+			copy.Capabilities = append([]string(nil), body.Target.Capabilities...)
+			target.TaskTarget = &copy
 		}
 		target.UpdatedAt = time.Now().UTC()
 		events[0].After, _ = json.Marshal(taskEventSnapshot(*target))
@@ -1665,6 +1692,7 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 	taskId := r.URL.Query().Get("task_id")
 	sessionId := r.URL.Query().Get("session_id")
 	agentType := r.URL.Query().Get("agent_type")
+	profileID := r.URL.Query().Get("profile_id")
 	// reply_id links this session to the timeline reply that triggered it
 	// (issue-model §7.2); optional for sessions outside any task.
 	replyID := r.URL.Query().Get("reply_id")
@@ -1674,8 +1702,8 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 	// already carries the persona in its replayed history.
 	agentRef := r.URL.Query().Get("agent_ref")
 
-	if wsID == "" || sessionId == "" || agentType == "" {
-		http.Error(w, "workspace_id, session_id, and agent_type query parameters are required", http.StatusBadRequest)
+	if wsID == "" || sessionId == "" || (agentType == "" && profileID == "") {
+		http.Error(w, "workspace_id, session_id, and agent_type or profile_id query parameters are required", http.StatusBadRequest)
 		return
 	}
 
@@ -1687,10 +1715,34 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 	var acpSessionID string
 	var sessionRole string
 	var sessionCwd string
+	var storedProfileID string
+	var storedProfileRevision int
 	if rec, ok, err := h.store.Get(sessionId); err == nil && ok {
 		acpSessionID = rec.AcpSessionID
 		sessionRole = rec.Role
 		sessionCwd = strings.TrimSpace(rec.Cwd)
+		storedProfileID = rec.ProfileID
+		if profileID == "" {
+			profileID = rec.ProfileID
+		}
+		storedProfileRevision = rec.ProfileRevision
+	}
+	var launch *RuntimeLaunch
+	if profileID != "" {
+		var err error
+		launch, _, err = resolveProfile(h.providerStore, profileID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			return
+		}
+		agentType = launch.RuntimeID
+		launch.PreviousProfileID = storedProfileID
+		launch.PreviousRevision = storedProfileRevision
+		if storedProfileRevision != launch.ProfileRevision {
+			if err := h.store.UpdateProfile(sessionId, profileID, launch.ProfileRevision); err != nil && !errors.Is(err, ErrNotFound) {
+				log.Printf("[agent] update session profile %s: %v", sessionId, err)
+			}
+		}
 	}
 
 	var wsPath string
@@ -1879,7 +1931,7 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	h.acpxClient.Bridge(w, r, wsID, wsPath, taskId, sessionId, agentType, systemContext, mcpServers, h.scheduler, h.tasksStore, h.store, acpSessionID, replyID)
+	h.acpxClient.Bridge(w, r, wsID, wsPath, taskId, sessionId, agentType, systemContext, mcpServers, h.scheduler, h.tasksStore, h.store, acpSessionID, replyID, launch)
 }
 
 // buildIssueBackground renders the issue-model §9 plain-text background

@@ -45,11 +45,11 @@ func TestImportCCSwitchPreservesPerAgentEndpointsAndBindings(t *testing.T) {
 	if len(p.Endpoints) != 2 {
 		t.Fatalf("endpoints = %#v", p.Endpoints)
 	}
-	credentials := map[AgentID]string{}
+	credentials := map[EndpointFamily]string{}
 	for _, endpoint := range p.Endpoints {
-		credentials[endpoint.AgentID] = endpoint.APIKey
+		credentials[endpoint.Family] = endpoint.APIKey
 	}
-	if credentials[AgentClaude] != "claude-secret" || credentials[AgentCodex] != "codex-secret" {
+	if credentials[EndpointFamilyAnthropic] != "claude-secret" || credentials[EndpointFamilyOpenAI] != "codex-secret" {
 		t.Fatalf("credentials = %#v", credentials)
 	}
 	if strings.Join(p.Apps, ",") != "claude,codex,openclaw,opencode" {

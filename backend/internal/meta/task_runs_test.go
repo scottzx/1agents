@@ -2,6 +2,7 @@ package meta
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -30,6 +31,7 @@ func seedTaskRunFixture(t *testing.T) (*DB, string, AgentTurn) {
 	turns := NewAgentTurnStore(db)
 	turn, _, err := turns.Create(AgentTurn{
 		ProjectID: "project-1", SessionID: "session-1", PromptText: "create task",
+		ProfileSnapshot: json.RawMessage(`{"profile_id":"deepseek-build","profile_revision":2}`),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -55,15 +57,30 @@ func seedTaskRunFixture(t *testing.T) (*DB, string, AgentTurn) {
 
 func TestTaskRunTracesOriginTurnEvidenceVerdictAndClosedBy(t *testing.T) {
 	db, path, turn := seedTaskRunFixture(t)
+	if string(turn.ProfileSnapshot) != `{"profile_id":"deepseek-build","profile_revision":2}` {
+		t.Fatalf("turn profile snapshot was not persisted: %s", turn.ProfileSnapshot)
+	}
 	store := NewTaskRunStore(db)
 	run, err := store.Create(path, TaskRun{
 		TaskID: "task-1", SessionID: "run-session", Kind: TaskRunExecution,
+		ProfileSnapshot: json.RawMessage(`{"profile_id":"deepseek-build","profile_revision":2}`),
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	if run.OriginTurnID != turn.ID || run.Attempt != 1 || run.Status != TaskRunRunning {
 		t.Fatalf("created run=%+v", run)
+	}
+	loaded, ok, err := store.Get(run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("created task run was not found")
+	}
+	if string(loaded.ProfileSnapshot) != `{"profile_id":"deepseek-build","profile_revision":2}` ||
+		strings.Contains(string(loaded.ProfileSnapshot), "api_key") {
+		t.Fatalf("unsafe profile snapshot: %s", loaded.ProfileSnapshot)
 	}
 
 	closedBy := &ClosedBy{Kind: "runtime_evidence", Verdict: "passed"}

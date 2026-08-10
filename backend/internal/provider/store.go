@@ -30,6 +30,7 @@ type Provider struct {
 	OpusModel        string             `json:"opus_model,omitempty"`
 	Apps             []string           `json:"apps,omitempty"` // cc-switch source types
 	Endpoints        []ProviderEndpoint `json:"endpoints,omitempty"`
+	Status           string             `json:"status,omitempty"`
 	CreatedAt        int64              `json:"created_at"`
 	UpdatedAt        int64              `json:"updated_at"`
 }
@@ -41,6 +42,7 @@ type ProviderData struct {
 	Providers        []Provider       `json:"providers"`
 	Models           []ProviderModel  `json:"models,omitempty"`
 	Bindings         []AgentBinding   `json:"bindings,omitempty"`
+	Profiles         []AgentProfile   `json:"profiles,omitempty"`
 	Migrations       map[string]int64 `json:"migrations,omitempty"`
 }
 
@@ -121,6 +123,11 @@ func (s *Store) loadUnlocked() (*ProviderData, error) {
 		pd.Providers = []Provider{}
 	}
 	previousVersion := pd.SchemaVersion
+	if previousVersion == 3 {
+		if err := s.writeV3Backup(data); err != nil {
+			return nil, err
+		}
+	}
 	s.normalize(&pd)
 	imported, err := s.importLegacyCCSwitch(&pd)
 	if err != nil {
@@ -137,13 +144,14 @@ func (s *Store) loadUnlocked() (*ProviderData, error) {
 // normalize upgrades the legacy flat format in memory. Legacy fields remain
 // populated so older frontend builds continue to work during the migration.
 func (s *Store) normalize(pd *ProviderData) {
-	if pd.SchemaVersion >= CurrentSchemaVersion {
-		return
-	}
+	previousVersion := pd.SchemaVersion
 	now := time.Now().Unix()
 	for i := range pd.Providers {
 		p := &pd.Providers[i]
 		p.Endpoints = canonicalEndpoints(p.Endpoints)
+		if p.Status == "" {
+			p.Status = ProfileStatusActive
+		}
 		p.Apps = withoutStrings(p.Apps, "gemini")
 		if len(p.Endpoints) == 0 {
 			if p.AnthropicBaseURL != "" || p.Protocol == "anthropic" || p.Protocol == "dual" {
@@ -151,24 +159,26 @@ func (s *Store) normalize(pd *ProviderData) {
 				if baseURL == "" {
 					baseURL = p.BaseURL
 				}
-				p.Endpoints = append(p.Endpoints, ProviderEndpoint{AgentID: AgentClaude, Protocol: "anthropic", BaseURL: baseURL})
+				p.Endpoints = append(p.Endpoints, ProviderEndpoint{Family: EndpointFamilyAnthropic, Protocol: "anthropic", BaseURL: baseURL})
 			}
 			if p.OpenAIBaseURL != "" || p.Protocol == "openai" || p.Protocol == "dual" {
 				baseURL := p.OpenAIBaseURL
 				if baseURL == "" {
 					baseURL = p.BaseURL
 				}
-				p.Endpoints = append(p.Endpoints, ProviderEndpoint{AgentID: AgentCodex, Protocol: "openai_responses", BaseURL: baseURL})
+				p.Endpoints = append(p.Endpoints, ProviderEndpoint{Family: EndpointFamilyOpenAI, Protocol: "openai_responses", BaseURL: baseURL})
 			}
 		}
-		seen := map[string]bool{}
-		for _, modelID := range append(append([]string{}, p.ModelIDs...), p.Model) {
-			modelID = strings.TrimSpace(modelID)
-			if modelID == "" || seen[modelID] {
-				continue
+		if previousVersion < CurrentSchemaVersion {
+			seen := map[string]bool{}
+			for _, modelID := range append(append([]string{}, p.ModelIDs...), p.Model) {
+				modelID = strings.TrimSpace(modelID)
+				if modelID == "" || seen[modelID] {
+					continue
+				}
+				seen[modelID] = true
+				upsertModel(&pd.Models, ProviderModel{ProviderID: p.ID, ModelID: modelID, Source: "legacy", Available: true, DiscoveredAt: now, LastSeenAt: now})
 			}
-			seen[modelID] = true
-			pd.Models = append(pd.Models, ProviderModel{ProviderID: p.ID, ModelID: modelID, Source: "legacy", Available: true, DiscoveredAt: now, LastSeenAt: now})
 		}
 	}
 	bindings := pd.Bindings[:0]
@@ -178,53 +188,97 @@ func (s *Store) normalize(pd *ProviderData) {
 		}
 	}
 	pd.Bindings = bindings
-	if len(pd.Bindings) == 0 && pd.ActiveProviderID != "" {
+	if previousVersion < CurrentSchemaVersion && len(pd.Bindings) == 0 && pd.ActiveProviderID != "" {
 		if p := providerByID(pd.Providers, pd.ActiveProviderID); p != nil {
 			for _, endpoint := range p.Endpoints {
+				agentID := agentIDForFamily(endpoint.Family)
+				if agentID == "" {
+					continue
+				}
 				mapping := map[string]string{}
-				if endpoint.AgentID == AgentClaude {
+				if agentID == AgentClaude {
 					mapping = map[string]string{"haiku": p.HaikuModel, "sonnet": p.SonnetModel, "opus": p.OpusModel}
 				}
-				pd.Bindings = append(pd.Bindings, AgentBinding{AgentID: endpoint.AgentID, ProviderID: p.ID, ModelID: p.Model, ModelMapping: compactMapping(mapping), UpdatedAt: now})
+				pd.Bindings = append(pd.Bindings, AgentBinding{AgentID: agentID, ProviderID: p.ID, ModelID: p.Model, ModelMapping: compactMapping(mapping), UpdatedAt: now})
 			}
 		}
 	}
+	normalizeProfiles(pd, now)
 	pd.SchemaVersion = CurrentSchemaVersion
 }
 
 func canonicalEndpoints(endpoints []ProviderEndpoint) []ProviderEndpoint {
 	out := make([]ProviderEndpoint, 0, 2)
 	for _, endpoint := range endpoints {
-		switch endpoint.AgentID {
-		case AgentClaude, AgentCodex:
-			upsertEndpoint(&out, endpoint)
+		family := endpoint.Family
+		if family == "" {
+			family = familyForLegacyEndpoint(endpoint)
 		}
-	}
-	for _, endpoint := range endpoints {
-		if endpoint.AgentID != AgentOpenClaw && endpoint.AgentID != AgentOpenCode {
+		if family != EndpointFamilyOpenAI && family != EndpointFamilyAnthropic {
 			continue
 		}
-		if strings.Contains(strings.ToLower(endpoint.Protocol), "anthropic") {
-			endpoint.AgentID = AgentClaude
-			endpoint.Protocol = "anthropic"
-		} else {
-			endpoint.AgentID = AgentCodex
-			endpoint.Protocol = "openai"
-		}
-		if !hasEndpoint(out, endpoint.AgentID) {
-			out = append(out, endpoint)
-		}
+		endpoint.Family = family
+		endpoint.AgentID = ""
+		upsertEndpoint(&out, endpoint)
 	}
 	return out
 }
 
-func hasEndpoint(endpoints []ProviderEndpoint, agentID AgentID) bool {
+func familyForLegacyEndpoint(endpoint ProviderEndpoint) EndpointFamily {
+	switch endpoint.AgentID {
+	case AgentClaude:
+		return EndpointFamilyAnthropic
+	case AgentCodex:
+		return EndpointFamilyOpenAI
+	case AgentOpenClaw, AgentOpenCode:
+		if strings.Contains(strings.ToLower(endpoint.Protocol), "anthropic") {
+			return EndpointFamilyAnthropic
+		}
+		return EndpointFamilyOpenAI
+	}
+	if strings.Contains(strings.ToLower(endpoint.Protocol), "anthropic") {
+		return EndpointFamilyAnthropic
+	}
+	if strings.Contains(strings.ToLower(endpoint.Protocol), "openai") {
+		return EndpointFamilyOpenAI
+	}
+	return ""
+}
+
+func agentIDForFamily(family EndpointFamily) AgentID {
+	switch family {
+	case EndpointFamilyAnthropic:
+		return AgentClaude
+	case EndpointFamilyOpenAI:
+		return AgentCodex
+	default:
+		return ""
+	}
+}
+
+func hasEndpoint(endpoints []ProviderEndpoint, family EndpointFamily) bool {
 	for _, endpoint := range endpoints {
-		if endpoint.AgentID == agentID {
+		if endpoint.Family == family {
 			return true
 		}
 	}
 	return false
+}
+
+func (s *Store) writeV3Backup(data []byte) error {
+	backupPath := s.filePath + ".v3.bak"
+	file, err := os.OpenFile(backupPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if errors.Is(err, os.ErrExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("create provider schema v3 backup: %w", err)
+	}
+	defer file.Close()
+	if _, err := file.Write(data); err != nil {
+		return fmt.Errorf("write provider schema v3 backup: %w", err)
+	}
+	return nil
 }
 
 func withoutStrings(values []string, removed string) []string {
@@ -371,6 +425,10 @@ func (s *Store) AddOrUpdate(p Provider) (*Provider, error) {
 	if p.Protocol == "" {
 		p.Protocol = "openai"
 	}
+	if p.Status == "" {
+		p.Status = ProfileStatusActive
+	}
+	p.Endpoints = canonicalEndpoints(p.Endpoints)
 	if len(p.Endpoints) == 0 {
 		p.Endpoints = legacyEndpoints(p)
 	}
@@ -384,7 +442,7 @@ func (s *Store) AddOrUpdate(p Provider) (*Provider, error) {
 			}
 			for endpointIndex := range p.Endpoints {
 				for _, existingEndpoint := range existing.Endpoints {
-					if existingEndpoint.AgentID == p.Endpoints[endpointIndex].AgentID {
+					if existingEndpoint.Family == p.Endpoints[endpointIndex].Family {
 						if p.Endpoints[endpointIndex].APIKey == "" {
 							p.Endpoints[endpointIndex].APIKey = existingEndpoint.APIKey
 						}
@@ -450,14 +508,14 @@ func legacyEndpoints(p Provider) []ProviderEndpoint {
 		if baseURL == "" {
 			baseURL = p.BaseURL
 		}
-		endpoints = append(endpoints, ProviderEndpoint{AgentID: AgentClaude, Protocol: "anthropic", BaseURL: baseURL})
+		endpoints = append(endpoints, ProviderEndpoint{Family: EndpointFamilyAnthropic, Protocol: "anthropic", BaseURL: baseURL})
 	}
 	if p.OpenAIBaseURL != "" || p.Protocol == "openai" || p.Protocol == "dual" {
 		baseURL := p.OpenAIBaseURL
 		if baseURL == "" {
 			baseURL = p.BaseURL
 		}
-		endpoints = append(endpoints, ProviderEndpoint{AgentID: AgentCodex, Protocol: "openai_responses", BaseURL: baseURL})
+		endpoints = append(endpoints, ProviderEndpoint{Family: EndpointFamilyOpenAI, Protocol: "openai_responses", BaseURL: baseURL})
 	}
 	return endpoints
 }
@@ -481,6 +539,13 @@ func (s *Store) Delete(id string) error {
 	}
 	if index == -1 {
 		return fmt.Errorf("provider with id %q not found", id)
+	}
+	for _, profile := range pd.Profiles {
+		if profile.ProviderID == id {
+			pd.Providers[index].Status = ProfileStatusArchived
+			pd.Providers[index].UpdatedAt = time.Now().Unix()
+			return s.saveUnlocked(pd)
+		}
 	}
 
 	pd.Providers = append(pd.Providers[:index], pd.Providers[index+1:]...)
@@ -808,7 +873,8 @@ func (s *Store) defaultPresets() *ProviderData {
 				OpusModel:        "claude-3-opus-20240229",
 				CreatedAt:        now,
 				UpdatedAt:        now,
-				Endpoints:        []ProviderEndpoint{{AgentID: AgentClaude, Protocol: "anthropic", BaseURL: "https://api.anthropic.com"}},
+				Status:           ProfileStatusActive,
+				Endpoints:        []ProviderEndpoint{{Family: EndpointFamilyAnthropic, Protocol: "anthropic", BaseURL: "https://api.anthropic.com"}},
 			},
 			{
 				ID:               "deepseek-api",
@@ -824,9 +890,10 @@ func (s *Store) defaultPresets() *ProviderData {
 				OpusModel:        "deepseek-reasoner",
 				CreatedAt:        now,
 				UpdatedAt:        now,
+				Status:           ProfileStatusActive,
 				Endpoints: []ProviderEndpoint{
-					{AgentID: AgentClaude, Protocol: "anthropic", BaseURL: "https://api.deepseek.com/beta"},
-					{AgentID: AgentCodex, Protocol: "openai_responses", BaseURL: "https://api.deepseek.com/v1"},
+					{Family: EndpointFamilyAnthropic, Protocol: "anthropic", BaseURL: "https://api.deepseek.com/beta"},
+					{Family: EndpointFamilyOpenAI, Protocol: "openai_responses", BaseURL: "https://api.deepseek.com/v1"},
 				},
 			},
 			{
@@ -839,7 +906,8 @@ func (s *Store) defaultPresets() *ProviderData {
 				Model:         "anthropic/claude-3.7-sonnet",
 				CreatedAt:     now,
 				UpdatedAt:     now,
-				Endpoints:     []ProviderEndpoint{{AgentID: AgentCodex, Protocol: "openai_responses", BaseURL: "https://openrouter.ai/api/v1"}},
+				Status:        ProfileStatusActive,
+				Endpoints:     []ProviderEndpoint{{Family: EndpointFamilyOpenAI, Protocol: "openai_responses", BaseURL: "https://openrouter.ai/api/v1"}},
 			},
 		},
 	}

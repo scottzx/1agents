@@ -17,6 +17,7 @@ import (
 	"github.com/chenhg5/cc-connect/core"
 	"github.com/scottzx/1Agents/backend/internal/harnesskit"
 	"github.com/scottzx/1Agents/backend/internal/meta"
+	"github.com/scottzx/1Agents/backend/internal/provider"
 )
 
 func get1AgentsHome() string {
@@ -32,14 +33,15 @@ func get1AgentsHome() string {
 
 // Workspace represents a single workspace entry.
 type Workspace struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	Path         string `json:"path"`
-	Status       string `json:"status"`
-	TerminalDir  string `json:"terminalDir,omitempty"`
-	ChatChannel  string `json:"chatChannel,omitempty"`
-	DefaultAgent string `json:"defaultAgent,omitempty"`
-	Builtin      bool   `json:"builtin,omitempty"`
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	Path             string `json:"path"`
+	Status           string `json:"status"`
+	TerminalDir      string `json:"terminalDir,omitempty"`
+	ChatChannel      string `json:"chatChannel,omitempty"`
+	DefaultAgent     string `json:"defaultAgent,omitempty"`
+	DefaultProfileID string `json:"defaultProfileId,omitempty"`
+	Builtin          bool   `json:"builtin,omitempty"`
 	// AvailableAgents is the allowlist of agent type slugs that may run in
 	// this workspace (§325). Empty means unrestricted.
 	AvailableAgents []string `json:"availableAgents,omitempty"`
@@ -63,6 +65,14 @@ type Handler struct {
 	extensions  extensionClient
 }
 
+func validateDefaultProfile(profileID string) error {
+	if profileID == "" {
+		return nil
+	}
+	_, err := provider.NewStore("").ResolveProfile(profileID)
+	return err
+}
+
 func NewHandler(tmuxSession ...string) *Handler {
 	session := ""
 	if len(tmuxSession) > 0 {
@@ -82,33 +92,35 @@ func (h *Handler) SetHarnessKitRuntime(runtime harnesskit.Runtime) {
 // projectToWorkspace maps a meta project row to the workspace registry shape.
 func projectToWorkspace(p meta.Project) Workspace {
 	return Workspace{
-		ID:              p.ID,
-		Name:            p.Name,
-		Path:            p.WorkspacePath,
-		Status:          string(p.Status),
-		TerminalDir:     p.TerminalDir,
-		ChatChannel:     p.ChatChannel,
-		DefaultAgent:    p.DefaultAgent,
-		Builtin:         p.Builtin,
-		AvailableAgents: p.AvailableAgents,
-		Kind:            p.Kind,
-		Avatar:          p.Avatar,
+		ID:               p.ID,
+		Name:             p.Name,
+		Path:             p.WorkspacePath,
+		Status:           string(p.Status),
+		TerminalDir:      p.TerminalDir,
+		ChatChannel:      p.ChatChannel,
+		DefaultAgent:     p.DefaultAgent,
+		DefaultProfileID: p.DefaultProfileID,
+		Builtin:          p.Builtin,
+		AvailableAgents:  p.AvailableAgents,
+		Kind:             p.Kind,
+		Avatar:           p.Avatar,
 	}
 }
 
 // workspaceToProject maps a workspace into a meta project (write side).
 func workspaceToProject(ws Workspace) meta.Project {
 	return meta.Project{
-		ID:              ws.ID,
-		Name:            ws.Name,
-		WorkspacePath:   ws.Path,
-		TerminalDir:     ws.TerminalDir,
-		ChatChannel:     ws.ChatChannel,
-		DefaultAgent:    ws.DefaultAgent,
-		Builtin:         ws.Builtin,
-		AvailableAgents: ws.AvailableAgents,
-		Kind:            ws.Kind,
-		Avatar:          ws.Avatar,
+		ID:               ws.ID,
+		Name:             ws.Name,
+		WorkspacePath:    ws.Path,
+		TerminalDir:      ws.TerminalDir,
+		ChatChannel:      ws.ChatChannel,
+		DefaultAgent:     ws.DefaultAgent,
+		DefaultProfileID: ws.DefaultProfileID,
+		Builtin:          ws.Builtin,
+		AvailableAgents:  ws.AvailableAgents,
+		Kind:             ws.Kind,
+		Avatar:           ws.Avatar,
 	}
 }
 
@@ -378,6 +390,10 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	// constant in internal/agent/types.go.
 	if ws.DefaultAgent == "" {
 		ws.DefaultAgent = "claudecode"
+	}
+	if err := validateDefaultProfile(ws.DefaultProfileID); err != nil {
+		http.Error(w, "invalid default profile: "+err.Error(), http.StatusUnprocessableEntity)
+		return
 	}
 	// Default kind: project unless the caller (create-assistant flow) says otherwise.
 	// Normalize legacy kind=assistant → workforce so write path only persists
@@ -1039,6 +1055,10 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	// builtin can never be set via update — pin it to the stored value.
 	ws.Builtin = existing.Builtin
+	if err := validateDefaultProfile(ws.DefaultProfileID); err != nil {
+		http.Error(w, "invalid default profile: "+err.Error(), http.StatusUnprocessableEntity)
+		return
+	}
 	// Name uniqueness across assistants + projects (excluding self).
 	if taken, ok, err := h.isNameTaken(ws.Name, ws.ID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

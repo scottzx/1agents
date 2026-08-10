@@ -149,6 +149,7 @@ func handleDiscoverProviderModels(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ProviderID string `json:"provider_id"`
 		AgentID    string `json:"agent_id"`
+		Family     string `json:"family"`
 		BaseURL    string `json:"base_url"`
 		APIKey     string `json:"api_key"`
 	}
@@ -161,7 +162,17 @@ func handleDiscoverProviderModels(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, jsonError(err.Error()), http.StatusNotFound)
 		return
 	}
-	endpoint := provider.EndpointForAgent(*p, provider.AgentID(req.AgentID))
+	var endpoint provider.ProviderEndpoint
+	if req.Family != "" {
+		var ok bool
+		endpoint, ok = provider.EndpointForFamily(*p, provider.EndpointFamily(req.Family))
+		if !ok {
+			http.Error(w, jsonError("provider endpoint family not found"), http.StatusBadRequest)
+			return
+		}
+	} else {
+		endpoint = provider.EndpointForAgent(*p, provider.AgentID(req.AgentID))
+	}
 	if req.BaseURL != "" {
 		endpoint.BaseURL = req.BaseURL
 	} else {
@@ -185,6 +196,95 @@ func handleDiscoverProviderModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	json.NewEncoder(w).Encode(map[string]any{"models": models})
+}
+
+func handleAgentProfiles(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	switch r.Method {
+	case http.MethodGet:
+		profiles, err := defaultProviderStore.ListProfiles(r.URL.Query().Get("include_archived") != "")
+		if err != nil {
+			http.Error(w, jsonError(err.Error()), http.StatusInternalServerError)
+			return
+		}
+		runtimes := provider.RuntimeDefinitions()
+		installed := make(map[string]bool, len(runtimes))
+		for _, runtime := range runtimes {
+			installed[runtime.ID] = runtime.Installed
+		}
+		availability := make(map[string]string, len(profiles))
+		for _, profile := range profiles {
+			if profile.Status != provider.ProfileStatusActive {
+				availability[profile.ID] = profile.Status
+				continue
+			}
+			if !installed[profile.RuntimeID] {
+				availability[profile.ID] = "runtime is not installed"
+				continue
+			}
+			if _, resolveErr := defaultProviderStore.ResolveProfile(profile.ID); resolveErr != nil {
+				availability[profile.ID] = resolveErr.Error()
+			}
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"profiles":             profiles,
+			"runtimes":             runtimes,
+			"profile_availability": availability,
+		})
+	case http.MethodPost:
+		var profile provider.AgentProfile
+		if err := json.NewDecoder(r.Body).Decode(&profile); err != nil {
+			http.Error(w, jsonError("invalid profile json"), http.StatusBadRequest)
+			return
+		}
+		saved, err := defaultProviderStore.AddProfile(profile)
+		if err != nil {
+			http.Error(w, jsonError(err.Error()), http.StatusBadRequest)
+			return
+		}
+		json.NewEncoder(w).Encode(saved)
+	default:
+		http.Error(w, jsonError("method not allowed"), http.StatusMethodNotAllowed)
+	}
+}
+
+func handleAgentProfileItem(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	path := strings.TrimPrefix(r.URL.Path, "/api/agent-profiles/")
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) == 0 || parts[0] == "" {
+		http.Error(w, jsonError("missing profile id"), http.StatusBadRequest)
+		return
+	}
+	id := parts[0]
+	if len(parts) == 1 && r.Method == http.MethodPut {
+		var profile provider.AgentProfile
+		if err := json.NewDecoder(r.Body).Decode(&profile); err != nil {
+			http.Error(w, jsonError("invalid profile json"), http.StatusBadRequest)
+			return
+		}
+		saved, err := defaultProviderStore.UpdateProfile(id, profile)
+		if err != nil {
+			http.Error(w, jsonError(err.Error()), http.StatusBadRequest)
+			return
+		}
+		json.NewEncoder(w).Encode(saved)
+		return
+	}
+	if len(parts) == 2 && r.Method == http.MethodPost && (parts[1] == "archive" || parts[1] == "restore") {
+		status := provider.ProfileStatusArchived
+		if parts[1] == "restore" {
+			status = provider.ProfileStatusActive
+		}
+		saved, err := defaultProviderStore.SetProfileStatus(id, status)
+		if err != nil {
+			http.Error(w, jsonError(err.Error()), http.StatusBadRequest)
+			return
+		}
+		json.NewEncoder(w).Encode(saved)
+		return
+	}
+	http.Error(w, jsonError("method not allowed"), http.StatusMethodNotAllowed)
 }
 
 func handleAgentRuntime(w http.ResponseWriter, r *http.Request) {

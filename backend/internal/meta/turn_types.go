@@ -26,6 +26,7 @@ type AgentTurn struct {
 	ClientRequestID    string          `json:"clientRequestId,omitempty"`
 	InitiatingReplyID  string          `json:"initiatingReplyId,omitempty"`
 	AgentType          string          `json:"agentType,omitempty"`
+	ProfileSnapshot    json.RawMessage `json:"profileSnapshot,omitempty"`
 	Status             AgentTurnStatus `json:"status"`
 	PromptText         string          `json:"promptText,omitempty"`
 	RequestFingerprint string          `json:"requestFingerprint,omitempty"`

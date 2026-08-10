@@ -140,7 +140,7 @@ func mergeCCSwitchRow(pd *ProviderData, row ccSwitchProviderRow) error {
 	}
 	p := providerByID(pd.Providers, id)
 	if p == nil {
-		pd.Providers = append(pd.Providers, Provider{ID: id, Name: row.Name, CreatedAt: time.Now().Unix()})
+		pd.Providers = append(pd.Providers, Provider{ID: id, Name: row.Name, Status: ProfileStatusActive, CreatedAt: time.Now().Unix()})
 		p = &pd.Providers[len(pd.Providers)-1]
 	}
 	if p.Name == "" {
@@ -153,7 +153,7 @@ func mergeCCSwitchRow(pd *ProviderData, row ccSwitchProviderRow) error {
 		model = models[0]
 	}
 	useEndpoint := true
-	if (strings.EqualFold(row.AppType, "openclaw") || strings.EqualFold(row.AppType, "opencode")) && hasEndpoint(p.Endpoints, endpoint.AgentID) {
+	if (strings.EqualFold(row.AppType, "openclaw") || strings.EqualFold(row.AppType, "opencode")) && hasEndpoint(p.Endpoints, endpoint.Family) {
 		useEndpoint = false
 	}
 	if useEndpoint {
@@ -212,7 +212,7 @@ func ccSwitchEndpoint(appType string, settings map[string]any) (ProviderEndpoint
 		mapping["haiku"] = stringValue(env, "ANTHROPIC_DEFAULT_HAIKU_MODEL")
 		mapping["sonnet"] = stringValue(env, "ANTHROPIC_DEFAULT_SONNET_MODEL")
 		mapping["opus"] = stringValue(env, "ANTHROPIC_DEFAULT_OPUS_MODEL")
-		return ProviderEndpoint{AgentID: AgentClaude, Protocol: "anthropic", BaseURL: stringValue(env, "ANTHROPIC_BASE_URL"), APIKey: key}, compactStrings(model), mapping, nil
+		return ProviderEndpoint{Family: EndpointFamilyAnthropic, AgentID: AgentClaude, Protocol: "anthropic", BaseURL: stringValue(env, "ANTHROPIC_BASE_URL"), APIKey: key}, compactStrings(model), mapping, nil
 	case "codex":
 		auth, _ := settings["auth"].(map[string]any)
 		key := stringValue(auth, "OPENAI_API_KEY")
@@ -229,7 +229,7 @@ func ccSwitchEndpoint(appType string, settings map[string]any) (ProviderEndpoint
 		if wire, _ := config["wire_api"].(string); wire == "chat" {
 			protocol = "openai_chat"
 		}
-		return ProviderEndpoint{AgentID: AgentCodex, Protocol: protocol, BaseURL: baseURL, APIKey: key}, compactStrings(model), mapping, nil
+		return ProviderEndpoint{Family: EndpointFamilyOpenAI, AgentID: AgentCodex, Protocol: protocol, BaseURL: baseURL, APIKey: key}, compactStrings(model), mapping, nil
 	case "openclaw":
 		models := make([]string, 0)
 		if values, ok := settings["models"].([]any); ok {
@@ -241,9 +241,9 @@ func ccSwitchEndpoint(appType string, settings map[string]any) (ProviderEndpoint
 		}
 		protocol := strings.ToLower(stringValue(settings, "api"))
 		if strings.Contains(protocol, "anthropic") {
-			return ProviderEndpoint{AgentID: AgentClaude, Protocol: "anthropic", BaseURL: stringValue(settings, "baseUrl"), APIKey: stringValue(settings, "apiKey")}, compactStrings(models...), mapping, nil
+			return ProviderEndpoint{Family: EndpointFamilyAnthropic, AgentID: AgentClaude, Protocol: "anthropic", BaseURL: stringValue(settings, "baseUrl"), APIKey: stringValue(settings, "apiKey")}, compactStrings(models...), mapping, nil
 		}
-		return ProviderEndpoint{AgentID: AgentCodex, Protocol: "openai", BaseURL: stringValue(settings, "baseUrl"), APIKey: stringValue(settings, "apiKey")}, compactStrings(models...), mapping, nil
+		return ProviderEndpoint{Family: EndpointFamilyOpenAI, AgentID: AgentCodex, Protocol: "openai", BaseURL: stringValue(settings, "baseUrl"), APIKey: stringValue(settings, "apiKey")}, compactStrings(models...), mapping, nil
 	case "opencode":
 		options, _ := settings["options"].(map[string]any)
 		models := make([]string, 0)
@@ -254,9 +254,9 @@ func ccSwitchEndpoint(appType string, settings map[string]any) (ProviderEndpoint
 			sort.Strings(models)
 		}
 		if strings.Contains(strings.ToLower(stringValue(settings, "npm")), "anthropic") {
-			return ProviderEndpoint{AgentID: AgentClaude, Protocol: "anthropic", BaseURL: stringValue(options, "baseURL"), APIKey: stringValue(options, "apiKey")}, compactStrings(models...), mapping, nil
+			return ProviderEndpoint{Family: EndpointFamilyAnthropic, AgentID: AgentClaude, Protocol: "anthropic", BaseURL: stringValue(options, "baseURL"), APIKey: stringValue(options, "apiKey")}, compactStrings(models...), mapping, nil
 		}
-		return ProviderEndpoint{AgentID: AgentCodex, Protocol: "openai", BaseURL: stringValue(options, "baseURL"), APIKey: stringValue(options, "apiKey")}, compactStrings(models...), mapping, nil
+		return ProviderEndpoint{Family: EndpointFamilyOpenAI, AgentID: AgentCodex, Protocol: "openai", BaseURL: stringValue(options, "baseURL"), APIKey: stringValue(options, "apiKey")}, compactStrings(models...), mapping, nil
 	default:
 		return ProviderEndpoint{}, nil, nil, fmt.Errorf("%w %q", errUnsupportedCCSwitchType, appType)
 	}
@@ -285,7 +285,9 @@ func stringValue(values map[string]any, key string) string {
 }
 func upsertEndpoint(values *[]ProviderEndpoint, endpoint ProviderEndpoint) {
 	for i := range *values {
-		if (*values)[i].AgentID == endpoint.AgentID {
+		sameFamily := endpoint.Family != "" && (*values)[i].Family == endpoint.Family
+		sameLegacyAgent := endpoint.Family == "" && (*values)[i].Family == "" && (*values)[i].AgentID == endpoint.AgentID
+		if sameFamily || sameLegacyAgent {
 			(*values)[i] = endpoint
 			return
 		}
