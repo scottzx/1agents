@@ -16,7 +16,6 @@ const metadata = JSON.parse(
       "--format-version",
       "1",
       "--locked",
-      "--offline",
       "--manifest-path",
       manifest,
     ],
