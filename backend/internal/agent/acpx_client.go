@@ -27,6 +27,10 @@ const (
 	bridgeIdleTimeout = 5 * time.Minute
 	// bridgeReapSweepInterval is how often reapLoop scans for idle bridges.
 	bridgeReapSweepInterval = time.Minute
+	// bridgeMessageBufferSize bounds raw server→browser frames retained when
+	// the renderer is slow. History snapshots can be megabytes, so the old
+	// 100-frame queue could retain gigabytes before dropping anything.
+	bridgeMessageBufferSize = 8
 )
 
 // nativeSystemPromptAgents are agent types whose ACP adapter honors
@@ -277,8 +281,6 @@ type WsMessage struct {
 	// (cancel_turn), not a natural finish. The turn's partial reply is still
 	// recorded, but handleTaskSessionDone must NOT flip the task to Completed.
 	Stopped         bool            `json:"stopped,omitempty"`
-	Items           json.RawMessage `json:"items,omitempty"`
-	Messages        json.RawMessage `json:"messages,omitempty"`
 	Code            string          `json:"code,omitempty"`
 	Message         string          `json:"message,omitempty"`
 	Type            string          `json:"type,omitempty"`
@@ -428,7 +430,7 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, projectID, w
 		WorkspacePath: workspacePath,
 		ClientConn:    clientConn,
 		ServerConn:    serverConn,
-		MsgChan:       make(chan []byte, 100),
+		MsgChan:       make(chan []byte, bridgeMessageBufferSize),
 		TaskID:        taskId,
 		AgentType:     agentType,
 		ProfileSnapshot: func() json.RawMessage {
