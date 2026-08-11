@@ -152,22 +152,35 @@ export function useProjectedTurnItems(session: ChatSession, items: ChatItem[], t
 
     useEffect(() => {
         let cancelled = false;
+        let refreshing = false;
+        let lastSignature = '';
 
         const refresh = async () => {
+            if (refreshing) return;
+            refreshing = true;
             try {
                 const [turnPage, activityPage] = await Promise.all([
                     activityService.listTurns(session.workspaceId, { sessionId: session.id, limit: 100 }),
                     activityService.listActivity(session.workspaceId, { sessionId: session.id, limit: 100 }),
                 ]);
-                if (!cancelled) setSnapshot({ turns: turnPage.items, activity: activityPage.items });
+                const signature = JSON.stringify([
+                    turnPage.items.map(turn => [turn.id, turn.status, turn.updatedAt]),
+                    activityPage.items.map(entry => [entry.id, entry.createdAt]),
+                ]);
+                if (!cancelled && signature !== lastSignature) {
+                    lastSignature = signature;
+                    setSnapshot({ turns: turnPage.items, activity: activityPage.items });
+                }
             } catch {
                 // Compatibility with older backends: leave the native transcript
                 // untouched and let MessageList's legacy grouping stay active.
+            } finally {
+                refreshing = false;
             }
         };
 
         void refresh();
-        const timer = typing ? setInterval(() => void refresh(), 1500) : null;
+        const timer = typing ? setInterval(() => void refresh(), 5000) : null;
         return () => {
             cancelled = true;
             if (timer) clearInterval(timer);

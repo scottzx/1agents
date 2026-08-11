@@ -87,6 +87,8 @@ export const DEFAULT_PERMISSION_MODE: PermissionMode = 'approve-reads';
 const WS_OPEN = 1;
 /** Mirror WebSocket.CLOSED without referencing the (weapp-absent) global. */
 const WS_CLOSED = 3;
+const BRIDGE_NOTIFY_INTERVAL_MS = 100;
+const MAX_RETAINED_SESSION_STATES = 3;
 
 function bindEventTurn(previous: ChatItem[], next: ChatItem[], turnId: string | undefined): ChatItem[] {
     if (!turnId) return next;
@@ -147,6 +149,7 @@ export interface SessionBridgeState {
     listeners: Set<() => void>;
     notifyTimer: ReturnType<typeof setTimeout> | null;
     lastNotifyAt: number;
+    lastAccessAt: number;
     turnStarted: boolean;
     activeTurnId: string | null;
     lastTurnSequence: Record<string, number>;
@@ -283,6 +286,7 @@ export class ChatBridgeManager {
                 listeners: new Set(),
                 notifyTimer: null,
                 lastNotifyAt: 0,
+                lastAccessAt: Date.now(),
                 turnStarted: false,
                 activeTurnId: null,
                 lastTurnSequence: {},
@@ -318,6 +322,9 @@ export class ChatBridgeManager {
             };
             this.sessions.set(session.id, state);
             this.connect(session, state);
+            if (this.sessions.size > MAX_RETAINED_SESSION_STATES) {
+                setTimeout(() => this.evictIdleSessions(session.id), 0);
+            }
         } else if (
             state.listeners.size === 0 &&
             (state.connection === 'error' ||
@@ -334,7 +341,27 @@ export class ChatBridgeManager {
             }
             this.connect(session, state);
         }
+        state.lastAccessAt = Date.now();
         return state;
+    }
+
+    private evictIdleSessions(currentSessionId: string) {
+        if (this.sessions.size <= MAX_RETAINED_SESSION_STATES) return;
+        const candidates = [...this.sessions.entries()]
+            .filter(
+                ([sessionId, state]) =>
+                    sessionId !== currentSessionId &&
+                    state.listeners.size === 0 &&
+                    !state.turnStarted &&
+                    !state.typing &&
+                    !state.backgroundTasks?.some(task => task.status === 'running')
+            )
+            .sort(([, left], [, right]) => left.lastAccessAt - right.lastAccessAt);
+
+        for (const [sessionId] of candidates) {
+            if (this.sessions.size <= MAX_RETAINED_SESSION_STATES) break;
+            this.destroy(sessionId);
+        }
     }
 
     destroy(sessionId: string) {
@@ -484,7 +511,7 @@ export class ChatBridgeManager {
             }
 
             const event = payload.event;
-            console.log('[ChatBridgeManager] Received event:', event, payload);
+            console.debug('[ChatBridgeManager] Received event:', event);
 
             switch (event) {
                 case 'session_ready': {
@@ -1465,37 +1492,35 @@ export class ChatBridgeManager {
     }
 
     private notify(state: SessionBridgeState, immediate: boolean = false) {
-        // High-priority metadata updates are published immediately to host callbacks
-        this.opts.onStatus?.(state.sessionId, deriveLiveStatus(state));
-        this.opts.onConnection?.(state.sessionId, state.connection);
-        this.opts.onAuthState?.(state.sessionId, state.auth);
-
         if (immediate || !state.turnStarted) {
-            this.flushNotifyListeners(state);
+            this.flushNotify(state);
             return;
         }
 
         const now = Date.now();
         const elapsed = now - (state.lastNotifyAt || 0);
-        if (elapsed >= 60) {
-            this.flushNotifyListeners(state);
+        if (elapsed >= BRIDGE_NOTIFY_INTERVAL_MS) {
+            this.flushNotify(state);
             return;
         }
 
         if (!state.notifyTimer) {
             state.notifyTimer = setTimeout(() => {
                 state.notifyTimer = null;
-                this.flushNotifyListeners(state);
-            }, 60 - elapsed);
+                this.flushNotify(state);
+            }, BRIDGE_NOTIFY_INTERVAL_MS - elapsed);
         }
     }
 
-    private flushNotifyListeners(state: SessionBridgeState) {
+    private flushNotify(state: SessionBridgeState) {
         if (state.notifyTimer) {
             clearTimeout(state.notifyTimer);
             state.notifyTimer = null;
         }
         state.lastNotifyAt = Date.now();
+        this.opts.onStatus?.(state.sessionId, deriveLiveStatus(state));
+        this.opts.onConnection?.(state.sessionId, state.connection);
+        this.opts.onAuthState?.(state.sessionId, state.auth);
         for (const listener of state.listeners) {
             listener();
         }
