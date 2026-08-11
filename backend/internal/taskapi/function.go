@@ -72,6 +72,16 @@ func ExtractFunctionType(labels []string) string {
 // The store parameter is used to write back result + status; the api parameter
 // fires completion hooks. Both may be nil for unit tests.
 func RunFunction(task meta.Task, workspacePath string, store *meta.TaskStore, api *API) {
+	runFunction(task, workspacePath, store, api, meta.TaskRun{})
+}
+
+// RunFunctionWithRunMetadata is the FunctionExecutor entry point for an
+// ExecutionJob. It keeps function execution on the shared TaskRun audit spine.
+func RunFunctionWithRunMetadata(task meta.Task, workspacePath string, store *meta.TaskStore, api *API, runMetadata meta.TaskRun) {
+	runFunction(task, workspacePath, store, api, runMetadata)
+}
+
+func runFunction(task meta.Task, workspacePath string, store *meta.TaskStore, api *API, runMetadata meta.TaskRun) {
 	// Prefer Labels "fn:<type>"; fall back to Assignee (mirrored on write, #192).
 	fnType := ExtractFunctionType(task.Labels)
 	if fnType == "" {
@@ -79,12 +89,13 @@ func RunFunction(task meta.Task, workspacePath string, store *meta.TaskStore, ap
 	}
 	if fnType == "" {
 		writeTerminal(task, workspacePath, store, api, meta.TaskStatusFailed,
+			runMetadata,
 			`{"error":"no fn: label or assignee on function task"}`, 0)
 		return
 	}
 	handler := Lookup(fnType)
 	if handler == nil {
-		writeTerminal(task, workspacePath, store, api, meta.TaskStatusFailed,
+		writeTerminal(task, workspacePath, store, api, meta.TaskStatusFailed, runMetadata,
 			fmt.Sprintf(`{"error":"function type %q not registered"}`, fnType), 0)
 		return
 	}
@@ -95,7 +106,7 @@ func RunFunction(task meta.Task, workspacePath string, store *meta.TaskStore, ap
 	if err != nil {
 		log.Printf("[function-runner] fn:%s task %s failed: %v", fnType, task.ID, err)
 		payload, _ := json.Marshal(map[string]string{"error": err.Error()})
-		writeTerminal(task, workspacePath, store, api, meta.TaskStatusFailed, string(payload), ctx.CostTokens)
+		writeTerminal(task, workspacePath, store, api, meta.TaskStatusFailed, runMetadata, string(payload), ctx.CostTokens)
 		return
 	}
 
@@ -112,20 +123,19 @@ func RunFunction(task meta.Task, workspacePath string, store *meta.TaskStore, ap
 	}
 
 	log.Printf("[function-runner] fn:%s task %s completed", fnType, task.ID)
-	writeTerminal(task, workspacePath, store, api, meta.TaskStatusCompleted, resultJSON, ctx.CostTokens)
+	writeTerminal(task, workspacePath, store, api, meta.TaskStatusCompleted, runMetadata, resultJSON, ctx.CostTokens)
 }
 
 // writeTerminal persists the terminal state and fires completion hooks.
 func writeTerminal(task meta.Task, workspacePath string, store *meta.TaskStore, api *API,
-	status meta.TaskStatus, resultJSON string, costTokens int64) {
+	status meta.TaskStatus, runMetadata meta.TaskRun, resultJSON string, costTokens int64) {
 	now := time.Now().UTC()
 	var run meta.TaskRun
 	var closedBy *meta.ClosedBy
 	if store != nil {
 		var auditErr error
-		run, auditErr = store.TaskRuns().Create(workspacePath, meta.TaskRun{
-			TaskID: task.ID, Kind: meta.TaskRunExecution,
-		})
+		runMetadata.TaskID, runMetadata.Kind = task.ID, meta.TaskRunExecution
+		run, auditErr = store.TaskRuns().Create(workspacePath, runMetadata)
 		if auditErr == nil {
 			runStatus := meta.TaskRunCompleted
 			evidenceKind := "function_result"

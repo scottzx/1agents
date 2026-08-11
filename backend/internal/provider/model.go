@@ -104,11 +104,12 @@ type ResolvedProfileSnapshot struct {
 // ProfileLaunchSpec is produced by a code-owned runtime adapter. Credentials
 // are transient and intentionally excluded from JSON serialization.
 type ProfileLaunchSpec struct {
-	Snapshot    ResolvedProfileSnapshot `json:"snapshot"`
-	Argv        []string                `json:"argv"`
-	Model       string                  `json:"model"`
-	Env         map[string]string       `json:"env,omitempty"`
-	Credentials map[string]string       `json:"-"`
+	Snapshot     ResolvedProfileSnapshot `json:"snapshot"`
+	Argv         []string                `json:"argv"`
+	Model        string                  `json:"model"`
+	Env          map[string]string       `json:"env,omitempty"`
+	TransientEnv map[string]string       `json:"-"`
+	Credentials  map[string]string       `json:"-"`
 }
 
 type ModelCapabilities struct {

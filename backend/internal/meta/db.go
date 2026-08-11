@@ -1148,6 +1148,15 @@ func (db *DB) ensureTaskRunSchema() error {
 			closed_by_json TEXT NOT NULL DEFAULT '',
 			error_text     TEXT NOT NULL DEFAULT '',
 			profile_snapshot_json TEXT NOT NULL DEFAULT '',
+			job_id             TEXT NOT NULL DEFAULT '',
+			trigger_id         TEXT NOT NULL DEFAULT '',
+			occurrence_key     TEXT NOT NULL DEFAULT '',
+			scheduled_for      TEXT,
+			job_revision       INTEGER NOT NULL DEFAULT 0,
+			resolved_job_snapshot_json TEXT NOT NULL DEFAULT '',
+			resolved_profile_snapshot_json TEXT NOT NULL DEFAULT '',
+			usage_json         TEXT NOT NULL DEFAULT '',
+			client_request_id  TEXT NOT NULL DEFAULT '',
 			started_at     TEXT NOT NULL,
 			completed_at   TEXT,
 			created_at     TEXT NOT NULL,
@@ -1177,10 +1186,29 @@ func (db *DB) ensureTaskRunSchema() error {
 	if err != nil {
 		return err
 	}
-	if !taskRunCols["profile_snapshot_json"] {
-		if _, err := db.sql.Exec(`ALTER TABLE task_runs ADD COLUMN profile_snapshot_json TEXT NOT NULL DEFAULT ''`); err != nil {
-			return fmt.Errorf("add task_runs.profile_snapshot_json: %w", err)
+	for _, col := range []struct{ name, ddl string }{
+		{"profile_snapshot_json", "ALTER TABLE task_runs ADD COLUMN profile_snapshot_json TEXT NOT NULL DEFAULT ''"},
+		{"job_id", "ALTER TABLE task_runs ADD COLUMN job_id TEXT NOT NULL DEFAULT ''"},
+		{"trigger_id", "ALTER TABLE task_runs ADD COLUMN trigger_id TEXT NOT NULL DEFAULT ''"},
+		{"occurrence_key", "ALTER TABLE task_runs ADD COLUMN occurrence_key TEXT NOT NULL DEFAULT ''"},
+		{"scheduled_for", "ALTER TABLE task_runs ADD COLUMN scheduled_for TEXT"},
+		{"job_revision", "ALTER TABLE task_runs ADD COLUMN job_revision INTEGER NOT NULL DEFAULT 0"},
+		{"resolved_job_snapshot_json", "ALTER TABLE task_runs ADD COLUMN resolved_job_snapshot_json TEXT NOT NULL DEFAULT ''"},
+		{"resolved_profile_snapshot_json", "ALTER TABLE task_runs ADD COLUMN resolved_profile_snapshot_json TEXT NOT NULL DEFAULT ''"},
+		{"usage_json", "ALTER TABLE task_runs ADD COLUMN usage_json TEXT NOT NULL DEFAULT ''"},
+		{"client_request_id", "ALTER TABLE task_runs ADD COLUMN client_request_id TEXT NOT NULL DEFAULT ''"},
+	} {
+		if taskRunCols[col.name] {
+			continue
 		}
+		if _, err := db.sql.Exec(col.ddl); err != nil {
+			return fmt.Errorf("add task_runs.%s: %w", col.name, err)
+		}
+	}
+	if _, err := db.sql.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_task_runs_job_occurrence_attempt
+		ON task_runs(job_id, occurrence_key, kind, attempt)
+		WHERE job_id != '' AND occurrence_key != ''`); err != nil {
+		return fmt.Errorf("create task run occurrence index: %w", err)
 	}
 	return nil
 }

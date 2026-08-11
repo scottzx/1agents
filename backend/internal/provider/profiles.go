@@ -40,6 +40,11 @@ func normalizeProfiles(pd *ProviderData, now int64) {
 	if profileByID(pd.Profiles, DeepSeekBuildProfileID) == nil {
 		pd.Profiles = append(pd.Profiles, seedDeepSeekProfile(pd, now))
 	}
+	if pd.DefaultProfileID == "" {
+		if profile := profileByID(pd.Profiles, DeepSeekBuildProfileID); profile != nil && profile.Status == ProfileStatusActive {
+			pd.DefaultProfileID = profile.ID
+		}
+	}
 }
 
 func seedDeepSeekProfile(pd *ProviderData, now int64) AgentProfile {
@@ -346,8 +351,20 @@ func (s *Store) ResolveProfile(id string) (*ProfileLaunchSpec, error) {
 			"GROK_MODELS_LIST_URL":  modelsEndpoint,
 			"GROK_DEFAULT_MODEL":    profile.ModelID,
 		},
-		Credentials: map[string]string{"xai.api_key": credential},
+		TransientEnv: map[string]string{"XAI_API_KEY": credential},
+		Credentials:  map[string]string{"xai.api_key": credential},
 	}, nil
+}
+
+// DefaultProfileID returns the system-level assignment default. It is a
+// reference only; callers still validate the referenced profile at job create
+// time and again when a run starts.
+func (s *Store) DefaultProfileID() (string, error) {
+	pd, err := s.Load()
+	if err != nil {
+		return "", err
+	}
+	return pd.DefaultProfileID, nil
 }
 
 func cloneRawOptions(values map[string]json.RawMessage) map[string]json.RawMessage {

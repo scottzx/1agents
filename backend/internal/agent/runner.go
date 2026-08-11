@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/scottzx/1Agents/backend/internal/execution"
 	"github.com/scottzx/1Agents/backend/internal/meta"
 	"github.com/scottzx/1Agents/backend/internal/provider"
 )
@@ -53,6 +54,27 @@ const runnerIdleTimeout = 10 * time.Minute
 // marked the task running; Execute releases the lock and persists the
 // terminal status on exit.
 func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
+	r.execute(workspacePath, workspaceID, task, meta.TaskRun{})
+}
+
+// ExecuteExecutionJob is the ACPExecutor compatibility adapter. It resolves
+// the Job's frozen profile binding and persists the Job/occurrence dimensions
+// on the existing task_runs audit spine.
+func (r *TaskRunner) ExecuteExecutionJob(workspacePath, workspaceID string, task Task, job execution.Job) {
+	if job.ProfileID != "" {
+		if task.TaskTarget == nil {
+			task.TaskTarget = &TaskTargetSpec{}
+		}
+		task.TaskTarget.ProfileID = job.ProfileID
+	}
+	if job.LegacyAgentType != "" {
+		task.Assignee = job.LegacyAgentType
+	}
+	jobSnapshot, _ := json.Marshal(job)
+	r.execute(workspacePath, workspaceID, task, meta.TaskRun{JobID: job.ID, JobRevision: job.Revision, OccurrenceKey: "manual:" + meta.NewID(), ResolvedJobSnapshot: jobSnapshot})
+}
+
+func (r *TaskRunner) execute(workspacePath, workspaceID string, task Task, runMetadata meta.TaskRun) {
 	// When an interactive client takes the session over (the
 	// "session_taken_over" case in the read loop below), it becomes the owner
 	// of both the run and the workspace lock — so this runner must NOT release
@@ -73,10 +95,10 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 
 	sessionID := newID()
 	resolvedProfile, profileErr := r.resolveTaskProfile(workspaceID, task)
-	taskRun, runErr := r.tasksStore.TaskRuns().Create(workspacePath, meta.TaskRun{
-		TaskID: task.ID, SessionID: sessionID, Kind: meta.TaskRunExecution,
-		ProfileSnapshot: resolvedProfile.snapshot,
-	})
+	runMetadata.TaskID, runMetadata.SessionID, runMetadata.Kind = task.ID, sessionID, meta.TaskRunExecution
+	runMetadata.ProfileSnapshot = resolvedProfile.snapshot
+	runMetadata.ResolvedProfileSnapshot = resolvedProfile.snapshot
+	taskRun, runErr := r.tasksStore.TaskRuns().Create(workspacePath, runMetadata)
 	if runErr != nil {
 		log.Printf("[runner] create TaskRun for task %s: %v", task.ID, runErr)
 	}

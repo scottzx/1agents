@@ -39,10 +39,21 @@ type TaskRun struct {
 	ErrorText       string               `json:"errorText,omitempty"`
 	// ProfileSnapshot is a resolved, credential-free execution snapshot.
 	ProfileSnapshot json.RawMessage `json:"profileSnapshot,omitempty"`
-	StartedAt       time.Time       `json:"startedAt"`
-	CompletedAt     *time.Time      `json:"completedAt,omitempty"`
-	CreatedAt       time.Time       `json:"createdAt"`
-	UpdatedAt       time.Time       `json:"updatedAt"`
+	// Execution fields are optional for historical runs. New ExecutionJob runs
+	// populate them so a run can be traced without creating a parallel history.
+	JobID                   string          `json:"jobId,omitempty"`
+	TriggerID               string          `json:"triggerId,omitempty"`
+	OccurrenceKey           string          `json:"occurrenceKey,omitempty"`
+	ScheduledFor            *time.Time      `json:"scheduledFor,omitempty"`
+	JobRevision             int             `json:"jobRevision,omitempty"`
+	ResolvedJobSnapshot     json.RawMessage `json:"resolvedJobSnapshot,omitempty"`
+	ResolvedProfileSnapshot json.RawMessage `json:"resolvedProfileSnapshot,omitempty"`
+	Usage                   json.RawMessage `json:"usage,omitempty"`
+	ClientRequestID         string          `json:"clientRequestId,omitempty"`
+	StartedAt               time.Time       `json:"startedAt"`
+	CompletedAt             *time.Time      `json:"completedAt,omitempty"`
+	CreatedAt               time.Time       `json:"createdAt"`
+	UpdatedAt               time.Time       `json:"updatedAt"`
 }
 
 type TaskRunStore struct {
@@ -128,12 +139,16 @@ func (s *TaskRunStore) Create(workspacePath string, run TaskRun) (TaskRun, error
 		INSERT INTO task_runs (
 			id, project_id, task_id, origin_turn_id, session_id, kind, status,
 			attempt, evidence_json, verdict_json, closed_by_json, error_text,
-			profile_snapshot_json, started_at, completed_at, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', '', ?, ?, NULL, ?, ?)`,
+			profile_snapshot_json, job_id, trigger_id, occurrence_key, scheduled_for,
+			job_revision, resolved_job_snapshot_json, resolved_profile_snapshot_json,
+			usage_json, client_request_id, started_at, completed_at, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		run.ID, run.ProjectID, run.TaskID, nullableString(run.OriginTurnID),
 		run.SessionID, run.Kind, run.Status, run.Attempt, string(evidenceJSON),
-		string(run.ProfileSnapshot),
-		timeToStr(run.StartedAt), timeToStr(run.CreatedAt), timeToStr(run.UpdatedAt),
+		"", "", "", string(run.ProfileSnapshot), run.JobID, run.TriggerID, run.OccurrenceKey,
+		timePtrToVal(run.ScheduledFor), run.JobRevision, string(run.ResolvedJobSnapshot),
+		string(run.ResolvedProfileSnapshot), string(run.Usage), run.ClientRequestID,
+		timeToStr(run.StartedAt), nil, timeToStr(run.CreatedAt), timeToStr(run.UpdatedAt),
 	)
 	if err != nil {
 		return TaskRun{}, err
@@ -334,6 +349,28 @@ func (s *TaskRunStore) ListByTask(taskID string) ([]TaskRun, error) {
 	return out, rows.Err()
 }
 
+// ListByJob returns the shared audit history for an ExecutionJob. Historical
+// runs with no job_id remain available through ListByTask.
+func (s *TaskRunStore) ListByJob(jobID string) ([]TaskRun, error) {
+	rows, err := s.db.sql.Query(`SELECT `+taskRunCols+` FROM task_runs WHERE job_id = ? ORDER BY created_at DESC, id DESC`, jobID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []TaskRun{}
+	for rows.Next() {
+		run, err := scanTaskRun(rows)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.hydrateOriginSession(&run); err != nil {
+			return nil, err
+		}
+		out = append(out, run)
+	}
+	return out, rows.Err()
+}
+
 func (s *TaskRunStore) hydrateOriginSession(run *TaskRun) error {
 	if run.OriginTurnID == "" || run.OriginSessionID != "" {
 		return nil
@@ -375,17 +412,22 @@ func (s *TaskRunStore) originTurnForTask(projectID, taskID string) (string, erro
 
 const taskRunCols = `id, project_id, task_id, origin_turn_id, session_id, kind,
 	status, attempt, evidence_json, verdict_json, closed_by_json, error_text,
-	profile_snapshot_json, started_at, completed_at, created_at, updated_at`
+	profile_snapshot_json, job_id, trigger_id, occurrence_key, scheduled_for,
+	job_revision, resolved_job_snapshot_json, resolved_profile_snapshot_json,
+	usage_json, client_request_id, started_at, completed_at, created_at, updated_at`
 
 func scanTaskRun(row rowScanner) (TaskRun, error) {
 	var run TaskRun
 	var originTurn sql.NullString
-	var evidenceJSON, verdictJSON, closedByJSON, snapshotJSON, startedAt, createdAt, updatedAt string
-	var completed sql.NullString
+	var evidenceJSON, verdictJSON, closedByJSON, snapshotJSON, jobSnapshotJSON, profileSnapshotJSON, usageJSON, startedAt, createdAt, updatedAt string
+	var completed, scheduledFor sql.NullString
 	if err := row.Scan(
 		&run.ID, &run.ProjectID, &run.TaskID, &originTurn, &run.SessionID,
 		&run.Kind, &run.Status, &run.Attempt, &evidenceJSON, &verdictJSON,
-		&closedByJSON, &run.ErrorText, &snapshotJSON, &startedAt, &completed, &createdAt, &updatedAt,
+		&closedByJSON, &run.ErrorText, &snapshotJSON, &run.JobID, &run.TriggerID,
+		&run.OccurrenceKey, &scheduledFor, &run.JobRevision, &jobSnapshotJSON,
+		&profileSnapshotJSON, &usageJSON, &run.ClientRequestID, &startedAt, &completed,
+		&createdAt, &updatedAt,
 	); err != nil {
 		return TaskRun{}, err
 	}
@@ -393,6 +435,16 @@ func scanTaskRun(row rowScanner) (TaskRun, error) {
 	if snapshotJSON != "" {
 		run.ProfileSnapshot = json.RawMessage(snapshotJSON)
 	}
+	if jobSnapshotJSON != "" {
+		run.ResolvedJobSnapshot = json.RawMessage(jobSnapshotJSON)
+	}
+	if profileSnapshotJSON != "" {
+		run.ResolvedProfileSnapshot = json.RawMessage(profileSnapshotJSON)
+	}
+	if usageJSON != "" {
+		run.Usage = json.RawMessage(usageJSON)
+	}
+	run.ScheduledFor = valToTimePtr(scheduledFor)
 	run.StartedAt = strToTime(startedAt)
 	run.CreatedAt = strToTime(createdAt)
 	run.UpdatedAt = strToTime(updatedAt)

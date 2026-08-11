@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/scottzx/1Agents/backend/internal/execution"
 	"github.com/scottzx/1Agents/backend/internal/meta"
 )
 
@@ -85,7 +86,8 @@ type AppPermissions struct {
 // API is the North Task API service. Construct it with New and wire it into
 // the server at startup.
 type API struct {
-	store *meta.TaskStore
+	store     *meta.TaskStore
+	execution *execution.Service
 
 	mu    sync.RWMutex
 	perms map[string]*AppPermissions // namespace → permissions
@@ -98,6 +100,15 @@ func New(store *meta.TaskStore) *API {
 		store: store,
 		perms: make(map[string]*AppPermissions),
 	}
+}
+
+// NewWithExecution enables the Job-writing half of the ExecutionJob
+// migration. Existing callers can keep New while the legacy scheduler remains
+// authoritative for dispatch.
+func NewWithExecution(store *meta.TaskStore, service *execution.Service) *API {
+	api := New(store)
+	api.execution = service
+	return api
 }
 
 // RegisterApp declares an application's permissions. Must be called at startup
@@ -214,6 +225,35 @@ func (a *API) DispatchTask(namespace string, spec DispatchSpec) (string, error) 
 	if err != nil {
 		return "", fmt.Errorf("taskapi: dispatch: %w", err)
 	}
+	if a.execution != nil {
+		projectID, projectErr := a.store.DB().ProjectIDByPath(spec.WorkspacePath)
+		if projectErr != nil || projectID == "" {
+			if projectErr == nil {
+				projectErr = fmt.Errorf("workspace project was not persisted")
+			}
+			return "", fmt.Errorf("taskapi: resolve execution project: %w", projectErr)
+		}
+		legacyAgent, profileID, cwd := "", "", ""
+		var capabilities []string
+		if spec.Target != nil {
+			profileID, legacyAgent, cwd = spec.Target.ProfileID, spec.Target.AgentType, spec.Target.Cwd
+			capabilities = spec.Target.Capabilities
+		}
+		if spec.Executor == meta.TaskExecutorAgent && profileID == "" && legacyAgent == "" {
+			legacyAgent = spec.Assignee
+			if legacyAgent == "" {
+				legacyAgent = "claudecode"
+			}
+		}
+		_, jobErr := a.execution.CreateJob(execution.CreateJobInput{
+			ProjectID: projectID, WorkItemID: taskID, BusinessRef: spec.BusinessRef,
+			ExecutorKind: string(spec.Executor), ProfileID: profileID, LegacyAgentType: legacyAgent,
+			FunctionType: spec.FunctionType, Cwd: cwd, Capabilities: capabilities,
+		})
+		if jobErr != nil {
+			return "", fmt.Errorf("taskapi: create execution job: %w", jobErr)
+		}
+	}
 	return taskID, nil
 }
 
@@ -262,7 +302,6 @@ func (a *API) QueryTasks(workspacePath, businessRef, executorFilter string) ([]m
 }
 
 // helpers ──────────────────────────────────────────────────────────────────
-
 
 func priorityOrDefault(p string) string {
 	if p == "" {

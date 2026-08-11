@@ -31394,6 +31394,175 @@ body {
     padding: 8px 16px 0;
   }
 
+  .execution-overview {
+    margin: 0 16px;
+    border-bottom: 1px solid var(--border-color);
+    padding: 12px 0;
+  }
+
+  .execution-overview-header,
+  .execution-overview-job-main,
+  .execution-overview-run {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .execution-overview-header h3 {
+    margin: 0;
+    color: var(--text-main);
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .execution-overview-header p {
+    margin: 3px 0 0;
+    color: var(--text-muted);
+    font-size: 11px;
+  }
+
+  .execution-overview-refresh,
+  .execution-overview-actions button,
+  .execution-overview-retry-form button,
+  .execution-overview-empty button {
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-card);
+    color: var(--text-main);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 4px 8px;
+
+    &:hover:not(:disabled) {
+      border-color: var(--text-main);
+    }
+
+    &:disabled {
+      cursor: default;
+      opacity: 0.55;
+    }
+  }
+
+  .execution-overview-refresh {
+    border-radius: 999px;
+    line-height: 1;
+    padding: 6px 8px;
+  }
+
+  .execution-overview-stats {
+    display: flex;
+    gap: 14px;
+    margin-top: 9px;
+    color: var(--text-secondary);
+    font-size: 11px;
+
+    strong {
+      color: var(--text-main);
+      font-size: 14px;
+    }
+  }
+
+  .execution-overview-list {
+    display: flex;
+    flex-direction: column;
+    margin-top: 10px;
+  }
+
+  .execution-overview-job {
+    border-top: 1px solid var(--border-color);
+    padding: 9px 0;
+
+    &.is-failed {
+      border-left: 2px solid var(--danger, var(--accent-danger));
+      padding-left: 8px;
+    }
+  }
+
+  .execution-overview-job-title {
+    display: block;
+    color: var(--text-main);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .execution-overview-job-meta,
+  .execution-overview-actions,
+  .execution-overview-run {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-muted);
+    font-size: 11px;
+  }
+
+  .execution-overview-job-meta {
+    margin-top: 4px;
+  }
+
+  .execution-overview-actions {
+    justify-content: flex-end;
+    flex: none;
+  }
+
+  .execution-overview-retry-form {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+    padding: 8px;
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-size: 11px;
+
+    label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    input {
+      width: 58px;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      background: var(--bg-panel);
+      color: var(--text-main);
+      font: inherit;
+      padding: 4px 6px;
+    }
+  }
+
+  .execution-overview-runs {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+    padding: 8px;
+    border-left: 1px solid var(--border-color);
+    color: var(--text-muted);
+    font-size: 11px;
+  }
+
+  .execution-overview-run {
+    justify-content: flex-start;
+  }
+
+  .execution-overview-run-error {
+    color: var(--danger, var(--accent-danger));
+    overflow-wrap: anywhere;
+  }
+
+  .execution-overview-empty {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 9px;
+    color: var(--text-muted);
+    font-size: 11px;
+  }
+
   .personal-aggregate-body {
     flex: 1;
     min-height: 0;

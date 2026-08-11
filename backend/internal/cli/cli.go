@@ -28,7 +28,10 @@ func Run(args []string) (handled bool, exitCode int) {
 	case "project":
 		return true, runProject(args[1:])
 	case "task":
-		return true, runTask(args[1:])
+		fmt.Fprintln(os.Stderr, "error: `1agents task` has been retired; use `1agents project-items` for work items and `1agents execution` for execution jobs")
+		return true, 1
+	case "execution":
+		return true, runExecution(args[1:])
 	case "roundtable":
 		return true, roundtable.RunCLI(args[1:])
 	default:

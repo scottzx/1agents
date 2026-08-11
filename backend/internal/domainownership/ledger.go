@@ -60,6 +60,11 @@ func RegisterKernelLedger(r *Registry) error {
 	if err := r.RegisterTable(NamespaceKernel, "kernel_access_denials"); err != nil {
 		return err
 	}
+	for _, table := range []string{"kernel_execution_jobs", "kernel_execution_triggers"} {
+		if err := r.RegisterTable(NamespaceKernel, table); err != nil {
+			return err
+		}
+	}
 
 	// ── kernel write APIs (command contracts registered on the bus) ────────
 	// internal/meta/workcase_commands.go owns the WorkCase mutation

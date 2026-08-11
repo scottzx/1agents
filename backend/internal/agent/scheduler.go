@@ -2,11 +2,14 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/scottzx/1Agents/backend/internal/execution"
 )
 
 type WorkspaceLock struct {
@@ -58,7 +61,11 @@ type Scheduler struct {
 	// Set via SetFunctionRunner after construction. When nil, function tasks are
 	// left in running state (no-op dispatch, useful in unit tests).
 	FunctionRunner func(task Task, workspacePath string)
-	ticker         *time.Ticker
+	// ExecutionFunctionRunner is the Job-aware FunctionExecutor adapter. It is
+	// separate during the compatibility window so legacy scheduler calls retain
+	// their existing Task-only callback contract.
+	ExecutionFunctionRunner func(task Task, workspacePath string, job execution.Job)
+	ticker                  *time.Ticker
 	// engine is the event-driven orchestration layer (#133). The scheduler
 	// owns state transitions and, at each transition point, emits a TaskEvent
 	// the engine maps to declarative actions (route/notify/requeue). Never nil
@@ -85,6 +92,70 @@ func (s *Scheduler) SetRunner(r *TaskRunner) { s.runner = r }
 // See FunctionRunner field.
 func (s *Scheduler) SetFunctionRunner(fn func(task Task, workspacePath string)) {
 	s.FunctionRunner = fn
+}
+
+func (s *Scheduler) SetExecutionFunctionRunner(fn func(task Task, workspacePath string, job execution.Job)) {
+	s.ExecutionFunctionRunner = fn
+}
+
+// RunExecutionJob is the compatibility Executor adapter. It keeps the
+// existing workspace lease and task-state projection while ExecutionJob owns
+// the decision to start. ACP remains behind TaskRunner, never behind the
+// execution service.
+func (s *Scheduler) RunExecutionJob(ctx context.Context, job execution.Job) error {
+	task, ok, err := s.tasksStore.GetTask(job.WorkItemID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("execution job %s: work item %s not found", job.ID, job.WorkItemID)
+	}
+	if isHumanTask(&task) || job.ExecutorKind == "human" {
+		now := time.Now().UTC()
+		return s.tasksStore.Mutate(task.WorkspacePath, func(cfg *TasksConfig) bool {
+			for i := range cfg.Tasks {
+				if cfg.Tasks[i].ID == task.ID {
+					cfg.Tasks[i].Status, cfg.Tasks[i].StartedAt, cfg.Tasks[i].UpdatedAt = TaskStatusAwaitingHuman, &now, now
+					return true
+				}
+			}
+			return false
+		})
+	}
+	if !s.Lock.TryAcquire(task.WorkspacePath, task.ID) {
+		return fmt.Errorf("execution job %s: workspace already has a running job", job.ID)
+	}
+	now := time.Now().UTC()
+	if err := s.tasksStore.Mutate(task.WorkspacePath, func(cfg *TasksConfig) bool {
+		for i := range cfg.Tasks {
+			if cfg.Tasks[i].ID == task.ID {
+				cfg.Tasks[i].Status, cfg.Tasks[i].StartedAt, cfg.Tasks[i].UpdatedAt = TaskStatusRunning, &now, now
+				return true
+			}
+		}
+		return false
+	}); err != nil {
+		s.Lock.Release(task.WorkspacePath)
+		return err
+	}
+	if job.ExecutorKind == "function" {
+		if s.ExecutionFunctionRunner == nil {
+			s.Lock.Release(task.WorkspacePath)
+			return fmt.Errorf("execution job %s: function executor unavailable", job.ID)
+		}
+		go func() {
+			defer s.Lock.Release(task.WorkspacePath)
+			s.ExecutionFunctionRunner(task, task.WorkspacePath, job)
+			s.Tick()
+		}()
+		return nil
+	}
+	if s.runner == nil {
+		s.Lock.Release(task.WorkspacePath)
+		return fmt.Errorf("execution job %s: agent executor unavailable", job.ID)
+	}
+	go s.runner.ExecuteExecutionJob(task.WorkspacePath, job.ProjectID, task, job)
+	return nil
 }
 
 func (s *Scheduler) Start(ctx context.Context) {

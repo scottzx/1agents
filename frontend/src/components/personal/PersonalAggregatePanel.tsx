@@ -15,6 +15,8 @@ import { h } from 'preact';
 import { useCallback, useEffect, useState } from 'preact/hooks';
 
 import { personalAggregateService } from '@1agents/core/services/personalAggregateService';
+import { executionService } from '@1agents/core/services/executionService';
+import type { ExecutionJob, ExecutionRun } from '@1agents/core/types/execution';
 import type {
     AggregateWorkItem,
     AggBucketFilter,
@@ -228,6 +230,8 @@ export function PersonalAggregatePanel() {
                 })}
             </div>
 
+            <ExecutionOverview language={language} />
+
             {caseFilter && (
                 <div class="personal-aggregate-casefilter">
                     <InlineBadge
@@ -289,6 +293,290 @@ export function PersonalAggregatePanel() {
                 )}
             </div>
         </div>
+    );
+}
+
+// ── execution control plane ────────────────────────────────────────────────
+
+function triggerLabel(job: ExecutionJob, language: Lang): string {
+    const trigger = job.trigger;
+    if (!trigger) return t('personalAggregate.execution.manual', language);
+    if (trigger.kind === 'recurrence') {
+        const every = Number(trigger.spec.everyMinutes);
+        return Number.isFinite(every) && every > 0
+            ? t('personalAggregate.execution.everyMinutes', language, { n: every })
+            : t('personalAggregate.execution.recurrence', language);
+    }
+    return trigger.nextRunAt
+        ? t('personalAggregate.execution.nextRun', language, { at: fmtDue(trigger.nextRunAt, language) })
+        : t('personalAggregate.execution.scheduled', language);
+}
+
+function runStatusVariant(status: ExecutionRun['status']): 'success' | 'danger' | 'warning' | 'accent' {
+    switch (status) {
+        case 'completed':
+            return 'success';
+        case 'failed':
+        case 'cancelled':
+            return 'danger';
+        case 'running':
+            return 'accent';
+        default:
+            return 'warning';
+    }
+}
+
+function ExecutionOverview({ language }: { language: Lang }) {
+    const [tasks, setTasks] = useState<AggregateWorkItem[]>([]);
+    const [taskCount, setTaskCount] = useState(0);
+    const [jobs, setJobs] = useState<ExecutionJob[]>([]);
+    const [runs, setRuns] = useState<Record<string, ExecutionRun[]>>({});
+    const [expandedJob, setExpandedJob] = useState<string | null>(null);
+    const [editingJob, setEditingJob] = useState<string | null>(null);
+    const [retryMinutes, setRetryMinutes] = useState<Record<string, string>>({});
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [busyJob, setBusyJob] = useState<string | null>(null);
+
+    const load = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const [aggregate, allJobs] = await Promise.all([
+                personalAggregateService.fetch({ limit: 200, sort: 'updated' }),
+                executionService.listJobs(),
+            ]);
+            const executable = aggregate.items.filter(item => item.type === 'task');
+            const taskIDs = new Set(executable.map(item => item.id));
+            setTasks(executable);
+            setTaskCount(aggregate.total);
+            setJobs(allJobs.filter(job => taskIDs.has(job.workItemId)));
+        } catch (err) {
+            setError(String(err));
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        void load();
+    }, [load]);
+
+    const toggleRuns = useCallback(
+        async (jobId: string) => {
+            if (expandedJob === jobId) {
+                setExpandedJob(null);
+                return;
+            }
+            setExpandedJob(jobId);
+            if (runs[jobId]) return;
+            try {
+                const items = await executionService.listRuns(jobId);
+                setRuns(previous => ({ ...previous, [jobId]: items }));
+            } catch (err) {
+                ui.showToast(t('personalAggregate.execution.runsFailed', language, { err: String(err) }));
+            }
+        },
+        [expandedJob, language, runs]
+    );
+
+    const runNow = useCallback(
+        async (jobId: string) => {
+            setBusyJob(jobId);
+            try {
+                await executionService.runNow(jobId);
+                ui.showToast(t('personalAggregate.execution.runAccepted', language));
+                setRuns(previous => {
+                    const next = { ...previous };
+                    delete next[jobId];
+                    return next;
+                });
+                await load();
+            } catch (err) {
+                ui.showToast(t('personalAggregate.execution.runFailed', language, { err: String(err) }));
+            } finally {
+                setBusyJob(null);
+            }
+        },
+        [language, load]
+    );
+
+    const scheduleRetry = useCallback(
+        async (job: ExecutionJob) => {
+            const minutes = Number(retryMinutes[job.id] || '60');
+            if (!Number.isInteger(minutes) || minutes < 1) {
+                ui.showToast(t('personalAggregate.execution.invalidDelay', language));
+                return;
+            }
+            setBusyJob(job.id);
+            try {
+                const at = new Date(Date.now() + minutes * 60_000).toISOString();
+                await executionService.upsertTrigger(job.id, {
+                    kind: 'at',
+                    spec: { at },
+                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                    misfirePolicy: 'run_once',
+                    overlapPolicy: 'forbid',
+                });
+                ui.showToast(t('personalAggregate.execution.retryScheduled', language));
+                setEditingJob(null);
+                await load();
+            } catch (err) {
+                ui.showToast(t('personalAggregate.execution.scheduleFailed', language, { err: String(err) }));
+            } finally {
+                setBusyJob(null);
+            }
+        },
+        [language, load, retryMinutes]
+    );
+
+    const taskByID = new Map(tasks.map(task => [task.id, task]));
+
+    return (
+        <section class="execution-overview" aria-label={t('personalAggregate.execution.title', language)}>
+            <div class="execution-overview-header">
+                <div>
+                    <h3>{t('personalAggregate.execution.title', language)}</h3>
+                    <p>{t('personalAggregate.execution.desc', language)}</p>
+                </div>
+                <button
+                    type="button"
+                    class="execution-overview-refresh"
+                    onClick={() => void load()}
+                    title={t('personalAggregate.refresh', language)}
+                    disabled={loading}
+                >
+                    ⟳
+                </button>
+            </div>
+
+            <div class="execution-overview-stats">
+                <span>
+                    <strong>{taskCount}</strong> {t('personalAggregate.execution.tasks', language)}
+                </span>
+                <span>
+                    <strong>{jobs.length}</strong> {t('personalAggregate.execution.jobs', language)}
+                </span>
+            </div>
+
+            {loading ? (
+                <div class="execution-overview-empty">{t('personalAggregate.loading', language)}</div>
+            ) : error ? (
+                <div class="execution-overview-empty">
+                    {t('personalAggregate.execution.loadFailed', language)}
+                    <button type="button" onClick={() => void load()}>
+                        {t('personalAggregate.retry', language)}
+                    </button>
+                </div>
+            ) : jobs.length === 0 ? (
+                <div class="execution-overview-empty">{t('personalAggregate.execution.noJobs', language)}</div>
+            ) : (
+                <div class="execution-overview-list">
+                    {jobs.map(job => {
+                        const task = taskByID.get(job.workItemId);
+                        const failed = task?.run?.status === 'failed';
+                        const isExpanded = expandedJob === job.id;
+                        const isEditing = editingJob === job.id;
+                        const isBusy = busyJob === job.id;
+                        return (
+                            <article key={job.id} class={`execution-overview-job${failed ? ' is-failed' : ''}`}>
+                                <div class="execution-overview-job-main">
+                                    <div>
+                                        <span class="execution-overview-job-title">
+                                            {task?.title || t('personalAggregate.execution.unknownTask', language)}
+                                        </span>
+                                        <span class="execution-overview-job-meta">
+                                            <InlineBadge variant={failed ? 'danger' : 'accent'}>
+                                                {job.executorKind}
+                                            </InlineBadge>
+                                            <InlineBadge variant={job.status === 'active' ? 'success' : 'muted'}>
+                                                {job.status}
+                                            </InlineBadge>
+                                            <span>{triggerLabel(job, language)}</span>
+                                        </span>
+                                    </div>
+                                    <div class="execution-overview-actions">
+                                        <button type="button" onClick={() => void toggleRuns(job.id)}>
+                                            {isExpanded
+                                                ? t('personalAggregate.execution.hideRuns', language)
+                                                : t('personalAggregate.execution.runs', language)}
+                                        </button>
+                                        {failed && (
+                                            <button type="button" disabled={isBusy} onClick={() => void runNow(job.id)}>
+                                                {isBusy
+                                                    ? t('personalAggregate.execution.working', language)
+                                                    : t('personalAggregate.execution.runNow', language)}
+                                            </button>
+                                        )}
+                                        <button
+                                            type="button"
+                                            disabled={isBusy}
+                                            onClick={() => setEditingJob(isEditing ? null : job.id)}
+                                        >
+                                            {job.trigger
+                                                ? t('personalAggregate.execution.editTrigger', language)
+                                                : t('personalAggregate.execution.setTrigger', language)}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {isEditing && (
+                                    <div class="execution-overview-retry-form">
+                                        <label>
+                                            {t('personalAggregate.execution.retryAfter', language)}
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                value={retryMinutes[job.id] || '60'}
+                                                onInput={event =>
+                                                    setRetryMinutes(previous => ({
+                                                        ...previous,
+                                                        [job.id]: (event.currentTarget as HTMLInputElement).value,
+                                                    }))
+                                                }
+                                            />
+                                            {t('personalAggregate.execution.minutes', language)}
+                                        </label>
+                                        <button type="button" disabled={isBusy} onClick={() => void scheduleRetry(job)}>
+                                            {t('personalAggregate.execution.saveTrigger', language)}
+                                        </button>
+                                    </div>
+                                )}
+
+                                {isExpanded && (
+                                    <div class="execution-overview-runs">
+                                        {!runs[job.id] ? (
+                                            <span>{t('personalAggregate.loading', language)}</span>
+                                        ) : runs[job.id].length === 0 ? (
+                                            <span>{t('personalAggregate.execution.noRuns', language)}</span>
+                                        ) : (
+                                            runs[job.id].map(run => (
+                                                <div key={run.id} class="execution-overview-run">
+                                                    <InlineBadge variant={runStatusVariant(run.status)}>
+                                                        {run.status}
+                                                    </InlineBadge>
+                                                    <span>
+                                                        {t('personalAggregate.execution.attempt', language, {
+                                                            n: run.attempt,
+                                                        })}
+                                                    </span>
+                                                    <span>{fmtDue(run.startedAt, language)}</span>
+                                                    {run.errorText && (
+                                                        <span class="execution-overview-run-error">
+                                                            {run.errorText}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                )}
+                            </article>
+                        );
+                    })}
+                </div>
+            )}
+        </section>
     );
 }
 

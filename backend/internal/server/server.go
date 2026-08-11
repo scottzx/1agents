@@ -28,6 +28,7 @@ import (
 	"github.com/scottzx/1Agents/backend/internal/data"
 	"github.com/scottzx/1Agents/backend/internal/digest"
 	"github.com/scottzx/1Agents/backend/internal/domainownership"
+	"github.com/scottzx/1Agents/backend/internal/execution"
 	"github.com/scottzx/1Agents/backend/internal/fs"
 	"github.com/scottzx/1Agents/backend/internal/gateway"
 	"github.com/scottzx/1Agents/backend/internal/git"
@@ -229,9 +230,26 @@ func NewRouter(cfg *config.Config, harnessKitRuntime ...harnesskit.Runtime) http
 			// agent.Task == meta.Task, so the bridge is direct. RunInits runs any
 			// installable app's startup hook against the live API — no apps are
 			// compiled in yet, so it is a no-op until one is registered.
-			taskAPI := taskapi.New(tasksStore)
+			var executionService *execution.Service
+			if repo, repoErr := execution.NewRepository(tasksStore.DB()); repoErr != nil {
+				log.Printf("[server] execution service init failed: %v", repoErr)
+			} else {
+				executionService = execution.NewService(repo, defaultProviderStore)
+				executionService.SetDispatcher(scheduler.RunExecutionJob)
+				executionHandler := execution.NewHandler(executionService)
+				mux.HandleFunc("/api/execution-jobs", executionHandler.Root)
+				mux.HandleFunc("/api/execution-jobs/", executionHandler.Item)
+				execution.NewScheduler(executionService).Start(context.Background())
+			}
+			taskAPI := taskapi.NewWithExecution(tasksStore, executionService)
 			scheduler.SetFunctionRunner(func(task agent.Task, wsPath string) {
 				taskapi.RunFunction(task, wsPath, tasksStore, taskAPI)
+			})
+			scheduler.SetExecutionFunctionRunner(func(task agent.Task, wsPath string, job execution.Job) {
+				jobSnapshot, _ := json.Marshal(job)
+				taskapi.RunFunctionWithRunMetadata(task, wsPath, tasksStore, taskAPI, meta.TaskRun{
+					JobID: job.ID, JobRevision: job.Revision, OccurrenceKey: "manual:" + meta.NewID(), ResolvedJobSnapshot: jobSnapshot,
+				})
 			})
 			appkit.RunInits(taskAPI)
 

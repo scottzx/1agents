@@ -2,10 +2,57 @@ package meta
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestTaskRunSchemaReconcilesLegacyTableBeforeCreatingJobIndex(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "meta.db")
+	db, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open fresh database: %v", err)
+	}
+	if _, err := db.sql.Exec(`
+		DROP TABLE task_runs;
+		CREATE TABLE task_runs (
+			id TEXT PRIMARY KEY, project_id TEXT NOT NULL, task_id TEXT NOT NULL,
+			origin_turn_id TEXT, session_id TEXT NOT NULL DEFAULT '',
+			kind TEXT NOT NULL, status TEXT NOT NULL, attempt INTEGER NOT NULL,
+			evidence_json TEXT NOT NULL DEFAULT '[]', verdict_json TEXT NOT NULL DEFAULT '',
+			closed_by_json TEXT NOT NULL DEFAULT '', error_text TEXT NOT NULL DEFAULT '',
+			profile_snapshot_json TEXT NOT NULL DEFAULT '', started_at TEXT NOT NULL,
+			completed_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+		);
+		PRAGMA user_version = 31;
+	`); err != nil {
+		db.Close()
+		t.Fatalf("prepare legacy task_runs table: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close legacy database: %v", err)
+	}
+
+	db, err = Open(path)
+	if err != nil {
+		t.Fatalf("reopen legacy database: %v", err)
+	}
+	defer db.Close()
+	columns, err := db.tableColumns("task_runs")
+	if err != nil {
+		t.Fatalf("task_runs columns: %v", err)
+	}
+	for _, column := range []string{"job_id", "trigger_id", "occurrence_key", "client_request_id"} {
+		if !columns[column] {
+			t.Errorf("task_runs.%s was not reconciled", column)
+		}
+	}
+	var indexCount int
+	if err := db.sql.QueryRow(`SELECT COUNT(1) FROM sqlite_master WHERE type='index' AND name='idx_task_runs_job_occurrence_attempt'`).Scan(&indexCount); err != nil || indexCount != 1 {
+		t.Fatalf("job occurrence index count=%d err=%v", indexCount, err)
+	}
+}
 
 func seedTaskRunFixture(t *testing.T) (*DB, string, AgentTurn) {
 	t.Helper()

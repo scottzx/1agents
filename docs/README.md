@@ -54,6 +54,7 @@ docs/
 | [happy-cli-fork-sync.md](./architecture/happy-cli-fork-sync.md) | happy-cli fork 同步 runbook |
 | [ccpark设计参考.md](./architecture/ccpark设计参考.md) | ccpark/agentdock 可借鉴模式（非接入方案） |
 | [miniapp-skills-webview-plan.md](./architecture/miniapp-skills-webview-plan.md) | 小程序 web-view 嵌入 skills 后端方案 |
+| [execution-job-agent-profile-architecture.md](./architecture/execution-job-agent-profile-architecture.md) | **ExecutionJob / Trigger / TaskRun / AgentProfile 当前实施基线与防漂移边界** |
 
 ---
 

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/scottzx/1Agents/backend/internal/execution"
 	"github.com/scottzx/1Agents/backend/internal/meta"
 	"github.com/scottzx/1Agents/backend/internal/taskapi"
 )
@@ -428,5 +429,35 @@ func TestCompletionHook(t *testing.T) {
 	}
 	if fired[0].TaskID != id {
 		t.Errorf("hook taskID: %q, want %q", fired[0].TaskID, id)
+	}
+}
+
+func TestDispatchTaskCreatesExecutionJobWhenEnabled(t *testing.T) {
+	db, cleanup := openTestDB(t)
+	defer cleanup()
+	store := meta.NewTaskStore(db)
+	repo, err := execution.NewRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := taskapi.NewWithExecution(store, execution.NewService(repo, nil))
+	workspace := t.TempDir()
+	id, err := api.DispatchTask("test", taskapi.DispatchSpec{
+		Title: "function job", Executor: meta.TaskExecutorFunction,
+		FunctionType: "core.noop", WorkspacePath: workspace,
+	})
+	if err != nil {
+		t.Fatalf("DispatchTask: %v", err)
+	}
+	projectID, err := db.ProjectIDByPath(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var jobs int
+	if err := db.SQL().QueryRow(`SELECT COUNT(1) FROM kernel_execution_jobs WHERE project_id=? AND work_item_id=?`, projectID, id).Scan(&jobs); err != nil {
+		t.Fatal(err)
+	}
+	if jobs != 1 {
+		t.Fatalf("execution jobs = %d, want 1", jobs)
 	}
 }

@@ -39,6 +39,7 @@ type Provider struct {
 type ProviderData struct {
 	SchemaVersion    int              `json:"schema_version,omitempty"`
 	ActiveProviderID string           `json:"active_provider_id"`
+	DefaultProfileID string           `json:"default_profile_id,omitempty"`
 	Providers        []Provider       `json:"providers"`
 	Models           []ProviderModel  `json:"models,omitempty"`
 	Bindings         []AgentBinding   `json:"bindings,omitempty"`

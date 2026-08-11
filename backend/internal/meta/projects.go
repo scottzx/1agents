@@ -166,6 +166,12 @@ func (db *DB) projectIDByPath(workspacePath string) (string, error) {
 	return id, nil
 }
 
+// ProjectIDByPath resolves the stable project id for a workspace path. It is
+// the public read seam used by north APIs that need a sibling kernel record.
+func (db *DB) ProjectIDByPath(workspacePath string) (string, error) {
+	return db.projectIDByPath(workspacePath)
+}
+
 // projectColumns is the canonical SELECT column list, kept in sync with
 // scanProject's Scan order.
 const projectColumns = `id, name, workspace_path, status,
