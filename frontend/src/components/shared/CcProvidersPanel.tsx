@@ -1,6 +1,7 @@
 import { h } from 'preact';
 import { useSignal } from '@preact/signals';
 import * as ui from '../../stores/uiStore';
+import { ShellNav, type ShellTab } from '../platform/ShellNav';
 import { LlmProviderPanel } from '../settings/LlmProviderPanel';
 import { AgentSwitchPanel } from '../settings/AgentSwitchPanel';
 import { AgentProfilePanel } from '../settings/AgentProfilePanel';
@@ -16,80 +17,20 @@ export function CcProvidersPanel(props: CcProvidersPanelProps) {
     void panelStyle;
     const activeTab = useSignal<'profiles' | 'agents' | 'providers'>('profiles');
 
-    return (
-        <div
-            style={{
-                width: '100%',
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                background: 'var(--bg-body, #fff)',
-                overflow: 'hidden',
-            }}
-        >
-            {/* Top Navigation Tabs - Clean, Minimalist, No Icons */}
-            <div
-                style={{
-                    display: 'flex',
-                    borderBottom: '1px solid var(--border, #e0e0e0)',
-                    padding: '0 16px',
-                    background: 'var(--bg-header, #fafafa)',
-                }}
-            >
-                <button
-                    onClick={() => (activeTab.value = 'profiles')}
-                    style={{
-                        padding: '12px 18px',
-                        border: 'none',
-                        borderBottom:
-                            activeTab.value === 'profiles'
-                                ? '2px solid var(--accent, #0066cc)'
-                                : '2px solid transparent',
-                        background: 'transparent',
-                        color: activeTab.value === 'profiles' ? 'var(--accent, #0066cc)' : 'var(--fg-muted, #666)',
-                        cursor: 'pointer',
-                    }}
-                >
-                    Agent Profiles
-                </button>
-                <button
-                    onClick={() => (activeTab.value = 'agents')}
-                    style={{
-                        padding: '12px 18px',
-                        border: 'none',
-                        borderBottom:
-                            activeTab.value === 'agents' ? '2px solid var(--accent, #0066cc)' : '2px solid transparent',
-                        background: 'transparent',
-                        color: activeTab.value === 'agents' ? 'var(--accent, #0066cc)' : 'var(--fg-muted, #666)',
-                        fontWeight: activeTab.value === 'agents' ? 600 : 400,
-                        cursor: 'pointer',
-                        fontSize: '0.88rem',
-                    }}
-                >
-                    智能体切换
-                </button>
-                <button
-                    onClick={() => (activeTab.value = 'providers')}
-                    style={{
-                        padding: '12px 18px',
-                        border: 'none',
-                        borderBottom:
-                            activeTab.value === 'providers'
-                                ? '2px solid var(--accent, #0066cc)'
-                                : '2px solid transparent',
-                        background: 'transparent',
-                        color: activeTab.value === 'providers' ? 'var(--accent, #0066cc)' : 'var(--fg-muted, #666)',
-                        fontWeight: activeTab.value === 'providers' ? 600 : 400,
-                        cursor: 'pointer',
-                        fontSize: '0.88rem',
-                    }}
-                >
-                    服务商配置
-                </button>
-            </div>
+    const providerTabs: ShellTab[] = [
+        { id: 'profiles', label: 'Agent 预设 (Profiles)' },
+        { id: 'agents', label: '智能体绑定 (Agents)' },
+        { id: 'providers', label: '服务商配置 (Providers)' },
+    ];
 
-            {/* Tab Content */}
-            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+    return (
+        <div class="project-shell">
+            <ShellNav
+                tabs={providerTabs}
+                activeTab={activeTab.value}
+                onSelectTab={id => (activeTab.value = id as 'profiles' | 'agents' | 'providers')}
+            />
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 {activeTab.value === 'profiles' ? (
                     <AgentProfilePanel />
                 ) : activeTab.value === 'agents' ? (

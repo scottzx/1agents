@@ -158,174 +158,292 @@ export function AgentProfilePanel() {
     };
 
     return (
-        <div style={{ padding: 16, maxWidth: 900, margin: '0 auto', color: 'var(--fg)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                    <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Agent Profiles</h2>
-                    <p style={{ color: 'var(--fg-muted)', marginTop: 4 }}>
-                        Runtime × Provider × Model 的可调度执行者。
-                    </p>
+        <div class="providers-panel-wrapper">
+            <div class="providers-panel-container">
+                <div class="providers-header-bar">
+                    <div>
+                        <h2 class="providers-header-title">
+                            <svg
+                                width="20"
+                                height="20"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <polygon points="12 8 8 12 12 16 16 12 12 8"></polygon>
+                            </svg>
+                            Agent Profiles (预设调度管理)
+                        </h2>
+                        <p class="providers-header-desc">Runtime × Provider × Model 的组合执行者配置。</p>
+                    </div>
+                    <button class="btn-primary" onClick={() => (editing.value = emptyProfile())}>
+                        + 新建 Profile
+                    </button>
                 </div>
-                <button onClick={() => (editing.value = emptyProfile())}>+ 新建 Profile</button>
-            </div>
-            <label style={{ display: 'block', margin: '12px 0' }}>
-                <input
-                    type="checkbox"
-                    checked={includeArchived.value}
-                    onChange={() => {
-                        includeArchived.value = !includeArchived.value;
-                        void reload();
+
+                <div
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        marginTop: '-8px',
                     }}
-                />{' '}
-                显示已归档
-            </label>
-            {(error.value || profilesError.value) && (
-                <div style={{ color: '#d33', marginBottom: 12 }}>{error.value || profilesError.value}</div>
-            )}
-            {profilesLoading.value ? (
-                <p>加载中…</p>
-            ) : (
-                agentProfiles.value.map(profile => {
-                    const provider = providers.value.find(item => item.id === profile.provider_id);
-                    const reason = disabledReason(profile);
-                    return (
-                        <div
-                            key={profile.id}
-                            style={{
-                                border: '1px solid var(--border)',
-                                borderRadius: 8,
-                                padding: 12,
-                                marginBottom: 10,
+                >
+                    <label
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            fontSize: '13px',
+                            color: 'var(--text-secondary)',
+                            cursor: 'pointer',
+                        }}
+                    >
+                        <input
+                            type="checkbox"
+                            checked={includeArchived.value}
+                            onChange={() => {
+                                includeArchived.value = !includeArchived.value;
+                                void reload();
                             }}
-                        >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                                <div>
-                                    <strong>{profileLabel(profile, provider?.name)}</strong>
-                                    <div style={{ color: reason ? '#c67a00' : 'var(--fg-muted)', fontSize: 12 }}>
-                                        revision {profile.revision} {reason ? `· ${reason}` : '· 可用'}
-                                    </div>
-                                </div>
-                                <div>
-                                    <button
-                                        onClick={() =>
-                                            (editing.value = { ...profile, options: { ...profile.options } })
-                                        }
-                                    >
-                                        编辑
-                                    </button>{' '}
-                                    {profile.status === 'archived' ? (
-                                        <button onClick={() => void setStatus(profile, 'restore')}>恢复</button>
-                                    ) : (
-                                        <button onClick={() => void setStatus(profile, 'archive')}>归档</button>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    );
-                })
-            )}
-            {editing.value && (
-                <div class="ws-modal-overlay" onClick={() => (editing.value = null)}>
-                    <div class="ws-modal" onClick={(event: MouseEvent) => event.stopPropagation()}>
-                        <div class="ws-modal-header">Profile 配置</div>
-                        <div class="ws-modal-body">
-                            <label class="ws-modal-label">ID</label>
-                            <input
-                                class="ws-modal-input"
-                                value={editing.value.id}
-                                disabled={agentProfiles.value.some(item => item.id === editing.value?.id)}
-                                onInput={(event: Event) =>
-                                    (editing.value = {
-                                        ...editing.value!,
-                                        id: (event.target as HTMLInputElement).value,
-                                    })
-                                }
-                            />
-                            <label class="ws-modal-label">名称</label>
-                            <input
-                                class="ws-modal-input"
-                                value={editing.value.name}
-                                onInput={(event: Event) =>
-                                    (editing.value = {
-                                        ...editing.value!,
-                                        name: (event.target as HTMLInputElement).value,
-                                    })
-                                }
-                            />
-                            <label class="ws-modal-label">Runtime</label>
-                            <select
-                                class="ws-modal-select"
-                                value={editing.value.runtime_id}
-                                onChange={(event: Event) =>
-                                    (editing.value = {
-                                        ...editing.value!,
-                                        runtime_id: (event.target as HTMLSelectElement).value,
-                                        provider_id: '',
-                                        model_id: '',
-                                    })
-                                }
-                            >
-                                {runtimeDefinitions.value.map(item => (
-                                    <option value={item.id} key={item.id}>
-                                        {item.label}
-                                    </option>
-                                ))}
-                            </select>
-                            <label class="ws-modal-label">Provider</label>
-                            <select
-                                class="ws-modal-select"
-                                value={editing.value.provider_id}
-                                onChange={(event: Event) =>
-                                    (editing.value = {
-                                        ...editing.value!,
-                                        provider_id: (event.target as HTMLSelectElement).value,
-                                        model_id: '',
-                                    })
-                                }
-                            >
-                                <option value="">请选择</option>
-                                {compatibleProviders.map(item => (
-                                    <option key={item.id} value={item.id}>
-                                        {item.name}
-                                    </option>
-                                ))}
-                            </select>
-                            <label class="ws-modal-label">Model</label>
-                            <select
-                                class="ws-modal-select"
-                                value={editing.value.model_id}
-                                onChange={(event: Event) =>
-                                    (editing.value = {
-                                        ...editing.value!,
-                                        model_id: (event.target as HTMLSelectElement).value,
-                                    })
-                                }
-                            >
-                                <option value="">请选择</option>
-                                {compatibleModels.map(item => (
-                                    <option key={item.model_id} value={item.model_id}>
-                                        {item.model_id}
-                                    </option>
-                                ))}
-                            </select>
-                            <RuntimeOptionFields
-                                runtime={runtime}
-                                options={editing.value.options || {}}
-                                onChange={(key, value) =>
-                                    (editing.value = {
-                                        ...editing.value!,
-                                        options: { ...editing.value!.options, [key]: value },
-                                    })
-                                }
-                            />
-                        </div>
-                        <div class="ws-modal-footer">
-                            <button onClick={() => (editing.value = null)}>取消</button>
-                            <button onClick={() => void save()}>保存</button>
+                        />
+                        显示已归档 Profile
+                    </label>
+                </div>
+
+                {(error.value || profilesError.value) && (
+                    <div class="providers-alert-banner alert-danger">
+                        <span>⚠️</span> {error.value || profilesError.value}
+                    </div>
+                )}
+
+                {profilesLoading.value ? (
+                    <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>加载中…</div>
+                ) : agentProfiles.value.length === 0 ? (
+                    <div
+                        style={{
+                            padding: '40px 24px',
+                            textAlign: 'center',
+                            border: '1px dashed var(--border-color)',
+                            borderRadius: 'var(--bento-radius)',
+                            color: 'var(--text-secondary)',
+                            backgroundColor: 'var(--bg-card)',
+                        }}
+                    >
+                        <div style={{ fontSize: '14px', fontWeight: 500, marginBottom: '4px' }}>暂无 Agent Profile</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                            点击右上角“+ 新建 Profile”创建可调度的 Agent 引擎实例。
                         </div>
                     </div>
-                </div>
-            )}
+                ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {agentProfiles.value.map(profile => {
+                            const provider = providers.value.find(item => item.id === profile.provider_id);
+                            const reason = disabledReason(profile);
+                            return (
+                                <div key={profile.id} class="bento-card" style={{ padding: '14px 18px' }}>
+                                    <div
+                                        style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            gap: 12,
+                                        }}
+                                    >
+                                        <div>
+                                            <div
+                                                style={{
+                                                    fontSize: '15px',
+                                                    fontWeight: 600,
+                                                    color: 'var(--text-main)',
+                                                    marginBottom: '4px',
+                                                }}
+                                            >
+                                                {profileLabel(profile, provider?.name)}
+                                            </div>
+                                            <div
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '8px',
+                                                    fontSize: '12px',
+                                                    color: 'var(--text-secondary)',
+                                                }}
+                                            >
+                                                <span>revision {profile.revision}</span>
+                                                <span>·</span>
+                                                <span
+                                                    class={`status-tag ${reason ? 'is-unavailable' : 'is-available'}`}
+                                                >
+                                                    {reason ? reason : '可用'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <button
+                                                class="btn-secondary btn-sm"
+                                                onClick={() =>
+                                                    (editing.value = { ...profile, options: { ...profile.options } })
+                                                }
+                                            >
+                                                编辑
+                                            </button>
+                                            {profile.status === 'archived' ? (
+                                                <button
+                                                    class="btn-secondary btn-sm"
+                                                    style={{ color: 'var(--success-fg)' }}
+                                                    onClick={() => void setStatus(profile, 'restore')}
+                                                >
+                                                    恢复
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    class="btn-danger btn-sm"
+                                                    onClick={() => void setStatus(profile, 'archive')}
+                                                >
+                                                    归档
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+
+                {editing.value && (
+                    <div class="ws-modal-overlay" onClick={() => (editing.value = null)}>
+                        <div
+                            class="ws-modal"
+                            style={{ width: '460px', maxWidth: 'calc(100vw - 32px)' }}
+                            onClick={(event: MouseEvent) => event.stopPropagation()}
+                        >
+                            <div class="ws-modal-header">
+                                <span>{editing.value.id ? '编辑 Agent Profile' : '新建 Agent Profile'}</span>
+                                <button class="ws-modal-close" onClick={() => (editing.value = null)}>
+                                    ✕
+                                </button>
+                            </div>
+                            <div class="ws-modal-body">
+                                <div>
+                                    <label class="ws-modal-label">ID *</label>
+                                    <input
+                                        class="ws-modal-input"
+                                        value={editing.value.id}
+                                        disabled={agentProfiles.value.some(item => item.id === editing.value?.id)}
+                                        placeholder="如：claude-3-7-sonnet-custom"
+                                        onInput={(event: Event) =>
+                                            (editing.value = {
+                                                ...editing.value!,
+                                                id: (event.target as HTMLInputElement).value,
+                                            })
+                                        }
+                                    />
+                                </div>
+                                <div>
+                                    <label class="ws-modal-label">名称 *</label>
+                                    <input
+                                        class="ws-modal-input"
+                                        value={editing.value.name}
+                                        placeholder="如：Claude 3.7 Sonnet 开发引擎"
+                                        onInput={(event: Event) =>
+                                            (editing.value = {
+                                                ...editing.value!,
+                                                name: (event.target as HTMLInputElement).value,
+                                            })
+                                        }
+                                    />
+                                </div>
+                                <div>
+                                    <label class="ws-modal-label">Runtime *</label>
+                                    <select
+                                        class="ws-modal-select"
+                                        value={editing.value.runtime_id}
+                                        onChange={(event: Event) =>
+                                            (editing.value = {
+                                                ...editing.value!,
+                                                runtime_id: (event.target as HTMLSelectElement).value,
+                                                provider_id: '',
+                                                model_id: '',
+                                            })
+                                        }
+                                    >
+                                        {runtimeDefinitions.value.map(item => (
+                                            <option value={item.id} key={item.id}>
+                                                {item.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="ws-modal-label">Provider *</label>
+                                    <select
+                                        class="ws-modal-select"
+                                        value={editing.value.provider_id}
+                                        onChange={(event: Event) =>
+                                            (editing.value = {
+                                                ...editing.value!,
+                                                provider_id: (event.target as HTMLSelectElement).value,
+                                                model_id: '',
+                                            })
+                                        }
+                                    >
+                                        <option value="">请选择服务商</option>
+                                        {compatibleProviders.map(item => (
+                                            <option key={item.id} value={item.id}>
+                                                {item.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="ws-modal-label">Model *</label>
+                                    <select
+                                        class="ws-modal-select"
+                                        value={editing.value.model_id}
+                                        onChange={(event: Event) =>
+                                            (editing.value = {
+                                                ...editing.value!,
+                                                model_id: (event.target as HTMLSelectElement).value,
+                                            })
+                                        }
+                                    >
+                                        <option value="">请选择模型 ID</option>
+                                        {compatibleModels.map(item => (
+                                            <option key={item.model_id} value={item.model_id}>
+                                                {item.model_id}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <RuntimeOptionFields
+                                    runtime={runtime}
+                                    options={editing.value.options || {}}
+                                    onChange={(key, value) =>
+                                        (editing.value = {
+                                            ...editing.value!,
+                                            options: { ...editing.value!.options, [key]: value },
+                                        })
+                                    }
+                                />
+                            </div>
+                            <div class="ws-modal-footer">
+                                <button class="btn-secondary" onClick={() => (editing.value = null)}>
+                                    取消
+                                </button>
+                                <button class="btn-primary" onClick={() => void save()}>
+                                    保存 Profile
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

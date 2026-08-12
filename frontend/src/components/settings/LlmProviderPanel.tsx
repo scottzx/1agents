@@ -350,652 +350,546 @@ export function LlmProviderPanel(props: LlmProviderPanelProps) {
     const editingProvider = providers.value.find(provider => provider.id === editingId.value);
 
     return (
-        <div style={{ padding: '16px', maxWidth: '900px', margin: '0 auto', color: 'var(--fg)' }}>
-            <div
-                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}
-            >
-                <div>
-                    <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600 }}>
-                        服务商配置库 (Provider Profiles)
-                    </h2>
-                    <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--fg-muted, #888)' }}>
-                        统一配置服务商的双端点 URL 与 API 凭证，支持自动拉取可用模型列表。
-                    </p>
+        <div class="providers-panel-wrapper">
+            <div class="providers-panel-container">
+                <div class="providers-header-bar">
+                    <div>
+                        <h2 class="providers-header-title">
+                            <svg
+                                width="20"
+                                height="20"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                                <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                                <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                                <line x1="6" y1="18" x2="6.01" y2="18"></line>
+                            </svg>
+                            服务商配置库 (Provider Profiles)
+                        </h2>
+                        <p class="providers-header-desc">
+                            统一配置服务商的双端点 URL 与 API 凭证，支持自动拉取可用模型列表。
+                        </p>
+                    </div>
+                    <button class="btn-primary" onClick={() => openCreateModal()}>
+                        + 添加服务商
+                    </button>
                 </div>
-                <button
-                    onClick={() => openCreateModal()}
-                    style={{
-                        padding: '8px 16px',
-                        borderRadius: '6px',
-                        background: 'var(--accent, #0066cc)',
-                        color: '#fff',
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontWeight: 500,
-                    }}
-                >
-                    + 添加服务商
-                </button>
-            </div>
 
-            {errorMsg.value && (
-                <div
-                    style={{
-                        padding: '10px 14px',
-                        borderRadius: '6px',
-                        background: 'rgba(255, 0, 0, 0.1)',
-                        color: '#ff4d4f',
-                        marginBottom: '12px',
-                    }}
-                >
-                    {errorMsg.value}
-                </div>
-            )}
+                {errorMsg.value && (
+                    <div class="providers-alert-banner alert-danger">
+                        <span>⚠️</span> {errorMsg.value}
+                    </div>
+                )}
 
-            {successMsg.value && (
-                <div
-                    style={{
-                        padding: '10px 14px',
-                        borderRadius: '6px',
-                        background: 'rgba(0, 200, 80, 0.1)',
-                        color: '#2e7d32',
-                        marginBottom: '12px',
-                    }}
-                >
-                    {successMsg.value}
-                </div>
-            )}
+                {successMsg.value && (
+                    <div class="providers-alert-banner alert-success">
+                        <span>✅</span> {successMsg.value}
+                    </div>
+                )}
 
-            {/* Presets Row */}
-            <div
-                style={{
-                    marginBottom: '20px',
-                    padding: '12px',
-                    borderRadius: '8px',
-                    background: 'var(--bg-subtle, #f5f5f5)',
-                }}
-            >
-                <div
-                    style={{
-                        fontSize: '0.85rem',
-                        fontWeight: 600,
-                        marginBottom: '8px',
-                        color: 'var(--fg-muted, #666)',
-                    }}
-                >
-                    快捷服务商预设模板
+                {/* Presets Row */}
+                <div class="providers-presets-card">
+                    <div class="providers-presets-title">快捷服务商预设模板</div>
+                    <div class="providers-presets-list">
+                        {PRESETS.map(preset => (
+                            <button key={preset.name} class="preset-chip-btn" onClick={() => openCreateModal(preset)}>
+                                ⚡ + {preset.name}
+                            </button>
+                        ))}
+                    </div>
                 </div>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    {PRESETS.map(preset => (
-                        <button
-                            key={preset.name}
-                            onClick={() => openCreateModal(preset)}
-                            style={{
-                                padding: '6px 12px',
-                                borderRadius: '16px',
-                                border: '1px solid var(--border, #ccc)',
-                                background: 'var(--bg-card, #fff)',
-                                cursor: 'pointer',
-                                fontSize: '0.82rem',
-                            }}
-                        >
-                            + {preset.name}
-                        </button>
-                    ))}
-                </div>
-            </div>
 
-            {/* Provider List */}
-            {loading.value ? (
-                <div style={{ padding: '24px', textAlign: 'center', color: '#888' }}>加载中...</div>
-            ) : providers.value.length === 0 ? (
-                <div
-                    style={{
-                        padding: '32px',
-                        textAlign: 'center',
-                        border: '1px dashed var(--border, #ccc)',
-                        borderRadius: '8px',
-                    }}
-                >
-                    暂无已保存的服务商，点击“+ 添加服务商”或上方预设添加。
-                </div>
-            ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {providers.value.map(p => (
-                        <div
-                            key={p.id}
-                            style={{
-                                padding: '16px',
-                                borderRadius: '8px',
-                                border: '1px solid var(--border, #ddd)',
-                                background: 'var(--bg-card, #fff)',
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                            }}
-                        >
-                            <div style={{ flex: 1, marginRight: '16px' }}>
-                                <div
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        marginBottom: '6px',
-                                    }}
-                                >
-                                    <span style={{ fontWeight: 600, fontSize: '1rem' }}>{p.name}</span>
-                                    <span
-                                        style={{
-                                            fontSize: '0.75rem',
-                                            padding: '2px 6px',
-                                            borderRadius: '4px',
-                                            background: 'var(--badge-bg, #eee)',
-                                            textTransform: 'uppercase',
-                                            fontWeight: 500,
-                                        }}
-                                    >
-                                        {p.protocol === 'dual' ? '双端点 (OpenAI + Anthropic)' : `${p.protocol} 协议`}
-                                    </span>
+                {/* Provider List */}
+                {loading.value ? (
+                    <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>加载中...</div>
+                ) : providers.value.length === 0 ? (
+                    <div
+                        style={{
+                            padding: '40px 24px',
+                            textAlign: 'center',
+                            border: '1px dashed var(--border-color)',
+                            borderRadius: 'var(--bento-radius)',
+                            color: 'var(--text-secondary)',
+                            backgroundColor: 'var(--bg-card)',
+                        }}
+                    >
+                        <div style={{ fontSize: '14px', fontWeight: 500, marginBottom: '4px' }}>暂无已保存的服务商</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                            点击“+ 添加服务商”或选择上方快捷预设创建服务商配置。
+                        </div>
+                    </div>
+                ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                        {providers.value.map(p => (
+                            <div key={p.id} class="provider-bento-card">
+                                <div class="provider-card-header">
+                                    <div class="provider-card-identity">
+                                        <div class="provider-icon-box">
+                                            <svg
+                                                width="20"
+                                                height="20"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2"
+                                            >
+                                                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                                            </svg>
+                                        </div>
+                                        <div>
+                                            <div class="provider-title">{p.name}</div>
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span class="provider-protocol-badge">
+                                            {p.protocol === 'dual'
+                                                ? '双端点 (OpenAI + Anthropic)'
+                                                : `${p.protocol} 协议`}
+                                        </span>
+                                        <button class="btn-secondary btn-sm" onClick={() => openEditModal(p)}>
+                                            编辑配置
+                                        </button>
+                                        <button class="btn-danger btn-sm" onClick={() => handleDelete(p.id, p.name)}>
+                                            删除
+                                        </button>
+                                    </div>
                                 </div>
 
-                                <div style={{ fontSize: '0.82rem', color: '#666', wordBreak: 'break-all' }}>
+                                <div class="provider-endpoints-box">
                                     {(p.endpoints || []).map(endpoint => (
                                         <div key={endpointFamily(endpoint)}>
-                                            {endpointFamily(endpoint)}: <code>{endpoint.base_url}</code> ·{' '}
-                                            {endpoint.protocol}
-                                            {endpoint.has_api_key ? ' · 已保存独立凭证' : ''}
+                                            <strong style={{ color: 'var(--text-main)', textTransform: 'capitalize' }}>
+                                                {endpointFamily(endpoint)}:
+                                            </strong>{' '}
+                                            <code>{endpoint.base_url}</code> · {endpoint.protocol}
+                                            {endpoint.has_api_key ? ' · 已保存独立 Key' : ''}
                                         </div>
                                     ))}
                                     {p.model && (
                                         <div>
-                                            默认 Model: <code>{p.model}</code>
+                                            <strong style={{ color: 'var(--text-main)' }}>默认 Model:</strong>{' '}
+                                            <code>{p.model}</code>
                                         </div>
                                     )}
-                                    <div>
+                                </div>
+
+                                <div class="provider-models-summary">
+                                    <span>
                                         模型目录：
-                                        {
-                                            models.value.filter(model => model.provider_id === p.id && model.available)
-                                                .length
-                                        }{' '}
+                                        <strong style={{ color: 'var(--success-fg)' }}>
+                                            {
+                                                models.value.filter(
+                                                    model => model.provider_id === p.id && model.available
+                                                ).length
+                                            }
+                                        </strong>{' '}
                                         可用 /{' '}
-                                        {
-                                            models.value.filter(model => model.provider_id === p.id && !model.available)
-                                                .length
-                                        }{' '}
+                                        <strong style={{ color: 'var(--text-muted)' }}>
+                                            {
+                                                models.value.filter(
+                                                    model => model.provider_id === p.id && !model.available
+                                                ).length
+                                            }
+                                        </strong>{' '}
                                         不可用
-                                    </div>
-                                    {models.value.some(model => model.provider_id === p.id) && (
-                                        <details style={{ marginTop: '6px' }}>
-                                            <summary style={{ cursor: 'pointer' }}>查看模型目录明细</summary>
-                                            <div style={{ marginTop: '6px', display: 'grid', gap: '4px' }}>
-                                                {models.value
-                                                    .filter(model => model.provider_id === p.id)
-                                                    .map(model => (
-                                                        <div
-                                                            key={model.model_id}
-                                                            style={{
-                                                                display: 'grid',
-                                                                gridTemplateColumns: 'minmax(160px, 1fr) auto auto',
-                                                                gap: '8px',
-                                                                alignItems: 'center',
-                                                                padding: '4px 6px',
-                                                                border: '1px solid var(--border, #eee)',
-                                                                borderRadius: '4px',
-                                                            }}
+                                    </span>
+                                </div>
+
+                                {models.value.some(model => model.provider_id === p.id) && (
+                                    <details class="provider-models-details">
+                                        <summary>
+                                            查看模型目录明细 (
+                                            {models.value.filter(model => model.provider_id === p.id).length})
+                                        </summary>
+                                        <div class="provider-models-grid">
+                                            {models.value
+                                                .filter(model => model.provider_id === p.id)
+                                                .map(model => (
+                                                    <div key={model.model_id} class="provider-model-item">
+                                                        <code>{model.model_id}</code>
+                                                        <span style={{ color: 'var(--text-muted)' }}>
+                                                            {model.source || 'unknown'}
+                                                        </span>
+                                                        <span
+                                                            class={`status-tag ${model.available ? 'is-available' : 'is-unavailable'}`}
                                                         >
-                                                            <code>{model.model_id}</code>
-                                                            <span>{model.source || 'unknown'}</span>
-                                                            <span
-                                                                style={{
-                                                                    color: model.available ? '#2e7d32' : '#b42318',
-                                                                }}
-                                                            >
-                                                                {model.available ? '可用' : '不可用'} ·{' '}
-                                                                {formatTimestamp(
-                                                                    model.last_seen_at || model.discovered_at
-                                                                )}
-                                                            </span>
-                                                        </div>
-                                                    ))}
-                                            </div>
-                                        </details>
-                                    )}
-                                </div>
-                            </div>
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                                <button
-                                    onClick={() => openEditModal(p)}
-                                    style={{
-                                        padding: '6px 12px',
-                                        borderRadius: '6px',
-                                        border: '1px solid var(--border, #ccc)',
-                                        background: 'transparent',
-                                        cursor: 'pointer',
-                                        fontSize: '0.85rem',
-                                    }}
-                                >
-                                    编辑配置
-                                </button>
-                                <button
-                                    onClick={() => handleDelete(p.id, p.name)}
-                                    style={{
-                                        padding: '6px 12px',
-                                        borderRadius: '6px',
-                                        border: '1px solid #ff4d4f',
-                                        color: '#ff4d4f',
-                                        background: 'transparent',
-                                        cursor: 'pointer',
-                                        fontSize: '0.85rem',
-                                    }}
-                                >
-                                    删除
-                                </button>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-
-            {/* Modal Form */}
-            {isModalOpen.value && (
-                <div
-                    style={{
-                        position: 'fixed',
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        background: 'rgba(0,0,0,0.5)',
-                        display: 'flex',
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                        zIndex: 1000,
-                    }}
-                >
-                    <div
-                        style={{
-                            background: 'var(--bg-modal, #fff)',
-                            width: '100%',
-                            maxWidth: '560px',
-                            padding: '24px',
-                            borderRadius: '12px',
-                            boxShadow: '0 8px 30px rgba(0,0,0,0.2)',
-                            maxHeight: '90vh',
-                            overflowY: 'auto',
-                        }}
-                    >
-                        <h3 style={{ marginTop: 0, marginBottom: '16px' }}>
-                            {editingId.value ? '编辑服务商基本配置' : '新增服务商配置'}
-                        </h3>
-                        <div>
-                            <div style={{ marginBottom: '12px' }}>
-                                <label
-                                    style={{
-                                        display: 'block',
-                                        fontSize: '0.85rem',
-                                        fontWeight: 500,
-                                        marginBottom: '4px',
-                                    }}
-                                >
-                                    服务商名称 *
-                                </label>
-                                <input
-                                    type="text"
-                                    value={formName.value}
-                                    onInput={e => (formName.value = (e.target as HTMLInputElement).value)}
-                                    placeholder="如：DeepSeek API 或 SiliconFlow"
-                                    required
-                                    style={{
-                                        width: '100%',
-                                        padding: '8px 10px',
-                                        borderRadius: '6px',
-                                        border: '1px solid var(--border, #ccc)',
-                                        boxSizing: 'border-box',
-                                    }}
-                                />
-                            </div>
-
-                            <div style={{ marginBottom: '12px' }}>
-                                <label
-                                    style={{
-                                        display: 'block',
-                                        fontSize: '0.85rem',
-                                        fontWeight: 500,
-                                        marginBottom: '4px',
-                                    }}
-                                >
-                                    API Key (通用鉴权密钥)
-                                </label>
-                                <input
-                                    type="password"
-                                    value={formApiKey.value}
-                                    onInput={e => (formApiKey.value = (e.target as HTMLInputElement).value)}
-                                    placeholder={editingProvider?.has_api_key ? '已保存，留空表示保留原密钥' : 'sk-...'}
-                                    style={{
-                                        width: '100%',
-                                        padding: '8px 10px',
-                                        borderRadius: '6px',
-                                        border: '1px solid var(--border, #ccc)',
-                                        boxSizing: 'border-box',
-                                    }}
-                                />
-                            </div>
-
-                            <div style={{ marginBottom: '16px' }}>
-                                <div
-                                    style={{
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        alignItems: 'center',
-                                        marginBottom: '8px',
-                                    }}
-                                >
-                                    <strong style={{ fontSize: '0.88rem' }}>协议 Endpoints</strong>
-                                    <button
-                                        type="button"
-                                        onClick={addEndpoint}
-                                        disabled={formEndpoints.value.length >= ENDPOINT_TYPES.length}
-                                    >
-                                        + 添加 Endpoint
-                                    </button>
-                                </div>
-                                {formEndpoints.value.length === 0 && (
-                                    <div style={{ padding: '12px', border: '1px dashed #bbb', fontSize: '0.8rem' }}>
-                                        请至少添加一个 OpenAI 或 Anthropic Endpoint。
-                                    </div>
+                                                            {model.available ? '可用' : '不可用'} ·{' '}
+                                                            {formatTimestamp(model.last_seen_at || model.discovered_at)}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                        </div>
+                                    </details>
                                 )}
-                                {formEndpoints.value.map((endpoint, endpointIndex) => (
-                                    <div
-                                        key={`${endpointFamily(endpoint)}-${endpointIndex}`}
-                                        style={{
-                                            border: '1px solid var(--border, #ddd)',
-                                            borderRadius: '8px',
-                                            padding: '12px',
-                                            marginBottom: '10px',
-                                        }}
-                                    >
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                                            <label style={{ fontSize: '0.78rem' }}>
-                                                协议类型
-                                                <select
-                                                    value={endpointFamily(endpoint)}
-                                                    onChange={e =>
-                                                        changeEndpointType(
-                                                            endpointIndex,
-                                                            (e.target as HTMLSelectElement).value
-                                                        )
-                                                    }
-                                                    style={{ width: '100%', marginTop: '4px', padding: '7px' }}
-                                                >
-                                                    {ENDPOINT_TYPES.map(type => (
-                                                        <option
-                                                            key={type.id}
-                                                            value={type.id}
-                                                            disabled={formEndpoints.value.some(
-                                                                (item, index) =>
-                                                                    index !== endpointIndex &&
-                                                                    endpointFamily(item) === type.id
-                                                            )}
-                                                        >
-                                                            {type.label}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            </label>
-                                            <label style={{ fontSize: '0.78rem' }}>
-                                                Protocol / Wire API
-                                                <input
-                                                    value={endpoint.protocol}
-                                                    onInput={e =>
-                                                        updateEndpoint(endpointIndex, {
-                                                            protocol: (e.target as HTMLInputElement).value,
-                                                        })
-                                                    }
-                                                    style={{ width: '100%', marginTop: '4px', padding: '7px' }}
-                                                />
-                                            </label>
-                                        </div>
-                                        <label style={{ display: 'block', marginTop: '8px', fontSize: '0.78rem' }}>
-                                            Base URL
-                                            <input
-                                                value={endpoint.base_url}
-                                                onInput={e =>
-                                                    updateEndpoint(endpointIndex, {
-                                                        base_url: (e.target as HTMLInputElement).value,
-                                                    })
-                                                }
-                                                style={{ width: '100%', marginTop: '4px', padding: '7px' }}
-                                            />
-                                        </label>
-                                        <label style={{ display: 'block', marginTop: '8px', fontSize: '0.78rem' }}>
-                                            Models Endpoint（可选）
-                                            <input
-                                                value={endpoint.models_endpoint || ''}
-                                                onInput={e =>
-                                                    updateEndpoint(endpointIndex, {
-                                                        models_endpoint: (e.target as HTMLInputElement).value,
-                                                    })
-                                                }
-                                                placeholder="https://api.example.com/v1/models"
-                                                style={{ width: '100%', marginTop: '4px', padding: '7px' }}
-                                            />
-                                        </label>
-                                        <label style={{ display: 'block', marginTop: '8px', fontSize: '0.78rem' }}>
-                                            独立 API Key（可选）
-                                            <input
-                                                type="password"
-                                                value={endpoint.api_key || ''}
-                                                onInput={e =>
-                                                    updateEndpoint(endpointIndex, {
-                                                        api_key: (e.target as HTMLInputElement).value,
-                                                    })
-                                                }
-                                                placeholder={
-                                                    endpoint.has_api_key ? '已保存，留空保留' : '留空使用通用密钥'
-                                                }
-                                                style={{ width: '100%', marginTop: '4px', padding: '7px' }}
-                                            />
-                                        </label>
-                                        <details style={{ marginTop: '8px' }}>
-                                            <summary style={{ cursor: 'pointer', fontSize: '0.78rem' }}>
-                                                Custom Headers（{Object.keys(endpoint.headers || {}).length}）
-                                            </summary>
-                                            {Object.entries(endpoint.headers || {}).map(([name, value]) => (
-                                                <div
-                                                    key={name}
-                                                    style={{
-                                                        display: 'grid',
-                                                        gridTemplateColumns: '1fr 1fr auto',
-                                                        gap: '6px',
-                                                        marginTop: '6px',
-                                                    }}
-                                                >
-                                                    <input
-                                                        value={name}
-                                                        onInput={e =>
-                                                            updateEndpointHeader(
-                                                                endpointIndex,
-                                                                name,
-                                                                (e.target as HTMLInputElement).value,
-                                                                value
-                                                            )
-                                                        }
-                                                        aria-label="Header Name"
-                                                    />
-                                                    <input
-                                                        type="password"
-                                                        value={value}
-                                                        onInput={e =>
-                                                            updateEndpointHeader(
-                                                                endpointIndex,
-                                                                name,
-                                                                name,
-                                                                (e.target as HTMLInputElement).value
-                                                            )
-                                                        }
-                                                        placeholder={
-                                                            endpoint.header_names?.includes(name)
-                                                                ? '已保存，留空保留'
-                                                                : 'Header Value'
-                                                        }
-                                                        aria-label={`${name} Header Value`}
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const headers = { ...(endpoint.headers || {}) };
-                                                            delete headers[name];
-                                                            updateEndpoint(endpointIndex, { headers });
-                                                        }}
-                                                    >
-                                                        删除
-                                                    </button>
-                                                </div>
-                                            ))}
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const headers = { ...(endpoint.headers || {}) };
-                                                    let name = 'X-Custom-Header';
-                                                    let suffix = 2;
-                                                    while (name in headers) name = `X-Custom-Header-${suffix++}`;
-                                                    headers[name] = '';
-                                                    updateEndpoint(endpointIndex, { headers });
-                                                }}
-                                                style={{ marginTop: '6px' }}
-                                            >
-                                                + Header
-                                            </button>
-                                        </details>
-                                        <div
-                                            style={{
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                marginTop: '10px',
-                                            }}
-                                        >
-                                            <button
-                                                type="button"
-                                                onClick={() => handleFetchModels(endpoint)}
-                                                disabled={fetchingModels.value || !endpoint.base_url}
-                                            >
-                                                刷新该 Endpoint 模型
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    (formEndpoints.value = formEndpoints.value.filter(
-                                                        (_, index) => index !== endpointIndex
-                                                    ))
-                                                }
-                                            >
-                                                移除 Endpoint
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
                             </div>
+                        ))}
+                    </div>
+                )}
 
-                            {/* 默认 Model & 自动拉取按钮 */}
-                            <div style={{ marginBottom: '16px' }}>
-                                <div
-                                    style={{
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        alignItems: 'center',
-                                        marginBottom: '4px',
-                                    }}
-                                >
-                                    <label style={{ fontSize: '0.85rem', fontWeight: 500 }}>默认 Model ID</label>
-                                    <button
-                                        type="button"
-                                        onClick={() =>
-                                            handleFetchModels(formEndpoints.value.find(endpoint => endpoint.base_url))
-                                        }
-                                        disabled={fetchingModels.value}
-                                        style={{
-                                            fontSize: '0.78rem',
-                                            color: '#0066cc',
-                                            background: 'transparent',
-                                            border: 'none',
-                                            cursor: 'pointer',
-                                            textDecoration: 'underline',
-                                        }}
-                                    >
-                                        {fetchingModels.value ? '拉取中...' : '自动获取模型列表'}
-                                    </button>
-                                </div>
-
-                                {fetchedModels.value.length > 0 ? (
-                                    <select
-                                        value={formModel.value}
-                                        onChange={e => (formModel.value = (e.target as HTMLSelectElement).value)}
-                                        style={{
-                                            width: '100%',
-                                            padding: '8px 10px',
-                                            borderRadius: '6px',
-                                            border: '1px solid var(--border, #ccc)',
-                                            boxSizing: 'border-box',
-                                        }}
-                                    >
-                                        {fetchedModels.value.map(m => (
-                                            <option key={m} value={m}>
-                                                {m}
-                                            </option>
-                                        ))}
-                                    </select>
-                                ) : (
+                {/* Modal Form */}
+                {isModalOpen.value && (
+                    <div class="ws-modal-overlay" onClick={() => (isModalOpen.value = false)}>
+                        <div
+                            class="ws-modal"
+                            style={{ width: '560px', maxWidth: 'calc(100vw - 32px)', maxHeight: '90vh' }}
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div class="ws-modal-header">
+                                <span>{editingId.value ? '编辑服务商配置' : '新增服务商配置'}</span>
+                                <button class="ws-modal-close" onClick={() => (isModalOpen.value = false)}>
+                                    ✕
+                                </button>
+                            </div>
+                            <div class="ws-modal-body" style={{ overflowY: 'auto', maxHeight: 'calc(90vh - 120px)' }}>
+                                <div>
+                                    <label class="ws-modal-label">服务商名称 *</label>
                                     <input
                                         type="text"
-                                        value={formModel.value}
-                                        onInput={e => (formModel.value = (e.target as HTMLInputElement).value)}
-                                        placeholder="如：deepseek-chat 或点击“自动获取模型列表”"
-                                        style={{
-                                            width: '100%',
-                                            padding: '8px 10px',
-                                            borderRadius: '6px',
-                                            border: '1px solid var(--border, #ccc)',
-                                            boxSizing: 'border-box',
-                                        }}
+                                        class="ws-modal-input"
+                                        value={formName.value}
+                                        onInput={e => (formName.value = (e.target as HTMLInputElement).value)}
+                                        placeholder="如：DeepSeek API 或 SiliconFlow"
+                                        required
                                     />
-                                )}
-                            </div>
+                                </div>
 
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                                <button
-                                    type="button"
-                                    onClick={() => (isModalOpen.value = false)}
-                                    style={{
-                                        padding: '8px 14px',
-                                        borderRadius: '6px',
-                                        border: '1px solid var(--border, #ccc)',
-                                        background: 'transparent',
-                                        cursor: 'pointer',
-                                    }}
-                                >
+                                <div>
+                                    <label class="ws-modal-label">API Key (通用鉴权密钥)</label>
+                                    <input
+                                        type="password"
+                                        class="ws-modal-input"
+                                        value={formApiKey.value}
+                                        onInput={e => (formApiKey.value = (e.target as HTMLInputElement).value)}
+                                        placeholder={
+                                            editingProvider?.has_api_key ? '已保存，留空表示保留原密钥' : 'sk-...'
+                                        }
+                                    />
+                                </div>
+
+                                <div style={{ marginTop: '4px' }}>
+                                    <div
+                                        style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            marginBottom: '8px',
+                                        }}
+                                    >
+                                        <span class="ws-modal-label">协议 Endpoints</span>
+                                        <button
+                                            type="button"
+                                            class="btn-secondary btn-sm"
+                                            onClick={addEndpoint}
+                                            disabled={formEndpoints.value.length >= ENDPOINT_TYPES.length}
+                                        >
+                                            + 添加 Endpoint
+                                        </button>
+                                    </div>
+                                    {formEndpoints.value.length === 0 && (
+                                        <div
+                                            style={{
+                                                padding: '12px',
+                                                border: '1px dashed var(--border-color)',
+                                                borderRadius: '6px',
+                                                fontSize: '12px',
+                                                color: 'var(--text-muted)',
+                                            }}
+                                        >
+                                            请至少添加一个 OpenAI 或 Anthropic Endpoint。
+                                        </div>
+                                    )}
+                                    {formEndpoints.value.map((endpoint, endpointIndex) => (
+                                        <div
+                                            key={`${endpointFamily(endpoint)}-${endpointIndex}`}
+                                            style={{
+                                                border: '1px solid var(--border-color)',
+                                                borderRadius: '8px',
+                                                padding: '12px',
+                                                marginBottom: '10px',
+                                                backgroundColor: 'var(--bg-page)',
+                                            }}
+                                        >
+                                            <div
+                                                style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}
+                                            >
+                                                <div>
+                                                    <label class="ws-modal-label">协议类型</label>
+                                                    <select
+                                                        class="ws-modal-select"
+                                                        value={endpointFamily(endpoint)}
+                                                        onChange={e =>
+                                                            changeEndpointType(
+                                                                endpointIndex,
+                                                                (e.target as HTMLSelectElement).value
+                                                            )
+                                                        }
+                                                    >
+                                                        {ENDPOINT_TYPES.map(type => (
+                                                            <option
+                                                                key={type.id}
+                                                                value={type.id}
+                                                                disabled={formEndpoints.value.some(
+                                                                    (item, index) =>
+                                                                        index !== endpointIndex &&
+                                                                        endpointFamily(item) === type.id
+                                                                )}
+                                                            >
+                                                                {type.label}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label class="ws-modal-label">Wire Protocol</label>
+                                                    <input
+                                                        class="ws-modal-input"
+                                                        value={endpoint.protocol}
+                                                        onInput={e =>
+                                                            updateEndpoint(endpointIndex, {
+                                                                protocol: (e.target as HTMLInputElement).value,
+                                                            })
+                                                        }
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div style={{ marginTop: '8px' }}>
+                                                <label class="ws-modal-label">Base URL</label>
+                                                <input
+                                                    class="ws-modal-input"
+                                                    value={endpoint.base_url}
+                                                    onInput={e =>
+                                                        updateEndpoint(endpointIndex, {
+                                                            base_url: (e.target as HTMLInputElement).value,
+                                                        })
+                                                    }
+                                                />
+                                            </div>
+
+                                            <div style={{ marginTop: '8px' }}>
+                                                <label class="ws-modal-label">Models Endpoint（可选）</label>
+                                                <input
+                                                    class="ws-modal-input"
+                                                    value={endpoint.models_endpoint || ''}
+                                                    onInput={e =>
+                                                        updateEndpoint(endpointIndex, {
+                                                            models_endpoint: (e.target as HTMLInputElement).value,
+                                                        })
+                                                    }
+                                                    placeholder="https://api.example.com/v1/models"
+                                                />
+                                            </div>
+
+                                            <div style={{ marginTop: '8px' }}>
+                                                <label class="ws-modal-label">独立 API Key（可选）</label>
+                                                <input
+                                                    type="password"
+                                                    class="ws-modal-input"
+                                                    value={endpoint.api_key || ''}
+                                                    onInput={e =>
+                                                        updateEndpoint(endpointIndex, {
+                                                            api_key: (e.target as HTMLInputElement).value,
+                                                        })
+                                                    }
+                                                    placeholder={
+                                                        endpoint.has_api_key ? '已保存，留空保留' : '留空使用通用密钥'
+                                                    }
+                                                />
+                                            </div>
+
+                                            <details style={{ marginTop: '8px' }}>
+                                                <summary
+                                                    style={{
+                                                        cursor: 'pointer',
+                                                        fontSize: '12px',
+                                                        color: 'var(--accent-color)',
+                                                    }}
+                                                >
+                                                    Custom Headers ({Object.keys(endpoint.headers || {}).length})
+                                                </summary>
+                                                {Object.entries(endpoint.headers || {}).map(([name, value]) => (
+                                                    <div
+                                                        key={name}
+                                                        style={{
+                                                            display: 'grid',
+                                                            gridTemplateColumns: '1fr 1fr auto',
+                                                            gap: '6px',
+                                                            marginTop: '6px',
+                                                        }}
+                                                    >
+                                                        <input
+                                                            class="ws-modal-input"
+                                                            style={{ height: '32px' }}
+                                                            value={name}
+                                                            onInput={e =>
+                                                                updateEndpointHeader(
+                                                                    endpointIndex,
+                                                                    name,
+                                                                    (e.target as HTMLInputElement).value,
+                                                                    value
+                                                                )
+                                                            }
+                                                            aria-label="Header Name"
+                                                        />
+                                                        <input
+                                                            type="password"
+                                                            class="ws-modal-input"
+                                                            style={{ height: '32px' }}
+                                                            value={value}
+                                                            onInput={e =>
+                                                                updateEndpointHeader(
+                                                                    endpointIndex,
+                                                                    name,
+                                                                    name,
+                                                                    (e.target as HTMLInputElement).value
+                                                                )
+                                                            }
+                                                            placeholder={
+                                                                endpoint.header_names?.includes(name)
+                                                                    ? '已保存，留空保留'
+                                                                    : 'Header Value'
+                                                            }
+                                                            aria-label={`${name} Header Value`}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            class="btn-danger btn-sm"
+                                                            onClick={() => {
+                                                                const headers = { ...(endpoint.headers || {}) };
+                                                                delete headers[name];
+                                                                updateEndpoint(endpointIndex, { headers });
+                                                            }}
+                                                        >
+                                                            删除
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                                <button
+                                                    type="button"
+                                                    class="btn-secondary btn-sm"
+                                                    style={{ marginTop: '6px' }}
+                                                    onClick={() => {
+                                                        const headers = { ...(endpoint.headers || {}) };
+                                                        let name = 'X-Custom-Header';
+                                                        let suffix = 2;
+                                                        while (name in headers) name = `X-Custom-Header-${suffix++}`;
+                                                        headers[name] = '';
+                                                        updateEndpoint(endpointIndex, { headers });
+                                                    }}
+                                                >
+                                                    + Header
+                                                </button>
+                                            </details>
+
+                                            <div
+                                                style={{
+                                                    display: 'flex',
+                                                    justifyContent: 'space-between',
+                                                    marginTop: '10px',
+                                                }}
+                                            >
+                                                <button
+                                                    type="button"
+                                                    class="btn-secondary btn-sm"
+                                                    onClick={() => handleFetchModels(endpoint)}
+                                                    disabled={fetchingModels.value || !endpoint.base_url}
+                                                >
+                                                    刷新该 Endpoint 模型
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    class="btn-danger btn-sm"
+                                                    onClick={() =>
+                                                        (formEndpoints.value = formEndpoints.value.filter(
+                                                            (_, index) => index !== endpointIndex
+                                                        ))
+                                                    }
+                                                >
+                                                    移除 Endpoint
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* 默认 Model & 自动拉取按钮 */}
+                                <div>
+                                    <div
+                                        style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            marginBottom: '4px',
+                                        }}
+                                    >
+                                        <label class="ws-modal-label">默认 Model ID</label>
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                handleFetchModels(
+                                                    formEndpoints.value.find(endpoint => endpoint.base_url)
+                                                )
+                                            }
+                                            disabled={fetchingModels.value}
+                                            style={{
+                                                fontSize: '12px',
+                                                color: 'var(--accent-color)',
+                                                background: 'transparent',
+                                                border: 'none',
+                                                cursor: 'pointer',
+                                                textDecoration: 'underline',
+                                            }}
+                                        >
+                                            {fetchingModels.value ? '拉取中...' : '自动获取模型列表'}
+                                        </button>
+                                    </div>
+
+                                    {fetchedModels.value.length > 0 ? (
+                                        <select
+                                            class="ws-modal-select"
+                                            value={formModel.value}
+                                            onChange={e => (formModel.value = (e.target as HTMLSelectElement).value)}
+                                        >
+                                            {fetchedModels.value.map(m => (
+                                                <option key={m} value={m}>
+                                                    {m}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    ) : (
+                                        <input
+                                            type="text"
+                                            class="ws-modal-input"
+                                            value={formModel.value}
+                                            onInput={e => (formModel.value = (e.target as HTMLInputElement).value)}
+                                            placeholder="如：deepseek-chat 或点击“自动获取模型列表”"
+                                        />
+                                    )}
+                                </div>
+                            </div>
+                            <div class="ws-modal-footer">
+                                <button type="button" class="btn-secondary" onClick={() => (isModalOpen.value = false)}>
                                     取消
                                 </button>
                                 <button
                                     type="button"
+                                    class="btn-primary"
                                     disabled={saving.value}
                                     onClick={handleSaveConfig}
-                                    style={{
-                                        padding: '8px 18px',
-                                        borderRadius: '6px',
-                                        background: 'var(--accent, #0066cc)',
-                                        color: '#fff',
-                                        border: 'none',
-                                        cursor: 'pointer',
-                                        fontWeight: 600,
-                                    }}
                                 >
                                     {saving.value ? '保存中...' : '保存服务商配置'}
                                 </button>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )}
+            </div>
         </div>
     );
 }

@@ -200,29 +200,48 @@ function AgentCard({
     const activeProvider = providers.find(p => p.id === selectedProviderId.value);
 
     return (
-        <div
-            style={{
-                border: '1px solid var(--border, #e0e0e0)',
-                borderRadius: '10px',
-                padding: '18px',
-                background: 'var(--bg-card, #fff)',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '14px',
-            }}
-        >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                    <h3 style={{ margin: '0 0 4px', fontSize: '1.1rem', fontWeight: 600 }}>{agentName}</h3>
-                    <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--fg-muted, #666)' }}>{agentDesc}</p>
+        <div class="bento-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div
+                        style={{
+                            width: '36px',
+                            height: '36px',
+                            borderRadius: 'var(--bento-radius-sm)',
+                            backgroundColor: 'var(--accent-light)',
+                            color: 'var(--accent-color)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                        }}
+                    >
+                        <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                        >
+                            <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z" />
+                            <path d="M12 6v6l4 2" />
+                        </svg>
+                    </div>
+                    <div>
+                        <div style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-main)' }}>{agentName}</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{agentDesc}</div>
+                    </div>
                 </div>
                 <code
                     style={{
-                        fontSize: '0.75rem',
+                        fontSize: '11.5px',
+                        fontFamily: 'var(--font-mono)',
                         padding: '2px 8px',
                         borderRadius: '4px',
-                        background: 'var(--bg-subtle, #f5f5f5)',
+                        background: 'var(--bg-page)',
+                        border: '1px solid var(--border-color)',
+                        color: 'var(--text-secondary)',
                     }}
                 >
                     {configPath}
@@ -231,43 +250,37 @@ function AgentCard({
 
             <div
                 style={{
-                    padding: '8px 10px',
-                    borderRadius: '6px',
-                    background: 'var(--bg-subtle, #f5f5f5)',
-                    fontSize: '0.78rem',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--bento-radius-sm)',
+                    backgroundColor: 'var(--bg-page)',
+                    border: '1px solid var(--border-color)',
+                    fontSize: '12.5px',
+                    color: 'var(--text-secondary)',
                 }}
             >
-                <strong>当前本地配置：</strong>{' '}
+                <strong style={{ color: 'var(--text-main)' }}>当前本地配置：</strong>{' '}
                 {runtime?.installed ? (
                     <span>
-                        {runtime.model_id || '未检测到模型'}
+                        <code>{runtime.model_id || '未检测到模型'}</code>
                         {runtime.base_url ? ` · ${runtime.base_url}` : ''}
                     </span>
                 ) : (
-                    <span>未发现配置文件</span>
+                    <span style={{ color: 'var(--text-muted)' }}>未发现配置文件</span>
                 )}
                 {runtime?.warnings?.map(warning => (
-                    <div key={warning} style={{ color: '#b26a00', marginTop: '4px' }}>
-                        {warning}
+                    <div key={warning} style={{ color: 'var(--warning-fg)', marginTop: '4px' }}>
+                        ⚠️ {warning}
                     </div>
                 ))}
             </div>
 
             {/* Provider Selection */}
             <div>
-                <label style={{ display: 'block', fontSize: '0.83rem', fontWeight: 600, marginBottom: '6px' }}>
-                    选择调用的服务商 *
-                </label>
+                <label class="ws-modal-label">选择调用的服务商 *</label>
                 <select
+                    class="ws-modal-select"
                     value={selectedProviderId.value}
                     onChange={e => handleSelectProvider((e.target as HTMLSelectElement).value)}
-                    style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid var(--border, #ccc)',
-                        fontWeight: 500,
-                    }}
                 >
                     {providers.map(p => (
                         <option key={p.id} value={p.id}>
@@ -281,10 +294,10 @@ function AgentCard({
             {activeProvider && (
                 <div
                     style={{
-                        padding: '12px',
-                        borderRadius: '8px',
-                        background: 'var(--bg-subtle, #f8f9fa)',
-                        border: '1px solid var(--border, #e5e5e5)',
+                        padding: '14px',
+                        borderRadius: 'var(--bento-radius-sm)',
+                        backgroundColor: 'var(--bg-page)',
+                        border: '1px solid var(--border-color)',
                     }}
                 >
                     <div
@@ -292,37 +305,31 @@ function AgentCard({
                             display: 'flex',
                             justifyContent: 'space-between',
                             alignItems: 'center',
-                            marginBottom: '8px',
+                            marginBottom: '10px',
                         }}
                     >
-                        <span style={{ fontSize: '0.83rem', fontWeight: 600 }}>模型选择与微调 (Model Fine-Tuning)</span>
+                        <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-main)' }}>
+                            模型选择与微调 (Model Fine-Tuning)
+                        </span>
                         {loadingModels.value && (
-                            <span style={{ fontSize: '0.75rem', color: '#0066cc' }}>正在拉取可用模型...</span>
+                            <span style={{ fontSize: '12px', color: 'var(--accent-color)' }}>正在拉取可用模型...</span>
                         )}
                     </div>
 
                     {/* If we fetched models from provider's endpoint, show select dropdown */}
                     {fetchedModels.value.length > 0 ? (
                         <div style={{ marginBottom: '10px' }}>
-                            <label
-                                style={{ display: 'block', fontSize: '0.78rem', marginBottom: '4px', color: '#555' }}
-                            >
+                            <label class="ws-modal-label">
                                 从服务商端点自动拉取到的模型列表 ({fetchedModels.value.length} 个):
                             </label>
                             <select
+                                class="ws-modal-select"
                                 value={modelInput.value}
                                 onChange={e => {
                                     const selectedModel = (e.target as HTMLSelectElement).value;
                                     modelInput.value = selectedModel;
                                     sonnetInput.value = selectedModel;
                                     haikuInput.value = selectedModel;
-                                }}
-                                style={{
-                                    width: '100%',
-                                    padding: '6px 8px',
-                                    borderRadius: '4px',
-                                    border: '1px solid #ccc',
-                                    fontSize: '0.82rem',
                                 }}
                             >
                                 {fetchedModels.value.map(m => (
@@ -334,24 +341,13 @@ function AgentCard({
                         </div>
                     ) : (
                         <div style={{ marginBottom: '10px' }}>
-                            <label
-                                style={{ display: 'block', fontSize: '0.78rem', marginBottom: '4px', color: '#555' }}
-                            >
-                                默认 Model ID:
-                            </label>
+                            <label class="ws-modal-label">默认 Model ID:</label>
                             <input
                                 type="text"
+                                class="ws-modal-input"
                                 value={modelInput.value}
                                 onInput={e => (modelInput.value = (e.target as HTMLInputElement).value)}
                                 placeholder="如：deepseek-chat 或 gpt-4o"
-                                style={{
-                                    width: '100%',
-                                    padding: '6px 8px',
-                                    borderRadius: '4px',
-                                    border: '1px solid #ccc',
-                                    fontSize: '0.82rem',
-                                    boxSizing: 'border-box',
-                                }}
                             />
                         </div>
                     )}
@@ -362,53 +358,41 @@ function AgentCard({
                             style={{
                                 display: 'grid',
                                 gridTemplateColumns: '1fr 1fr',
-                                gap: '8px',
-                                marginTop: '8px',
-                                paddingTop: '8px',
-                                borderTop: '1px dashed #ddd',
+                                gap: '10px',
+                                marginTop: '10px',
+                                paddingTop: '10px',
+                                borderTop: '1px dashed var(--border-color)',
                             }}
                         >
                             <div>
-                                <label style={{ display: 'block', fontSize: '0.75rem', color: '#555' }}>
-                                    Sonnet 映射
-                                </label>
+                                <label class="ws-modal-label">Sonnet 映射</label>
                                 <input
                                     type="text"
+                                    class="ws-modal-input"
                                     value={sonnetInput.value}
                                     onInput={e => (sonnetInput.value = (e.target as HTMLInputElement).value)}
-                                    style={{
-                                        width: '100%',
-                                        padding: '4px 6px',
-                                        borderRadius: '4px',
-                                        border: '1px solid #ccc',
-                                        fontSize: '0.78rem',
-                                        boxSizing: 'border-box',
-                                    }}
                                 />
                             </div>
                             <div>
-                                <label style={{ display: 'block', fontSize: '0.75rem', color: '#555' }}>
-                                    Haiku 映射
-                                </label>
+                                <label class="ws-modal-label">Haiku 映射</label>
                                 <input
                                     type="text"
+                                    class="ws-modal-input"
                                     value={haikuInput.value}
                                     onInput={e => (haikuInput.value = (e.target as HTMLInputElement).value)}
-                                    style={{
-                                        width: '100%',
-                                        padding: '4px 6px',
-                                        borderRadius: '4px',
-                                        border: '1px solid #ccc',
-                                        fontSize: '0.78rem',
-                                        boxSizing: 'border-box',
-                                    }}
                                 />
                             </div>
                         </div>
                     )}
                     {(optionSchema?.options || []).length > 0 && (
-                        <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #ddd' }}>
-                            <div style={{ fontSize: '0.78rem', fontWeight: 600, marginBottom: '6px' }}>
+                        <div
+                            style={{
+                                marginTop: '10px',
+                                paddingTop: '10px',
+                                borderTop: '1px dashed var(--border-color)',
+                            }}
+                        >
+                            <div class="ws-modal-label" style={{ marginBottom: '6px' }}>
                                 智能体可选配置
                             </div>
                             {optionSchema?.options.map(option => {
@@ -418,26 +402,32 @@ function AgentCard({
                                     optionValues.value = { ...optionValues.value, [option.key]: nextValue };
                                 };
                                 return (
-                                    <label
-                                        key={option.key}
-                                        style={{ display: 'block', fontSize: '0.75rem', marginTop: '6px' }}
-                                    >
+                                    <div key={option.key} style={{ marginTop: '8px' }}>
                                         {option.type === 'boolean' ? (
-                                            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <label
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '8px',
+                                                    fontSize: '13px',
+                                                    color: 'var(--text-main)',
+                                                    cursor: 'pointer',
+                                                }}
+                                            >
                                                 <input
                                                     type="checkbox"
                                                     checked={value === true}
                                                     onChange={e => updateValue((e.target as HTMLInputElement).checked)}
                                                 />
                                                 {option.label}
-                                            </span>
+                                            </label>
                                         ) : option.type === 'select' ? (
-                                            <span>
-                                                {option.label}
+                                            <div>
+                                                <label class="ws-modal-label">{option.label}</label>
                                                 <select
+                                                    class="ws-modal-select"
                                                     value={String(value)}
                                                     onChange={e => updateValue((e.target as HTMLSelectElement).value)}
-                                                    style={{ width: '100%', marginTop: '4px', padding: '6px 8px' }}
                                                 >
                                                     {(option.choices || []).map(choice => (
                                                         <option key={choice} value={choice}>
@@ -445,11 +435,12 @@ function AgentCard({
                                                         </option>
                                                     ))}
                                                 </select>
-                                            </span>
+                                            </div>
                                         ) : (
-                                            <span>
-                                                {option.label}
+                                            <div>
+                                                <label class="ws-modal-label">{option.label}</label>
                                                 <input
+                                                    class="ws-modal-input"
                                                     type={option.type === 'integer' ? 'number' : 'text'}
                                                     min={option.minimum}
                                                     value={String(value)}
@@ -461,11 +452,10 @@ function AgentCard({
                                                                 : input.value
                                                         );
                                                     }}
-                                                    style={{ width: '100%', marginTop: '4px', padding: '6px 8px' }}
                                                 />
-                                            </span>
+                                            </div>
                                         )}
-                                    </label>
+                                    </div>
                                 );
                             })}
                         </div>
@@ -474,24 +464,16 @@ function AgentCard({
             )}
 
             {/* Action button & Status */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.82rem', color: statusMsg.value.includes('成功') ? '#2e7d32' : '#ff4d4f' }}>
-                    {statusMsg.value}
-                </span>
-                <button
-                    onClick={handleApply}
-                    disabled={submitting.value}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                <span
                     style={{
-                        padding: '8px 18px',
-                        borderRadius: '6px',
-                        background: 'var(--accent, #0066cc)',
-                        color: '#fff',
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontWeight: 600,
-                        fontSize: '0.85rem',
+                        fontSize: '13px',
+                        color: statusMsg.value.includes('成功') ? 'var(--success-fg)' : 'var(--danger-fg)',
                     }}
                 >
+                    {statusMsg.value}
+                </span>
+                <button class="btn-primary" onClick={handleApply} disabled={submitting.value}>
                     {submitting.value ? '写入中...' : `应用配置至 ${agentName}`}
                 </button>
             </div>
@@ -540,67 +522,86 @@ export function AgentSwitchPanel() {
     }, []);
 
     return (
-        <div style={{ padding: '16px', maxWidth: '900px', margin: '0 auto', color: 'var(--fg)' }}>
-            <div style={{ marginBottom: '20px' }}>
-                <h2 style={{ margin: '0 0 4px', fontSize: '1.25rem', fontWeight: 600 }}>智能体绑定与切换看板</h2>
-                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--fg-muted, #888)' }}>
-                    每一个 Agent 独立选择调用的服务商，并针对具体 Agent 微调 Model ID。
-                </p>
+        <div class="providers-panel-wrapper">
+            <div class="providers-panel-container">
+                <div class="providers-header-bar">
+                    <div>
+                        <h2 class="providers-header-title">
+                            <svg
+                                width="20"
+                                height="20"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="9" cy="7" r="4"></circle>
+                                <polyline points="16 11 18 13 22 9"></polyline>
+                            </svg>
+                            智能体绑定与切换看板 (Agent Switching)
+                        </h2>
+                        <p class="providers-header-desc">
+                            每一个 Agent 独立选择调用的服务商，并针对具体 Agent 微调 Model ID 与配置。
+                        </p>
+                    </div>
+                </div>
+
+                {errorMsg.value && (
+                    <div class="providers-alert-banner alert-danger">
+                        <span>⚠️</span> {errorMsg.value}
+                    </div>
+                )}
+
+                {loading.value ? (
+                    <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        加载智能体与服务商列表中...
+                    </div>
+                ) : providers.value.length === 0 ? (
+                    <div
+                        style={{
+                            padding: '40px 24px',
+                            textAlign: 'center',
+                            border: '1px dashed var(--border-color)',
+                            borderRadius: 'var(--bento-radius)',
+                            color: 'var(--text-secondary)',
+                            backgroundColor: 'var(--bg-card)',
+                        }}
+                    >
+                        <div style={{ fontSize: '14px', fontWeight: 500, marginBottom: '4px' }}>暂无已保存的服务商</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                            请先前往“服务商配置” Tab 添加并保存服务商。
+                        </div>
+                    </div>
+                ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        <AgentCard
+                            agentId="claude"
+                            agentName="Claude Code"
+                            agentDesc="Anthropic CLI AI 编程助手"
+                            configPath="~/.claude/settings.json"
+                            providers={providers.value}
+                            runtime={runtimes.value.find(item => item.agent_id === 'claude')}
+                            binding={bindings.value.find(item => item.agent_id === 'claude')}
+                            optionSchema={optionSchemas.value.find(item => item.agent_id === 'claude')}
+                            onSync={loadProviders}
+                        />
+                        <AgentCard
+                            agentId="codex"
+                            agentName="Codex CLI"
+                            agentDesc="OpenAI 协议轻量级 CLI 工具"
+                            configPath="~/.codex/config.toml"
+                            providers={providers.value}
+                            runtime={runtimes.value.find(item => item.agent_id === 'codex')}
+                            binding={bindings.value.find(item => item.agent_id === 'codex')}
+                            optionSchema={optionSchemas.value.find(item => item.agent_id === 'codex')}
+                            onSync={loadProviders}
+                        />
+                    </div>
+                )}
             </div>
-
-            {errorMsg.value && (
-                <div
-                    style={{
-                        padding: '10px 14px',
-                        borderRadius: '6px',
-                        background: 'rgba(255, 0, 0, 0.1)',
-                        color: '#ff4d4f',
-                        marginBottom: '16px',
-                    }}
-                >
-                    {errorMsg.value}
-                </div>
-            )}
-
-            {loading.value ? (
-                <div style={{ padding: '32px', textAlign: 'center', color: '#888' }}>加载智能体与服务商列表中...</div>
-            ) : providers.value.length === 0 ? (
-                <div
-                    style={{
-                        padding: '32px',
-                        textAlign: 'center',
-                        border: '1px dashed var(--border, #ccc)',
-                        borderRadius: '8px',
-                    }}
-                >
-                    暂无已保存的服务商，请先前往“服务商配置库”添加并保存服务商。
-                </div>
-            ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    <AgentCard
-                        agentId="claude"
-                        agentName="Claude Code"
-                        agentDesc="Anthropic CLI AI 编程助手"
-                        configPath="~/.claude/settings.json"
-                        providers={providers.value}
-                        runtime={runtimes.value.find(item => item.agent_id === 'claude')}
-                        binding={bindings.value.find(item => item.agent_id === 'claude')}
-                        optionSchema={optionSchemas.value.find(item => item.agent_id === 'claude')}
-                        onSync={loadProviders}
-                    />
-                    <AgentCard
-                        agentId="codex"
-                        agentName="Codex CLI"
-                        agentDesc="OpenAI 协议轻量级 CLI 工具"
-                        configPath="~/.codex/config.toml"
-                        providers={providers.value}
-                        runtime={runtimes.value.find(item => item.agent_id === 'codex')}
-                        binding={bindings.value.find(item => item.agent_id === 'codex')}
-                        optionSchema={optionSchemas.value.find(item => item.agent_id === 'codex')}
-                        onSync={loadProviders}
-                    />
-                </div>
-            )}
         </div>
     );
 }
