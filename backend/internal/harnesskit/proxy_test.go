@@ -117,6 +117,42 @@ func TestAllowedRouteInjectsTokenAndRewritesPath(t *testing.T) {
 	}
 }
 
+func TestProxyAllowsStaticUIAssetGETRoutes(t *testing.T) {
+	var gotPath string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer upstream.Close()
+
+	runtime := &fakeRuntime{
+		status:   supervisor.HarnessKitStatus{State: "ready", Ready: true},
+		endpoint: upstream.URL,
+		token:    "token",
+		ready:    true,
+	}
+	handler := NewHandler(runtime)
+
+	for reqPath, expectedUpstream := range map[string]string{
+		"/api/harnesskit/":                  "/",
+		"/api/harnesskit/index.html":         "/index.html",
+		"/api/harnesskit/assets/index.js":   "/assets/index.js",
+		"/api/harnesskit/assets/style.css":  "/assets/style.css",
+		"/api/harnesskit/favicon.png":       "/favicon.png",
+	} {
+		gotPath = ""
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, reqPath, nil))
+		if rec.Code != http.StatusOK {
+			t.Errorf("%s status = %d, want %d", reqPath, rec.Code, http.StatusOK)
+		}
+		if gotPath != expectedUpstream {
+			t.Errorf("%s upstream path = %q, want %q", reqPath, gotPath, expectedUpstream)
+		}
+	}
+}
+
 func TestProxyFailsClosedForUnknownAndHostOnlyRoutes(t *testing.T) {
 	var upstreamCalls int
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

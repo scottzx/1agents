@@ -82,10 +82,19 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	upstreamPath := "/api" + strings.TrimPrefix(r.URL.Path, proxyPrefix)
-	if _, ok := browserRoutes[routePermission{method: r.Method, path: upstreamPath}]; !ok {
-		writeError(w, http.StatusForbidden, "route_not_allowed", "HarnessKit route is not available through the embedded boundary", correlationID, nil)
-		return
+	relPath := strings.TrimPrefix(r.URL.Path, proxyPrefix)
+	var upstreamPath string
+	if isStaticUIAsset(r.Method, relPath) {
+		upstreamPath = relPath
+		if upstreamPath == "" {
+			upstreamPath = "/"
+		}
+	} else {
+		upstreamPath = "/api" + relPath
+		if _, ok := browserRoutes[routePermission{method: r.Method, path: upstreamPath}]; !ok {
+			writeError(w, http.StatusForbidden, "route_not_allowed", "HarnessKit route is not available through the embedded boundary", correlationID, nil)
+			return
+		}
 	}
 
 	baseURL, token, ready := h.runtime.Endpoint()
@@ -159,6 +168,19 @@ func (h *Handler) serveStatus(w http.ResponseWriter, r *http.Request, correlatio
 func isWebSocketUpgrade(r *http.Request) bool {
 	return strings.EqualFold(r.Header.Get("Upgrade"), "websocket") ||
 		strings.Contains(strings.ToLower(r.Header.Get("Connection")), "upgrade")
+}
+
+func isStaticUIAsset(method, relPath string) bool {
+	if method != http.MethodGet && method != http.MethodHead {
+		return false
+	}
+	if relPath == "" || relPath == "/" || relPath == "/index.html" || relPath == "/favicon.png" || relPath == "/favicon.ico" || relPath == "/vite.svg" {
+		return true
+	}
+	if strings.HasPrefix(relPath, "/assets/") {
+		return true
+	}
+	return false
 }
 
 func requestCorrelationID(r *http.Request) string {
