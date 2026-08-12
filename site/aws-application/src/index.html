@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#101113" />
+    <meta
+      name="description"
+      content="1Agents 是一个开源、自托管、人类治理的多智能体工作操作系统，让不同智能体在同一张工作 Graph 中被规划、分派、执行与验收。"
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="1Agents｜多智能体工作操作系统" />
+    <meta
+      property="og:description"
+      content="PLAN · EXECUTE · REVIEW · ACCEPT｜技术愿景、真实自用案例与 AWS 云上规划"
+    />
+    <meta property="og:url" content="https://scottzx.github.io/1agents/" />
+    <meta property="og:image" content="https://scottzx.github.io/1agents/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="1Agents｜多智能体工作操作系统" />
+    <meta
+      name="twitter:description"
+      content="让不同智能体围绕同一张工作 Graph 协同交付。"
+    />
+    <meta name="twitter:image" content="https://scottzx.github.io/1agents/og.png" />
+    <link rel="canonical" href="https://scottzx.github.io/1agents/" />
+    <link rel="stylesheet" href="./styles.css" />
+    <title>1Agents｜多智能体工作操作系统</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳到正文</a>
+
+    <header class="site-header" data-header>
+      <a class="brand" href="#top" aria-label="1Agents 首页">
+        <span class="brand-mark">1</span>
+        <span>AGENTS</span>
+      </a>
+      <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav">
+        <span></span><span></span>
+        <span class="sr-only">打开导航</span>
+      </button>
+      <nav id="site-nav" class="site-nav" aria-label="页面导航">
+        <a href="#problem">问题</a>
+        <a href="#workflow">工作方式</a>
+        <a href="#case">真实案例</a>
+        <a href="#aws">AWS 规划</a>
+        <a class="nav-github" href="https://github.com/scottzx/1agents" target="_blank" rel="noreferrer">GitHub ↗</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section id="top" class="hero section-dark">
+        <div class="hero-grid" aria-hidden="true"></div>
+        <div class="hero-copy reveal">
+          <p class="eyebrow"><span></span>AWS 创业活动 · 项目介绍</p>
+          <h1>让一组智能体<br />成为一支<span>可管理的团队</span></h1>
+          <p class="hero-lead">
+            1Agents 是一个开源、自托管、人类治理的多智能体工作操作系统。不同模型不再各自停留在孤立会话里，而是在同一张工作 Graph 中被规划、分派、执行、审查与验收。
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#workflow">查看核心流程</a>
+            <a class="button button-ghost" href="https://github.com/scottzx/1agents" target="_blank" rel="noreferrer">访问开源项目 ↗</a>
+          </div>
+        </div>
+
+        <div class="hero-system reveal" aria-label="1Agents 工作流示意">
+          <div class="system-topline">
+            <span>WORK GRAPH / LIVE</span>
+            <span class="pulse-label"><i></i> HUMAN GOVERNED</span>
+          </div>
+          <div class="graph-stage">
+            <div class="graph-line line-a"></div>
+            <div class="graph-line line-b"></div>
+            <article class="agent-node node-plan">
+              <small>01 / PLAN</small>
+              <strong>规划者</strong>
+              <span>目标 · 架构 · 验收标准</span>
+            </article>
+            <article class="agent-node node-execute">
+              <small>02 / EXECUTE</small>
+              <strong>执行者</strong>
+              <span>代码 · 测试 · 产物</span>
+            </article>
+            <article class="agent-node node-review">
+              <small>03 / REVIEW</small>
+              <strong>审查者</strong>
+              <span>风险 · 缺陷 · 返工</span>
+            </article>
+            <article class="agent-node node-accept">
+              <small>04 / ACCEPT</small>
+              <strong>人类闸门</strong>
+              <span>判断 · 授权 · 验收</span>
+            </article>
+          </div>
+          <div class="system-footer">
+            <span>同一项目上下文</span>
+            <span>同一任务状态</span>
+            <span>同一验收证据</span>
+          </div>
+        </div>
+
+        <div class="hero-facts reveal" aria-label="项目关键信息">
+          <div><strong>OPEN</strong><span>开源与自托管</span></div>
+          <div><strong>MODEL-AGNOSTIC</strong><span>模型可替换</span></div>
+          <div><strong>GRAPH-NATIVE</strong><span>任务关系可追踪</span></div>
+          <div><strong>FOUNDER-USED</strong><span>已进入真实开发流程</span></div>
+        </div>
+      </section>
+
+      <section id="problem" class="section section-light">
+        <div class="section-heading reveal">
+          <p class="eyebrow eyebrow-dark"><span></span>THE PROBLEM</p>
+          <h2>AI 很会完成一步，<br />却很难持续交付一件事。</h2>
+          <p>当前的编码 Agent 通常围绕一次会话优化。真正的软件项目却需要跨越计划、依赖、执行、验证、返工和长期上下文。</p>
+        </div>
+        <div class="problem-list">
+          <article class="problem-row reveal">
+            <span class="row-number">01</span>
+            <h3>上下文割裂</h3>
+            <p>不同模型、不同会话和不同项目之间缺少稳定的任务事实，人需要反复复制背景、解释进度。</p>
+          </article>
+          <article class="problem-row reveal">
+            <span class="row-number">02</span>
+            <h3>能力与成本错配</h3>
+            <p>规划、编码、审查对模型能力的要求不同，但团队往往让同一个模型包办所有阶段。</p>
+          </article>
+          <article class="problem-row reveal">
+            <span class="row-number">03</span>
+            <h3>执行没有闭环</h3>
+            <p>结果散落在聊天、终端和文件里。任务是否真的完成、谁来验收、失败后去哪里返工并不清楚。</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="workflow" class="section section-ink">
+        <div class="section-heading section-heading-invert reveal">
+          <p class="eyebrow"><span></span>THE 1AGENTS WAY</p>
+          <h2>一张工作 Graph，<br />多种专业执行者。</h2>
+          <p>Agent Profile 定义角色、模型、权限和工作方式；工作 Graph 保存目标、依赖、状态、产物和验收标准。</p>
+        </div>
+
+        <div class="workflow-track reveal">
+          <article>
+            <span>01</span><i></i>
+            <small>PLAN</small>
+            <h3>制定计划</h3>
+            <p>强推理模型理解目标，拆分需求和依赖，生成可验证的任务。</p>
+          </article>
+          <article>
+            <span>02</span><i></i>
+            <small>ROUTE</small>
+            <h3>分配 Profile</h3>
+            <p>根据任务阶段、能力、成本和权限，选择合适的 Agent。</p>
+          </article>
+          <article>
+            <span>03</span><i></i>
+            <small>EXECUTE</small>
+            <h3>真实环境执行</h3>
+            <p>Agent 在工作区内使用文件、终端、Git 和工具完成交付。</p>
+          </article>
+          <article>
+            <span>04</span><i></i>
+            <small>REVIEW</small>
+            <h3>独立模型复审</h3>
+            <p>另一角色检查实现、测试与风险，决定通过或携带原因返工。</p>
+          </article>
+          <article>
+            <span>05</span><i></i>
+            <small>ACCEPT</small>
+            <h3>人工关键验收</h3>
+            <p>人在真实设备、权限和产品判断节点承担最终责任。</p>
+          </article>
+        </div>
+
+        <div class="principle-grid">
+          <article class="principle-card reveal">
+            <p>STABLE CORE</p>
+            <h3>执行者可以增加，模型可以替换，工作事实保持稳定。</h3>
+          </article>
+          <article class="principle-card principle-accent reveal">
+            <p>HUMAN CONTROL</p>
+            <h3>自动化不是取消人，而是把人留在最需要判断的位置。</h3>
+          </article>
+        </div>
+      </section>
+
+      <section id="case" class="section section-case">
+        <div class="case-intro reveal">
+          <p class="eyebrow eyebrow-dark"><span></span>FOUNDER-USED CASE</p>
+          <h2>VoiceContext：<br />一次真实的多模型协作开发。</h2>
+          <p>
+            VoiceContext 是一个端侧语音上下文与会议纪要 iOS 项目。我们没有把它当作演示脚本，而是用 1Agents 管理从产品规划到真机验收的持续开发。
+          </p>
+          <div class="stage-note">
+            <strong>当前阶段</strong>
+            <span>已完成创始人自用验证，尚未完成外部客户验证。</span>
+          </div>
+        </div>
+
+        <div class="case-evidence reveal">
+          <div class="evidence-stat">
+            <strong>54</strong>
+            <span>结构化需求、任务与缺陷</span>
+          </div>
+          <div class="model-roles">
+            <article>
+              <small>PLANNER</small>
+              <h3>GPT‑5.6</h3>
+              <p>整体规划、架构判断与验收标准</p>
+            </article>
+            <article>
+              <small>EXECUTOR</small>
+              <h3>DeepSeek V4 Fresh</h3>
+              <p>按任务执行开发、修改与自动化测试</p>
+            </article>
+            <article>
+              <small>REVIEWER</small>
+              <h3>GPT‑5.6</h3>
+              <p>Code Review、风险识别与返工判断</p>
+            </article>
+            <article>
+              <small>ACCEPTOR</small>
+              <h3>Human</h3>
+              <p>真机验证、产品取舍与最终验收</p>
+            </article>
+          </div>
+        </div>
+
+        <div class="artifact-strip reveal" aria-label="VoiceContext 已产生的工程产物">
+          <span>PRD</span><i></i>
+          <span>架构设计</span><i></i>
+          <span>iOS 实现</span><i></i>
+          <span>自动化测试</span><i></i>
+          <span>真机验证</span><i></i>
+          <span>缺陷返工</span>
+        </div>
+      </section>
+
+      <section id="aws" class="section section-aws">
+        <div class="section-heading reveal">
+          <p class="eyebrow eyebrow-dark"><span></span>BUILDING WITH AWS</p>
+          <h2>从本地工作台，<br />走向可信的云端 Agent 控制面。</h2>
+          <p>AWS 不是一张服务清单，而是 1Agents 从创始人自用走向团队协作、弹性执行和可审计运营的基础。</p>
+        </div>
+
+        <div class="aws-layers">
+          <article class="aws-layer reveal">
+            <span>01</span>
+            <div>
+              <small>AGENT RUNTIME</small>
+              <h3>隔离、可扩展的 Agent 执行环境</h3>
+              <p>评估 Amazon Bedrock AgentCore Runtime、Gateway 与 Identity，让不同 Agent 获得独立运行环境、受控工具入口和工作负载身份。</p>
+              <a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agents-tools-runtime.html" target="_blank" rel="noreferrer">查看 AWS 官方能力 ↗</a>
+            </div>
+          </article>
+          <article class="aws-layer reveal">
+            <span>02</span>
+            <div>
+              <small>ORCHESTRATION</small>
+              <h3>事件驱动的任务调度与人工闸门</h3>
+              <p>使用 Step Functions 协调长流程与人工回调，结合 EventBridge 和 SQS 解耦任务事件、重试与执行队列。</p>
+              <a href="https://docs.aws.amazon.com/step-functions/latest/dg/integrate-services.html" target="_blank" rel="noreferrer">查看 AWS 服务集成 ↗</a>
+            </div>
+          </article>
+          <article class="aws-layer reveal">
+            <span>03</span>
+            <div>
+              <small>MODEL ROUTING</small>
+              <h3>质量、能力与成本感知的模型路由</h3>
+              <p>评估 Amazon Bedrock 的模型访问和智能 Prompt Routing，同时保留 1Agents 基于任务阶段与 Profile 的应用级路由。</p>
+              <a href="https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-routing.html" target="_blank" rel="noreferrer">查看 Prompt Routing ↗</a>
+            </div>
+          </article>
+          <article class="aws-layer reveal">
+            <span>04</span>
+            <div>
+              <small>TRUST & OBSERVABILITY</small>
+              <h3>从模型调用到交付结果的完整证据链</h3>
+              <p>将会话、工具调用、任务状态、Token 成本、审查结果和人工决定连接起来，借助 CloudWatch 建立运行与质量观测。</p>
+              <a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/observability-configure.html" target="_blank" rel="noreferrer">查看 AgentCore 可观测性 ↗</a>
+            </div>
+          </article>
+        </div>
+
+        <div class="roadmap reveal">
+          <div class="roadmap-title">
+            <small>12-MONTH ROADMAP</small>
+            <h3>云上演进计划</h3>
+          </div>
+          <ol>
+            <li><span>PHASE 01</span><strong>云端控制面</strong><p>任务 Graph、Agent Profile、运行记录与团队权限。</p></li>
+            <li><span>PHASE 02</span><strong>弹性执行面</strong><p>隔离 Runner、事件调度、制品回写与失败恢复。</p></li>
+            <li><span>PHASE 03</span><strong>成本质量评估</strong><p>统一计量每个通过验收任务的费用、时间和返工。</p></li>
+          </ol>
+        </div>
+      </section>
+
+      <section id="program" class="section section-program">
+        <div class="program-copy reveal">
+          <p class="eyebrow"><span></span>WHY THIS PROGRAM</p>
+          <h2>我们已经证明它能工作。<br />下一步，要证明谁需要它。</h2>
+          <p>
+            1Agents 已进入创始人的多项目开发流程，但还没有外部客户。参加本次活动的价值，是用 AWS 技术辅导、VC 视角、法律与合作伙伴资源，完成从技术产品到市场产品的关键跨越。
+          </p>
+        </div>
+        <div class="program-goals reveal">
+          <article><span>01</span><h3>架构</h3><p>验证云端控制面、隔离执行与事件驱动方案。</p></article>
+          <article><span>02</span><h3>产品</h3><p>收敛首个外部用户场景，建立设计伙伴计划。</p></article>
+          <article><span>03</span><h3>合规</h3><p>明确 Agent 权限、代码访问、数据和模型使用边界。</p></article>
+          <article><span>04</span><h3>商业</h3><p>验证团队版价值、单位交付成本与可持续模式。</p></article>
+        </div>
+      </section>
+
+      <section class="closing section-dark">
+        <div class="closing-copy reveal">
+          <p>1AGENTS / OPEN SOURCE</p>
+          <h2>执行者可以增加，<br />工作事实必须稳定。</h2>
+          <p>让人定义目标、掌握权限并承担最终责任；让一组 Agent 围绕同一张工作 Graph 持续推进。</p>
+          <a class="button button-primary" href="https://github.com/scottzx/1agents" target="_blank" rel="noreferrer">在 GitHub 查看 1Agents ↗</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <a class="brand brand-footer" href="#top"><span class="brand-mark">1</span><span>AGENTS</span></a>
+      <p>Human-governed operating system for multi-agent work.</p>
+      <p>© <span data-year></span> 1Agents · Open source</p>
+    </footer>
+
+    <script src="./script.js" defer></script>
+  </body>
+</html>
