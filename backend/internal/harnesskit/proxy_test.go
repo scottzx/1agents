@@ -153,6 +153,88 @@ func TestProxyAllowsStaticUIAssetGETRoutes(t *testing.T) {
 	}
 }
 
+func TestProxyRewritesAbsoluteSPAAssetPathsInHTML(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" && r.URL.Path != "/index.html" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = io.WriteString(w, `<!doctype html><html><head>
+<script type="module" src="/assets/index-BwNxD7oG.js"></script>
+<link rel="modulepreload" href="/assets/vendor-react-CioqzwfR.js">
+<link rel="icon" href="/favicon.png">
+</head><body></body></html>`)
+	}))
+	defer upstream.Close()
+
+	runtime := &fakeRuntime{
+		status:   supervisor.HarnessKitStatus{State: "ready", Ready: true},
+		endpoint: upstream.URL,
+		token:    "token",
+		ready:    true,
+	}
+	rec := httptest.NewRecorder()
+	NewHandler(runtime).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/harnesskit/", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`src="/api/harnesskit/assets/index-BwNxD7oG.js"`,
+		`href="/api/harnesskit/assets/vendor-react-CioqzwfR.js"`,
+		`href="/api/harnesskit/favicon.png"`,
+		`data-1agents-hk-embed="1"`,
+		`var P = "/api/harnesskit"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("rewritten HTML missing %q\nbody: %s", want, body)
+		}
+	}
+	for _, bad := range []string{
+		`src="/assets/`,
+		`href="/assets/`,
+		`href="/favicon.png"`,
+	} {
+		if strings.Contains(body, bad) {
+			t.Fatalf("rewritten HTML still has absolute root path %q\nbody: %s", bad, body)
+		}
+	}
+}
+
+func TestProxyAllowsSPABootstrapRoutes(t *testing.T) {
+	var gotPath string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"ok":true}`)
+	}))
+	defer upstream.Close()
+
+	runtime := &fakeRuntime{
+		status:   supervisor.HarnessKitStatus{State: "ready", Ready: true},
+		endpoint: upstream.URL,
+		token:    "token",
+		ready:    true,
+	}
+	handler := NewHandler(runtime)
+	for reqPath, wantUpstream := range map[string]string{
+		"/api/harnesskit/server_info":   "/api/server_info",
+		"/api/harnesskit/scan_and_sync": "/api/scan_and_sync",
+		"/api/harnesskit/list_agents":   "/api/list_agents",
+	} {
+		gotPath = ""
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, reqPath, strings.NewReader(`{}`)))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s status = %d body=%s", reqPath, rec.Code, rec.Body.String())
+		}
+		if gotPath != wantUpstream {
+			t.Fatalf("%s upstream = %q want %q", reqPath, gotPath, wantUpstream)
+		}
+	}
+}
+
 func TestProxyFailsClosedForUnknownAndHostOnlyRoutes(t *testing.T) {
 	var upstreamCalls int
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -176,14 +258,11 @@ func TestProxyFailsClosedForUnknownAndHostOnlyRoutes(t *testing.T) {
 		"/api/harnesskit/export_kit",
 		"/api/harnesskit/import_kit",
 		"/api/harnesskit/uninstall_cli_binary",
-		"/api/harnesskit/list_skill_files",
-		"/api/harnesskit/count_project_extensions",
 		"/api/harnesskit/create_kit",
 		"/api/harnesskit/update_kit",
 		"/api/harnesskit/preview_kit_project_conflicts",
 		"/api/harnesskit/toggle_extension",
 		"/api/harnesskit/delete_extension",
-		"/api/harnesskit/scan_and_sync",
 		"/api/harnesskit/update_tags",
 		"/api/harnesskit/set_agent_enabled",
 		"/api/harnesskit/run_audit",
