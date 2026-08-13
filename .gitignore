@@ -104,6 +104,7 @@ cache/
 # Yarn install state cache (never commit)
 .yarn/install-state.gz
 .gstack/
+.grok/
 .tmp/
 # Local project permission allowlist (per-workspace runtime state)
 .1agents/allow-rules.json
