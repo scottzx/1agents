@@ -766,8 +766,14 @@ export function LeftSidebar({
                         <span>{t('sidebar.navCtrl.contacts', language)}</span>
                     </div>
                     <div
-                        class={`nav-control-item${activeDrawerTab === 'reminders' ? ' active' : ''}`}
-                        onClick={() => toggleDrawerTab('reminders')}
+                        class={`nav-control-item${
+                            activeDrawerTab === 'automation' ||
+                            activeDrawerTab === 'reminders' ||
+                            activeDrawerTab === 'aggregate'
+                                ? ' active'
+                                : ''
+                        }`}
+                        onClick={() => toggleDrawerTab('automation')}
                     >
                         <svg
                             class="btn-icon"
@@ -778,31 +784,17 @@ export function LeftSidebar({
                             stroke-linecap="round"
                             stroke-linejoin="round"
                         >
-                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                            <line x1="16" y1="2" x2="16" y2="6" />
-                            <line x1="8" y1="2" x2="8" y2="6" />
-                            <line x1="3" y1="10" x2="21" y2="10" />
+                            <circle cx="12" cy="12" r="3" />
+                            <path d="M12 2v3" />
+                            <path d="M12 19v3" />
+                            <path d="M4.2 4.2l2.1 2.1" />
+                            <path d="M17.7 17.7l2.1 2.1" />
+                            <path d="M2 12h3" />
+                            <path d="M19 12h3" />
+                            <path d="M4.2 19.8l2.1-2.1" />
+                            <path d="M17.7 6.3l2.1-2.1" />
                         </svg>
-                        <span>{t('sidebar.navCtrl.scheduledTasks', language)}</span>
-                    </div>
-                    <div
-                        class={`nav-control-item${activeDrawerTab === 'aggregate' ? ' active' : ''}`}
-                        onClick={() => toggleDrawerTab('aggregate')}
-                    >
-                        <svg
-                            class="btn-icon"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <polygon points="12 2 2 7 12 12 22 7 12 2" />
-                            <polyline points="2 17 12 22 22 17" />
-                            <polyline points="2 12 12 17 22 12" />
-                        </svg>
-                        <span>{t('sidebar.navCtrl.aggregate', language)}</span>
+                        <span>{t('sidebar.navCtrl.automation', language)}</span>
                     </div>
                 </div>
             </div>

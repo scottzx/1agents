@@ -300,6 +300,7 @@ kernel_execution_triggers
 | 会话与成本 | ChatSession/Turn 的 Profile revision、usage/cost 收集与查询 |
 | 可观测性 | 运行详情 API、Run 取消、阻塞原因 UI、last/next run 投影 |
 | 扩展性 | webhook/event Trigger、无 ProjectItem 的后台 Job、多节点 lease/fencing、独立调度服务 |
+| 自动任务配方台 | 已锁定规格，见 [automation-baseline](./automation-baseline.md)：agent Job 可选 `preambleFunctionType`、`core.script`、Function→ACP 注入。未落地前不得写成当前能力 |
 
 实施任一方向时，先更新本文件的“当前系统结构”和 [名称定义表](../product/名称定义表.md) 的裁决项，再暴露新的 API、CLI 或前端控制。
 

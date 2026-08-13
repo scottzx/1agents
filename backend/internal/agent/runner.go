@@ -54,13 +54,13 @@ const runnerIdleTimeout = 10 * time.Minute
 // marked the task running; Execute releases the lock and persists the
 // terminal status on exit.
 func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
-	r.execute(workspacePath, workspaceID, task, meta.TaskRun{})
+	r.execute(workspacePath, workspaceID, task, meta.TaskRun{}, "", workspacePath)
 }
 
 // ExecuteExecutionJob is the ACPExecutor compatibility adapter. It resolves
 // the Job's frozen profile binding and persists the Job/occurrence dimensions
 // on the existing task_runs audit spine.
-func (r *TaskRunner) ExecuteExecutionJob(workspacePath, workspaceID string, task Task, job execution.Job) {
+func (r *TaskRunner) ExecuteExecutionJob(workspacePath, workspaceID string, task Task, job execution.Job, preambleJSON string) {
 	if job.ProfileID != "" {
 		if task.TaskTarget == nil {
 			task.TaskTarget = &TaskTargetSpec{}
@@ -70,11 +70,15 @@ func (r *TaskRunner) ExecuteExecutionJob(workspacePath, workspaceID string, task
 	if job.LegacyAgentType != "" {
 		task.Assignee = job.LegacyAgentType
 	}
+	sessionCwd := workspacePath
+	if strings.TrimSpace(job.Cwd) != "" {
+		sessionCwd = job.Cwd
+	}
 	jobSnapshot, _ := json.Marshal(job)
-	r.execute(workspacePath, workspaceID, task, meta.TaskRun{JobID: job.ID, JobRevision: job.Revision, OccurrenceKey: "manual:" + meta.NewID(), ResolvedJobSnapshot: jobSnapshot})
+	r.execute(workspacePath, workspaceID, task, meta.TaskRun{JobID: job.ID, JobRevision: job.Revision, OccurrenceKey: "agent:" + meta.NewID(), ResolvedJobSnapshot: jobSnapshot}, preambleJSON, sessionCwd)
 }
 
-func (r *TaskRunner) execute(workspacePath, workspaceID string, task Task, runMetadata meta.TaskRun) {
+func (r *TaskRunner) execute(workspacePath, workspaceID string, task Task, runMetadata meta.TaskRun, preambleJSON, sessionCwd string) {
 	// When an interactive client takes the session over (the
 	// "session_taken_over" case in the read loop below), it becomes the owner
 	// of both the run and the workspace lock — so this runner must NOT release
@@ -111,7 +115,7 @@ func (r *TaskRunner) execute(workspacePath, workspaceID string, task Task, runMe
 	// Card content is YAML-frontmatter Markdown: execute against the prose body,
 	// and treat acceptance from the frontmatter (or the legacy column) as the
 	// self-check gate.
-	instruction := buildTaskInstruction(task, workspaceID, workspacePath)
+	instruction := buildTaskInstructionWithPreamble(task, workspaceID, workspacePath, preambleJSON)
 	if instruction == "" {
 		r.finish(workspacePath, task.ID, sessionID, taskRunID, TaskStatusFailed, "task has no description/title to execute")
 		return
@@ -162,10 +166,13 @@ func (r *TaskRunner) execute(workspacePath, workspaceID string, task Task, runMe
 	}
 	defer conn.Close()
 
+	if sessionCwd == "" {
+		sessionCwd = workspacePath
+	}
 	ensure := WsMessage{
 		Action:         "ensure_session",
 		SessionID:      sessionID,
-		WorkspacePath:  workspacePath,
+		WorkspacePath:  sessionCwd,
 		AgentType:      agentType,
 		SystemContext:  buildIssueBackground(&task, workspacePath),
 		PermissionMode: "approve-all",
@@ -259,6 +266,10 @@ func (r *TaskRunner) execute(workspacePath, workspaceID string, task Task, runMe
 }
 
 func buildTaskInstruction(task Task, workspaceID, workspacePath string) string {
+	return buildTaskInstructionWithPreamble(task, workspaceID, workspacePath, "")
+}
+
+func buildTaskInstructionWithPreamble(task Task, workspaceID, workspacePath, preambleJSON string) string {
 	_, instruction := SplitFrontmatter(task.Description)
 	if instruction == "" {
 		instruction = task.Title
@@ -274,6 +285,16 @@ func buildTaskInstruction(task Task, workspaceID, workspacePath string) string {
 	}
 	if acceptance != "" {
 		instruction += "\n\n完成后请对照验收标准自查；若未达标，请明确说明原因。\n\n=== 验收标准 ===\n" + acceptance
+	}
+	if preamble := strings.TrimSpace(preambleJSON); preamble != "" {
+		pretty := preamble
+		var parsed any
+		if json.Unmarshal([]byte(preamble), &parsed) == nil {
+			if formatted, err := json.MarshalIndent(parsed, "", "  "); err == nil {
+				pretty = string(formatted)
+			}
+		}
+		instruction += "\n\n=== function_context ===\n" + pretty + "\n=== end function_context ===\n以上 function_context 是触发时由确定性代码生成的事实，不要改写其中的原始字段。"
 	}
 	return instruction + "\n\n" + buildProjectExecutorPrompt(task, workspaceID, workspacePath)
 }

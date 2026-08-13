@@ -70,6 +70,7 @@ export type RightDrawerTab =
     | 'datasources'
     | 'inbox'
     | 'aggregate'
+    | 'automation'
     | 'none';
 
 export function isFullPageTab(tab: RightDrawerTab): boolean {
@@ -83,7 +84,8 @@ export function isFullPageTab(tab: RightDrawerTab): boolean {
         tab === 'contacts' ||
         tab === 'datasources' ||
         tab === 'inbox' ||
-        tab === 'aggregate'
+        tab === 'aggregate' ||
+        tab === 'automation'
     );
 }
 

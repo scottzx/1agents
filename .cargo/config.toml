@@ -1,0 +1,6 @@
+# Shared by src-tauri and modules/* (Cargo walks up to this file).
+# target-dir is relative to 1agents_app/ (the directory that contains .cargo/).
+# sccache + default debuginfo come from ~/.cargo/config.toml
+
+[build]
+target-dir = ".shared-cargo-target"

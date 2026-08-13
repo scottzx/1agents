@@ -108,3 +108,6 @@ cache/
 # Local project permission allowlist (per-workspace runtime state)
 .1agents/allow-rules.json
 /.alipay-sandbox.json
+
+# Shared Cargo target (see .cargo/config.toml)
+.shared-cargo-target/

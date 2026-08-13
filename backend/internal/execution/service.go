@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/scottzx/1Agents/backend/internal/meta"
@@ -14,9 +15,10 @@ import (
 // absent from this first data migration: the existing scheduler remains the
 // sole dispatcher until its Executor migration lands.
 type Service struct {
-	repo     *Repository
-	profiles *provider.Store
-	dispatch func(context.Context, Job) error
+	repo          *Repository
+	profiles      *provider.Store
+	dispatch      func(context.Context, Job) error
+	functionKnown func(string) bool
 }
 
 func NewService(repo *Repository, profiles *provider.Store) *Service {
@@ -27,6 +29,25 @@ func NewService(repo *Repository, profiles *provider.Store) *Service {
 // executor. It is deliberately a narrow callback so the service never imports
 // ACP or board packages.
 func (s *Service) SetDispatcher(dispatch func(context.Context, Job) error) { s.dispatch = dispatch }
+
+// SetFunctionLookup wires the function registry without importing taskapi.
+// A missing callback rejects any non-empty preamble.
+func (s *Service) SetFunctionLookup(known func(string) bool) { s.functionKnown = known }
+
+func (s *Service) validatePreamble(job Job) error {
+	preamble := strings.TrimSpace(job.PreambleFunctionType)
+	job.PreambleFunctionType = preamble
+	if preamble == "" {
+		return nil
+	}
+	if job.ExecutorKind != "agent" {
+		return fmt.Errorf("execution: preambleFunctionType is only valid on agent jobs")
+	}
+	if s.functionKnown == nil || !s.functionKnown(preamble) {
+		return fmt.Errorf("execution: preamble function %q is not registered", preamble)
+	}
+	return nil
+}
 
 func (s *Service) CreateJob(input CreateJobInput) (Job, error) {
 	if input.ProjectID == "" || input.WorkItemID == "" {
@@ -42,7 +63,8 @@ func (s *Service) CreateJob(input CreateJobInput) (Job, error) {
 		input.MaxAttempts = 1
 	}
 	job := Job{ProjectID: input.ProjectID, WorkItemID: input.WorkItemID, BusinessRef: input.BusinessRef, ExecutorKind: input.ExecutorKind,
-		ProfileID: input.ProfileID, LegacyAgentType: input.LegacyAgentType, FunctionType: input.FunctionType, Cwd: input.Cwd,
+		ProfileID: input.ProfileID, LegacyAgentType: input.LegacyAgentType, FunctionType: input.FunctionType,
+		PreambleFunctionType: strings.TrimSpace(input.PreambleFunctionType), Cwd: input.Cwd,
 		Capabilities: input.Capabilities, Status: JobStatusActive, TimeoutMinutes: input.TimeoutMinutes, MaxAttempts: input.MaxAttempts}
 	switch job.ExecutorKind {
 	case "agent":
@@ -100,6 +122,9 @@ func (s *Service) CreateJob(input CreateJobInput) (Job, error) {
 	default:
 		return Job{}, fmt.Errorf("execution: invalid executorKind %q", job.ExecutorKind)
 	}
+	if err := s.validatePreamble(job); err != nil {
+		return Job{}, err
+	}
 	return s.repo.Create(job)
 }
 
@@ -155,6 +180,10 @@ func (s *Service) UpdateJob(id string, patch UpdateJobInput) (Job, error) {
 		job.FunctionType = *patch.FunctionType
 		changed = true
 	}
+	if patch.PreambleFunctionType != nil {
+		job.PreambleFunctionType = strings.TrimSpace(*patch.PreambleFunctionType)
+		changed = true
+	}
 	if patch.Cwd != nil {
 		job.Cwd = *patch.Cwd
 		changed = true
@@ -176,6 +205,9 @@ func (s *Service) UpdateJob(id string, patch UpdateJobInput) (Job, error) {
 	}
 	if !changed {
 		return job, nil
+	}
+	if err := s.validatePreamble(job); err != nil {
+		return Job{}, err
 	}
 	if job.ExecutorKind == "agent" && job.ProfileID != "" {
 		profile, err := s.profiles.GetProfile(job.ProfileID)

@@ -22,11 +22,14 @@ export interface ExecutionJob {
     id: string;
     projectId: string;
     workItemId: string;
+    businessRef?: string;
     executorKind: 'agent' | 'function' | 'human';
     profileId?: string;
     legacyAgentType?: string;
     functionType?: string;
+    preambleFunctionType?: string;
     cwd?: string;
+    capabilities?: string[];
     status: ExecutionJobStatus;
     timeoutMinutes?: number;
     maxAttempts: number;
@@ -35,6 +38,31 @@ export interface ExecutionJob {
     createdAt: string;
     updatedAt: string;
     trigger?: ExecutionTrigger;
+}
+
+export interface CreateJobInput {
+    projectId: string;
+    workItemId: string;
+    businessRef?: string;
+    executorKind: 'agent' | 'function' | 'human';
+    profileId?: string;
+    legacyAgentType?: string;
+    functionType?: string;
+    preambleFunctionType?: string;
+    cwd?: string;
+    capabilities?: string[];
+    timeoutMinutes?: number;
+    maxAttempts?: number;
+}
+
+export interface UpdateJobInput {
+    profileId?: string;
+    functionType?: string;
+    preambleFunctionType?: string;
+    cwd?: string;
+    capabilities?: string[];
+    timeoutMinutes?: number;
+    maxAttempts?: number;
 }
 
 export interface ExecutionRun {

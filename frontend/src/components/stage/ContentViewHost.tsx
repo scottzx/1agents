@@ -26,10 +26,9 @@ import { ProjectShell } from '../platform/ProjectShell';
 import { ShellNav, type ShellTab } from '../platform/ShellNav';
 import { L1AppPage } from '../platform/L1Shell';
 import { visibleSettingsCategories, type SettingsCategory } from '../../modules/settings-manifest';
-import { RemindersPane } from '../drawer/Reminders';
 import { AssistantsPage } from '../pages/AssistantsPage';
 import { InboxPane } from '../drawer/Inbox';
-import { PersonalAggregatePanel } from '../personal/PersonalAggregatePanel';
+import { AutomationPanel } from '../personal/AutomationPanel';
 import { ContactsPane } from '../drawer/Contacts';
 import { DataSourcesPane } from '../drawer/DataSources';
 import { DiscoveryPanel } from '../drawer/DiscoveryPanel';
@@ -153,8 +152,9 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                 </div>
             );
         case 'reminders':
-            // Personal reminders / 定时任务 — own full-page pane (#192), same
-            // padded scroll frame as the tasks landing.
+        case 'aggregate':
+        case 'automation': {
+            const initialView = view.kind === 'reminders' ? 'calendar' : view.kind === 'aggregate' ? 'runs' : 'recipes';
             return (
                 <div
                     style={{
@@ -162,15 +162,15 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                         minHeight: 0,
                         display: 'flex',
                         flexDirection: 'column',
-                        padding: '12px 16px',
                         overflow: 'hidden',
                         boxSizing: 'border-box',
                         backgroundColor: 'var(--bg-panel)',
                     }}
                 >
-                    <RemindersPane />
+                    <AutomationPanel initialView={initialView} />
                 </div>
             );
+        }
         case 'assistants':
             // No padding / scroll here — AssistantsPage (grid) and its tabbed
             // detail manage their own scroll so full-height panes (任务/文件/渠道)
@@ -225,24 +225,6 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                     }}
                 >
                     <InboxPane />
-                </div>
-            );
-        case 'aggregate':
-            // Personal Shell cross-shell work aggregation (#329) — full-page
-            // pane, same padded scroll frame as the inbox/reminders landings.
-            return (
-                <div
-                    style={{
-                        flex: 1,
-                        minHeight: 0,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        overflow: 'hidden',
-                        boxSizing: 'border-box',
-                        backgroundColor: 'var(--bg-panel)',
-                    }}
-                >
-                    <PersonalAggregatePanel />
                 </div>
             );
         case 'datasources':

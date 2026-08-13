@@ -65,7 +65,10 @@ type Scheduler struct {
 	// separate during the compatibility window so legacy scheduler calls retain
 	// their existing Task-only callback contract.
 	ExecutionFunctionRunner func(task Task, workspacePath string, job execution.Job)
-	ticker                  *time.Ticker
+	// PreambleRunner runs the optional Function stage before an agent Job.
+	// It must not mark the ProjectItem completed. Nil means preamble jobs fail.
+	PreambleRunner func(task Task, workspacePath string, job execution.Job) (resultJSON string, err error)
+	ticker         *time.Ticker
 	// engine is the event-driven orchestration layer (#133). The scheduler
 	// owns state transitions and, at each transition point, emits a TaskEvent
 	// the engine maps to declarative actions (route/notify/requeue). Never nil
@@ -96,6 +99,10 @@ func (s *Scheduler) SetFunctionRunner(fn func(task Task, workspacePath string)) 
 
 func (s *Scheduler) SetExecutionFunctionRunner(fn func(task Task, workspacePath string, job execution.Job)) {
 	s.ExecutionFunctionRunner = fn
+}
+
+func (s *Scheduler) SetPreambleRunner(fn func(task Task, workspacePath string, job execution.Job) (string, error)) {
+	s.PreambleRunner = fn
 }
 
 // RunExecutionJob is the compatibility Executor adapter. It keeps the
@@ -154,8 +161,42 @@ func (s *Scheduler) RunExecutionJob(ctx context.Context, job execution.Job) erro
 		s.Lock.Release(task.WorkspacePath)
 		return fmt.Errorf("execution job %s: agent executor unavailable", job.ID)
 	}
-	go s.runner.ExecuteExecutionJob(task.WorkspacePath, job.ProjectID, task, job)
+	go s.runAgentJob(task, job)
 	return nil
+}
+
+func (s *Scheduler) runAgentJob(task Task, job execution.Job) {
+	preambleJSON := ""
+	if strings.TrimSpace(job.PreambleFunctionType) != "" {
+		if s.PreambleRunner == nil {
+			s.failJobItem(task, "preamble function runner unavailable")
+			s.Lock.Release(task.WorkspacePath)
+			s.Tick()
+			return
+		}
+		result, err := s.PreambleRunner(task, task.WorkspacePath, job)
+		if err != nil {
+			s.failJobItem(task, "preamble failed: "+err.Error())
+			s.Lock.Release(task.WorkspacePath)
+			s.Tick()
+			return
+		}
+		preambleJSON = result
+	}
+	s.runner.ExecuteExecutionJob(task.WorkspacePath, job.ProjectID, task, job, preambleJSON)
+}
+
+func (s *Scheduler) failJobItem(task Task, reason string) {
+	now := time.Now().UTC()
+	_ = s.tasksStore.Mutate(task.WorkspacePath, func(cfg *TasksConfig) bool {
+		for i := range cfg.Tasks {
+			if cfg.Tasks[i].ID == task.ID {
+				cfg.Tasks[i].Status, cfg.Tasks[i].Summary, cfg.Tasks[i].UpdatedAt = TaskStatusFailed, reason, now
+				return true
+			}
+		}
+		return false
+	})
 }
 
 func (s *Scheduler) Start(ctx context.Context) {

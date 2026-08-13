@@ -30,6 +30,7 @@ func (r *Repository) ensureSchema() error {
 			business_ref TEXT NOT NULL DEFAULT '', executor_kind TEXT NOT NULL,
 			profile_id TEXT NOT NULL DEFAULT '', profile_source TEXT NOT NULL DEFAULT '',
 			legacy_agent_type TEXT NOT NULL DEFAULT '', function_type TEXT NOT NULL DEFAULT '',
+			preamble_function_type TEXT NOT NULL DEFAULT '',
 			cwd TEXT NOT NULL DEFAULT '', capabilities_json TEXT NOT NULL DEFAULT '[]',
 			status TEXT NOT NULL, revision INTEGER NOT NULL, timeout_minutes INTEGER NOT NULL DEFAULT 0,
 			max_attempts INTEGER NOT NULL DEFAULT 1, blocked_code TEXT NOT NULL DEFAULT '',
@@ -45,6 +46,36 @@ func (r *Repository) ensureSchema() error {
 		CREATE INDEX IF NOT EXISTS idx_kernel_execution_jobs_project ON kernel_execution_jobs(project_id, updated_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_kernel_execution_triggers_due ON kernel_execution_triggers(status, next_run_at);
 	`)
+	if err != nil {
+		return err
+	}
+	return r.ensureJobColumns()
+}
+
+func (r *Repository) ensureJobColumns() error {
+	rows, err := r.db.SQL().Query(`PRAGMA table_info(kernel_execution_jobs)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	have := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt any
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return err
+		}
+		have[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if have["preamble_function_type"] {
+		return nil
+	}
+	_, err = r.db.SQL().Exec(`ALTER TABLE kernel_execution_jobs ADD COLUMN preamble_function_type TEXT NOT NULL DEFAULT ''`)
 	return err
 }
 
@@ -56,11 +87,11 @@ func (r *Repository) Create(job Job) (Job, error) {
 	caps, _ := json.Marshal(job.Capabilities)
 	_, err := r.db.SQL().Exec(`INSERT INTO kernel_execution_jobs (
 		id, project_id, work_item_id, business_ref, executor_kind, profile_id, profile_source,
-		legacy_agent_type, function_type, cwd, capabilities_json, status, revision,
+		legacy_agent_type, function_type, preamble_function_type, cwd, capabilities_json, status, revision,
 		timeout_minutes, max_attempts, blocked_code, blocked_reason, created_at, updated_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', ?, ?)`,
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', ?, ?)`,
 		job.ID, job.ProjectID, job.WorkItemID, job.BusinessRef, job.ExecutorKind,
-		job.ProfileID, job.ProfileSource, job.LegacyAgentType, job.FunctionType, job.Cwd,
+		job.ProfileID, job.ProfileSource, job.LegacyAgentType, job.FunctionType, job.PreambleFunctionType, job.Cwd,
 		string(caps), job.Status, job.Revision, job.TimeoutMinutes, job.MaxAttempts,
 		formatTime(now), formatTime(now))
 	if err != nil {
@@ -101,10 +132,10 @@ func (r *Repository) Update(job Job) (Job, error) {
 	caps, _ := json.Marshal(job.Capabilities)
 	job.UpdatedAt = time.Now().UTC()
 	result, err := r.db.SQL().Exec(`UPDATE kernel_execution_jobs SET
-		profile_id=?, profile_source=?, legacy_agent_type=?, function_type=?, cwd=?,
+		profile_id=?, profile_source=?, legacy_agent_type=?, function_type=?, preamble_function_type=?, cwd=?,
 		capabilities_json=?, status=?, revision=?, timeout_minutes=?, max_attempts=?,
 		blocked_code=?, blocked_reason=?, updated_at=? WHERE id=?`,
-		job.ProfileID, job.ProfileSource, job.LegacyAgentType, job.FunctionType, job.Cwd,
+		job.ProfileID, job.ProfileSource, job.LegacyAgentType, job.FunctionType, job.PreambleFunctionType, job.Cwd,
 		string(caps), job.Status, job.Revision, job.TimeoutMinutes, job.MaxAttempts,
 		job.BlockedCode, job.BlockedReason, formatTime(job.UpdatedAt), job.ID)
 	if err != nil {
@@ -214,14 +245,14 @@ func (r *Repository) AdvanceTrigger(id, status string, next *time.Time) error {
 }
 
 const jobColumns = `SELECT id, project_id, work_item_id, business_ref, executor_kind, profile_id, profile_source,
-	legacy_agent_type, function_type, cwd, capabilities_json, status, revision, timeout_minutes,
+	legacy_agent_type, function_type, preamble_function_type, cwd, capabilities_json, status, revision, timeout_minutes,
 	max_attempts, blocked_code, blocked_reason, created_at, updated_at FROM kernel_execution_jobs`
 
 func scanJob(row *sql.Row) (Job, bool, error) {
 	var job Job
 	var caps, created, updated string
 	err := row.Scan(&job.ID, &job.ProjectID, &job.WorkItemID, &job.BusinessRef, &job.ExecutorKind, &job.ProfileID, &job.ProfileSource,
-		&job.LegacyAgentType, &job.FunctionType, &job.Cwd, &caps, &job.Status, &job.Revision, &job.TimeoutMinutes, &job.MaxAttempts,
+		&job.LegacyAgentType, &job.FunctionType, &job.PreambleFunctionType, &job.Cwd, &caps, &job.Status, &job.Revision, &job.TimeoutMinutes, &job.MaxAttempts,
 		&job.BlockedCode, &job.BlockedReason, &created, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Job{}, false, nil
@@ -239,7 +270,7 @@ func scanJobRows(rows *sql.Rows) (Job, error) {
 	var job Job
 	var caps, created, updated string
 	if err := rows.Scan(&job.ID, &job.ProjectID, &job.WorkItemID, &job.BusinessRef, &job.ExecutorKind, &job.ProfileID, &job.ProfileSource,
-		&job.LegacyAgentType, &job.FunctionType, &job.Cwd, &caps, &job.Status, &job.Revision, &job.TimeoutMinutes, &job.MaxAttempts,
+		&job.LegacyAgentType, &job.FunctionType, &job.PreambleFunctionType, &job.Cwd, &caps, &job.Status, &job.Revision, &job.TimeoutMinutes, &job.MaxAttempts,
 		&job.BlockedCode, &job.BlockedReason, &created, &updated); err != nil {
 		return Job{}, err
 	}

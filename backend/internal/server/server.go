@@ -235,6 +235,7 @@ func NewRouter(cfg *config.Config, harnessKitRuntime ...harnesskit.Runtime) http
 				log.Printf("[server] execution service init failed: %v", repoErr)
 			} else {
 				executionService = execution.NewService(repo, defaultProviderStore)
+				executionService.SetFunctionLookup(func(name string) bool { return taskapi.Lookup(name) != nil })
 				executionService.SetDispatcher(scheduler.RunExecutionJob)
 				executionHandler := execution.NewHandler(executionService)
 				mux.HandleFunc("/api/execution-jobs", executionHandler.Root)
@@ -247,8 +248,14 @@ func NewRouter(cfg *config.Config, harnessKitRuntime ...harnesskit.Runtime) http
 			})
 			scheduler.SetExecutionFunctionRunner(func(task agent.Task, wsPath string, job execution.Job) {
 				jobSnapshot, _ := json.Marshal(job)
-				taskapi.RunFunctionWithRunMetadata(task, wsPath, tasksStore, taskAPI, meta.TaskRun{
+				taskapi.RunFunctionWithRunMetadata(task, wsPath, tasksStore, taskAPI, job, meta.TaskRun{
 					JobID: job.ID, JobRevision: job.Revision, OccurrenceKey: "manual:" + meta.NewID(), ResolvedJobSnapshot: jobSnapshot,
+				})
+			})
+			scheduler.SetPreambleRunner(func(task agent.Task, wsPath string, job execution.Job) (string, error) {
+				jobSnapshot, _ := json.Marshal(job)
+				return taskapi.RunFunctionPreamble(task, wsPath, tasksStore, job, meta.TaskRun{
+					JobID: job.ID, JobRevision: job.Revision, OccurrenceKey: "preamble:" + meta.NewID(), ResolvedJobSnapshot: jobSnapshot,
 				})
 			})
 			appkit.RunInits(taskAPI)
@@ -1862,6 +1869,94 @@ const proxyInjectScript = `
     if (window.Worker) window.Worker = wrapWorkerCtor(window.Worker);
     if (window.SharedWorker) window.SharedWorker = wrapWorkerCtor(window.SharedWorker);
   } catch(e) {}
+
+  // <img>/<audio>/<video> load via element.src, not fetch. <base> points them
+  // at the target origin (e.g. :5173) while the page origin is the 1agents
+  // host — WebGL texImage2D then throws SecurityError (Phaser textures).
+  // Same rewrite as Worker: keep media same-origin via webproxy.
+  // data:/blob: stay untouched (not http(s); would break Phaser fallbacks).
+  function proxyMediaUrl(url) {
+    if (url == null || url === '') return url;
+    var s = String(url);
+    try {
+      var resolved = new URL(s, getVirtual().href);
+      if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') return s;
+      var proxied = toProxiedNetwork(s);
+      if (proxied !== resolved.href && proxied !== s) return proxied;
+    } catch (e) {}
+    return s;
+  }
+
+  function wrapSrcAccessor(proto) {
+    if (!proto) return;
+    var desc = Object.getOwnPropertyDescriptor(proto, 'src');
+    if (!desc || !desc.set || !desc.get) return;
+    Object.defineProperty(proto, 'src', {
+      configurable: true,
+      enumerable: desc.enumerable,
+      get: function() { return desc.get.call(this); },
+      set: function(v) { desc.set.call(this, proxyMediaUrl(v)); }
+    });
+  }
+
+  var mediaSrcTags = { IMG: 1, AUDIO: 1, VIDEO: 1, SOURCE: 1 };
+
+  function wrapMediaSetAttribute() {
+    var proto = Element.prototype;
+    if (!proto || proto.__1aMediaSrcWrapped) return;
+    var orig = proto.setAttribute;
+    if (typeof orig !== 'function') return;
+    proto.__1aMediaSrcWrapped = true;
+    proto.setAttribute = function(name, value) {
+      try {
+        if (value && String(name).toLowerCase() === 'src' && mediaSrcTags[this.tagName]) {
+          arguments[1] = proxyMediaUrl(value);
+        }
+      } catch (e) {}
+      return orig.apply(this, arguments);
+    };
+  }
+
+  function rewriteMediaEl(el) {
+    if (!el || !el.tagName || !mediaSrcTags[el.tagName]) return;
+    var src = el.getAttribute('src');
+    if (!src) return;
+    var proxied = proxyMediaUrl(src);
+    if (proxied !== src) el.setAttribute('src', proxied);
+  }
+
+  function scanMediaTree(root) {
+    if (!root) return;
+    rewriteMediaEl(root);
+    if (!root.querySelectorAll) return;
+    var list = root.querySelectorAll('img[src],audio[src],video[src],source[src]');
+    for (var i = 0; i < list.length; i++) rewriteMediaEl(list[i]);
+  }
+
+  try {
+    wrapSrcAccessor(window.HTMLImageElement && HTMLImageElement.prototype);
+    wrapSrcAccessor(window.HTMLMediaElement && HTMLMediaElement.prototype);
+    wrapSrcAccessor(window.HTMLSourceElement && HTMLSourceElement.prototype);
+    wrapMediaSetAttribute();
+  } catch (e) {
+    console.warn('[1agents proxy] media src', e);
+  }
+
+  try {
+    var mediaRoot = document.documentElement || document;
+    scanMediaTree(mediaRoot);
+    if (window.MutationObserver) {
+      new MutationObserver(function(muts) {
+        for (var i = 0; i < muts.length; i++) {
+          var m = muts[i];
+          if (m.type === 'attributes') rewriteMediaEl(m.target);
+          else if (m.type === 'childList') {
+            for (var j = 0; j < m.addedNodes.length; j++) scanMediaTree(m.addedNodes[j]);
+          }
+        }
+      }).observe(mediaRoot, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
+    }
+  } catch (e) {}
 
   if (navigator.serviceWorker) {
     try {

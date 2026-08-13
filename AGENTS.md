@@ -187,3 +187,5 @@ Key routing rules:
 - Save progress → invoke /context-save
 - Resume context → invoke /context-restore
 - Author a backlog-ready spec/issue → invoke /spec
+- Create/schedule/run automations (Function→ACP recipes) → invoke /automation
+- Plan/decompose board work only → invoke /pm（PM 不再做执行调度）

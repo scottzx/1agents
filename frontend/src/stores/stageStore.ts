@@ -49,6 +49,7 @@ export type ContentView =
     | { kind: 'inbox' }
     /** Personal Shell cross-shell work aggregation (#329). */
     | { kind: 'aggregate' }
+    | { kind: 'automation' }
     | { kind: 'channels' }
     | { kind: 'providers' }
     | { kind: 'skills' }

@@ -47,7 +47,7 @@ export const PERSONAL_SHELL_ENTRIES: readonly PersonalShellEntry[] = [
     { id: 'terminal', labelKey: 'sidePanel.tab.terminal' },
     { id: 'files', labelKey: 'header.mobile.files' },
     { id: 'inbox', labelKey: 'inbox.title' },
-    { id: 'schedule', labelKey: 'sidebar.navCtrl.scheduledTasks' },
+    { id: 'schedule', labelKey: 'sidebar.navCtrl.automation' },
     { id: 'agents', labelKey: 'sidebar.navCtrl.assistantOverview' },
     { id: 'functions', labelKey: 'header.title.skills' },
     { id: 'browser', labelKey: 'header.mobile.browser' },

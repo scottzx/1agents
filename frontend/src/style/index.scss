@@ -6230,6 +6230,7 @@ body {
 .reminders-pane {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -31395,9 +31396,9 @@ body {
   }
 
   .execution-overview {
-    margin: 0 16px;
+    margin: 0 0 8px;
     border-bottom: 1px solid var(--border-color);
-    padding: 12px 0;
+    padding: 4px 0 12px;
   }
 
   .execution-overview-header,
@@ -31666,6 +31667,273 @@ body {
       cursor: default;
     }
   }
+}
+
+// ── Automation recipe surface ───────────────────────────────────────────────
+.automation-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-panel);
+}
+
+.automation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bento-gap, 12px);
+  padding: 14px 16px 8px;
+}
+
+.automation-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.automation-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.automation-tab {
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 5px 12px;
+  cursor: pointer;
+
+  &:hover,
+  &.is-active {
+    border-color: var(--text-main);
+    color: var(--text-main);
+  }
+}
+
+.automation-body,
+.automation-editor,
+.automation-embed {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 16px 24px;
+}
+
+.automation-embed {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+
+  .personal-aggregate,
+  .reminders-pane {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .reminders-pane {
+    padding: 4px 16px 16px;
+  }
+
+  .personal-aggregate-body {
+    overflow-y: auto;
+  }
+
+  .task-calendar {
+    overflow: hidden;
+  }
+}
+
+.automation-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.automation-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.automation-toolbar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.automation-refresh,
+.automation-cwd button,
+.automation-editor-actions button {
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--bg-card);
+  color: var(--text-main);
+  font-size: 12px;
+  padding: 6px 12px;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--text-main);
+  }
+}
+
+.automation-primary {
+  border: 1px solid var(--accent-color);
+  border-radius: 999px;
+  background: var(--accent-color);
+  color: var(--on-accent);
+  font-size: 12px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+.automation-empty {
+  padding: 24px 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.automation-list {
+  list-style: none;
+  margin: 0 0 24px;
+  padding: 0;
+  --bento-min-col: 240px;
+
+  > li {
+    min-width: 0;
+    display: flex;
+  }
+}
+
+.automation-card {
+  width: 100%;
+  min-height: 132px;
+  text-align: left;
+  @extend %bento-card;
+  @extend %bento-card-interactive;
+  padding: var(--bento-pad, 12px);
+  cursor: pointer;
+
+  .bento-zone-header {
+    align-items: flex-start;
+  }
+
+  .bento-zone-body {
+    flex: 1;
+  }
+}
+
+.automation-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+  line-height: 1.35;
+}
+
+.automation-card-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--success-fg);
+  background: var(--success-bg);
+  border-radius: 999px;
+  padding: 2px 8px;
+
+  &.is-paused {
+    color: var(--warning-fg);
+    background: var(--warning-bg);
+  }
+}
+
+.automation-card-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.automation-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.automation-suggested h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.automation-suggested-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--bento-gap, 12px);
+}
+
+.automation-add {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--accent-fg);
+}
+
+.automation-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+
+  input,
+  select,
+  textarea {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-card);
+    color: var(--text-main);
+    font-size: 13px;
+    padding: 8px 10px;
+  }
+}
+
+.automation-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--text-main);
+}
+
+.automation-cwd {
+  display: flex;
+  gap: 8px;
+
+  input {
+    flex: 1;
+  }
+}
+
+.automation-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
 }
 
 /* ── Providers & Model Management Panel (CcProvidersPanel & LlmProviderPanel) ── */

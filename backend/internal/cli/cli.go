@@ -32,6 +32,8 @@ func Run(args []string) (handled bool, exitCode int) {
 		return true, 1
 	case "execution":
 		return true, runExecution(args[1:])
+	case "automation":
+		return true, runAutomation(args[1:])
 	case "roundtable":
 		return true, roundtable.RunCLI(args[1:])
 	default:

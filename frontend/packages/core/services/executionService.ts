@@ -1,5 +1,12 @@
 import { apiFetch } from './apiClient';
-import type { ExecutionJob, ExecutionRun, ExecutionTrigger, UpsertTriggerInput } from '../types/execution';
+import type {
+    CreateJobInput,
+    ExecutionJob,
+    ExecutionRun,
+    ExecutionTrigger,
+    UpdateJobInput,
+    UpsertTriggerInput,
+} from '../types/execution';
 
 async function expectJSON<T>(response: Response): Promise<T> {
     if (response.ok) return (await response.json()) as T;
@@ -13,6 +20,41 @@ export const executionService = {
         const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
         const payload = await expectJSON<{ items: ExecutionJob[] }>(await apiFetch(`/execution-jobs${query}`));
         return payload.items || [];
+    },
+
+    async createJob(input: CreateJobInput): Promise<ExecutionJob> {
+        return expectJSON(
+            await apiFetch('/execution-jobs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(input),
+            })
+        );
+    },
+
+    async updateJob(jobId: string, input: UpdateJobInput): Promise<ExecutionJob> {
+        return expectJSON(
+            await apiFetch(`/execution-jobs/${jobId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(input),
+            })
+        );
+    },
+
+    async pauseJob(jobId: string): Promise<void> {
+        await expectJSON(await apiFetch(`/execution-jobs/${jobId}/pause`, { method: 'POST' }));
+    },
+
+    async resumeJob(jobId: string): Promise<void> {
+        await expectJSON(await apiFetch(`/execution-jobs/${jobId}/resume`, { method: 'POST' }));
+    },
+
+    async deleteTrigger(jobId: string): Promise<void> {
+        const response = await apiFetch(`/execution-jobs/${jobId}/trigger`, { method: 'DELETE' });
+        if (!response.ok && response.status !== 204) {
+            throw new Error((await response.text()) || response.statusText);
+        }
     },
 
     async listRuns(jobId: string): Promise<ExecutionRun[]> {

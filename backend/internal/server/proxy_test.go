@@ -88,6 +88,15 @@ func TestHandleWebProxy_InjectsCleanPathForComposition(t *testing.T) {
 	if !strings.Contains(body, "wrapWorkerCtor") {
 		t.Fatal("expected Worker rewrite for cross-origin base scripts")
 	}
+	if !strings.Contains(body, "proxyMediaUrl") {
+		t.Fatal("expected Image/media src rewrite for WebGL/Phaser texImage2D")
+	}
+	if !strings.Contains(body, "wrapSrcAccessor") {
+		t.Fatal("expected HTMLImageElement.src accessor wrap")
+	}
+	if !strings.Contains(body, "HTMLImageElement") {
+		t.Fatal("expected HTMLImageElement hook in bootstrap")
+	}
 	// Must NOT rewrite history to bare /TalkingHeadComposition (404 on reload)
 	if strings.Contains(body, "toCleanPath") {
 		t.Fatal("toCleanPath should be removed — bare paths 404 on 1agents host")
@@ -98,6 +107,42 @@ func TestHandleWebProxy_InjectsCleanPathForComposition(t *testing.T) {
 	// base should be origin root, not full composition URL
 	if strings.Contains(body, `<base href="`+target+`"`) {
 		t.Fatal("base href must be origin/, not full composition URL")
+	}
+}
+
+func TestHandleWebProxy_InjectsMediaSrcRewriteForWebGL(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = io.WriteString(w, `<!doctype html><html><body><img src="/sprite.png"></body></html>`)
+	}))
+	defer upstream.Close()
+
+	proxyPath, err := encodeWebProxyPath(upstream.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, proxyPath, nil)
+	rec := httptest.NewRecorder()
+	handleWebProxy(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, needle := range []string{
+		"proxyMediaUrl",
+		"wrapSrcAccessor",
+		"wrapMediaSetAttribute",
+		"scanMediaTree",
+		"HTMLImageElement",
+		"HTMLMediaElement",
+	} {
+		if !strings.Contains(body, needle) {
+			t.Fatalf("bootstrap missing %q (needed so Phaser texImage2D is same-origin)", needle)
+		}
+	}
+	// Must not blindly rewrite data:/blob: (would break inline textures).
+	if !strings.Contains(body, `resolved.protocol !== 'http:'`) {
+		t.Fatal("expected http(s)-only media rewrite guard")
 	}
 }
 

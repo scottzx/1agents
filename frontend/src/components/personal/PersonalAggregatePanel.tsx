@@ -230,8 +230,6 @@ export function PersonalAggregatePanel() {
                 })}
             </div>
 
-            <ExecutionOverview language={language} />
-
             {caseFilter && (
                 <div class="personal-aggregate-casefilter">
                     <InlineBadge
@@ -245,6 +243,7 @@ export function PersonalAggregatePanel() {
             )}
 
             <div class="personal-aggregate-body">
+                <ExecutionOverview language={language} />
                 {loading ? (
                     <div class="personal-aggregate-loading">{t('personalAggregate.loading', language)}</div>
                 ) : error ? (

@@ -8,6 +8,8 @@ BIN=/Users/scott/Documents/01-开发项目/1agents/1agents_app/build/1agents
 
 `1agents task` 已退休。它既不能作为看板命令，也不能作为 Job、调度或执行命令使用。
 
+**PM 只读本文件的 ProjectItem 段。** ExecutionJob / Trigger / Run 已交给 `/automation`（`1agents automation`）。不要在规划流程里调用下面的 execution 命令。
+
 ## ProjectItem：工作定义
 
 先运行 `$BIN project-items list --json`。顶层 `workspaceId` 是此项目的执行 CLI 所需 `projectId`；不要从标题、路径或其他项目猜测它。

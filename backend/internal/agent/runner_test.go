@@ -64,6 +64,31 @@ func TestBuildTaskInstructionFallsBackToTitle(t *testing.T) {
 	}
 }
 
+func TestBuildTaskInstructionAppendsFunctionContext(t *testing.T) {
+	got := buildTaskInstructionWithPreamble(Task{
+		ID:          "task-uuid-4",
+		Title:       "摘要邮件",
+		Description: "根据 function_context 写摘要",
+	}, "ws-4", "/tmp/ws-four", `{"unread":2,"subjects":["a","b"]}`)
+
+	if !strings.Contains(got, "=== function_context ===") || !strings.Contains(got, `"unread": 2`) {
+		t.Fatalf("missing pretty function_context: %q", got)
+	}
+	if !strings.Contains(got, "=== end function_context ===") {
+		t.Fatalf("missing end marker: %q", got)
+	}
+	if !strings.Contains(got, "不要改写其中的原始字段") {
+		t.Fatalf("missing fact-preservation line: %q", got)
+	}
+	if !strings.Contains(got, "=== project_executor ===") {
+		t.Fatalf("project_executor should still be appended: %q", got)
+	}
+	plain := buildTaskInstruction(Task{ID: "task-uuid-4", Title: "摘要邮件", Description: "根据 function_context 写摘要"}, "ws-4", "/tmp/ws-four")
+	if strings.Contains(plain, "=== function_context ===") {
+		t.Fatalf("no-preamble instruction should stay unchanged: %q", plain)
+	}
+}
+
 func TestProjectItemsCLIHonorsNpmShimEnv(t *testing.T) {
 	t.Setenv("ONEAGENTS_CLI", "/usr/local/bin/1agents")
 

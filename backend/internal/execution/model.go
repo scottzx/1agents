@@ -33,25 +33,26 @@ const (
 // the first rollout. Runtime credentials and current run state never belong
 // here.
 type Job struct {
-	ID              string               `json:"id"`
-	ProjectID       string               `json:"projectId"`
-	WorkItemID      string               `json:"workItemId"`
-	BusinessRef     string               `json:"businessRef,omitempty"`
-	ExecutorKind    string               `json:"executorKind"`
-	ProfileID       string               `json:"profileId,omitempty"`
-	ProfileSource   ProfileBindingSource `json:"profileSource,omitempty"`
-	LegacyAgentType string               `json:"legacyAgentType,omitempty"`
-	FunctionType    string               `json:"functionType,omitempty"`
-	Cwd             string               `json:"cwd,omitempty"`
-	Capabilities    []string             `json:"capabilities,omitempty"`
-	Status          string               `json:"status"`
-	Revision        int                  `json:"revision"`
-	TimeoutMinutes  int                  `json:"timeoutMinutes,omitempty"`
-	MaxAttempts     int                  `json:"maxAttempts"`
-	BlockedCode     string               `json:"blockedCode,omitempty"`
-	BlockedReason   string               `json:"blockedReason,omitempty"`
-	CreatedAt       time.Time            `json:"createdAt"`
-	UpdatedAt       time.Time            `json:"updatedAt"`
+	ID                   string               `json:"id"`
+	ProjectID            string               `json:"projectId"`
+	WorkItemID           string               `json:"workItemId"`
+	BusinessRef          string               `json:"businessRef,omitempty"`
+	ExecutorKind         string               `json:"executorKind"`
+	ProfileID            string               `json:"profileId,omitempty"`
+	ProfileSource        ProfileBindingSource `json:"profileSource,omitempty"`
+	LegacyAgentType      string               `json:"legacyAgentType,omitempty"`
+	FunctionType         string               `json:"functionType,omitempty"`
+	PreambleFunctionType string               `json:"preambleFunctionType,omitempty"`
+	Cwd                  string               `json:"cwd,omitempty"`
+	Capabilities         []string             `json:"capabilities,omitempty"`
+	Status               string               `json:"status"`
+	Revision             int                  `json:"revision"`
+	TimeoutMinutes       int                  `json:"timeoutMinutes,omitempty"`
+	MaxAttempts          int                  `json:"maxAttempts"`
+	BlockedCode          string               `json:"blockedCode,omitempty"`
+	BlockedReason        string               `json:"blockedReason,omitempty"`
+	CreatedAt            time.Time            `json:"createdAt"`
+	UpdatedAt            time.Time            `json:"updatedAt"`
 }
 
 type Trigger struct {
@@ -77,27 +78,29 @@ type JobDetail struct {
 }
 
 type CreateJobInput struct {
-	ProjectID       string   `json:"projectId"`
-	WorkItemID      string   `json:"workItemId"`
-	BusinessRef     string   `json:"businessRef,omitempty"`
-	ExecutorKind    string   `json:"executorKind"`
-	ProfileID       string   `json:"profileId,omitempty"`
-	LegacyAgentType string   `json:"legacyAgentType,omitempty"`
-	FunctionType    string   `json:"functionType,omitempty"`
-	Cwd             string   `json:"cwd,omitempty"`
-	Capabilities    []string `json:"capabilities,omitempty"`
-	TimeoutMinutes  int      `json:"timeoutMinutes,omitempty"`
-	MaxAttempts     int      `json:"maxAttempts,omitempty"`
+	ProjectID            string   `json:"projectId"`
+	WorkItemID           string   `json:"workItemId"`
+	BusinessRef          string   `json:"businessRef,omitempty"`
+	ExecutorKind         string   `json:"executorKind"`
+	ProfileID            string   `json:"profileId,omitempty"`
+	LegacyAgentType      string   `json:"legacyAgentType,omitempty"`
+	FunctionType         string   `json:"functionType,omitempty"`
+	PreambleFunctionType string   `json:"preambleFunctionType,omitempty"`
+	Cwd                  string   `json:"cwd,omitempty"`
+	Capabilities         []string `json:"capabilities,omitempty"`
+	TimeoutMinutes       int      `json:"timeoutMinutes,omitempty"`
+	MaxAttempts          int      `json:"maxAttempts,omitempty"`
 }
 
 type UpdateJobInput struct {
-	ProfileID       *string   `json:"profileId,omitempty"`
-	LegacyAgentType *string   `json:"legacyAgentType,omitempty"`
-	FunctionType    *string   `json:"functionType,omitempty"`
-	Cwd             *string   `json:"cwd,omitempty"`
-	Capabilities    *[]string `json:"capabilities,omitempty"`
-	TimeoutMinutes  *int      `json:"timeoutMinutes,omitempty"`
-	MaxAttempts     *int      `json:"maxAttempts,omitempty"`
+	ProfileID            *string   `json:"profileId,omitempty"`
+	LegacyAgentType      *string   `json:"legacyAgentType,omitempty"`
+	FunctionType         *string   `json:"functionType,omitempty"`
+	PreambleFunctionType *string   `json:"preambleFunctionType,omitempty"`
+	Cwd                  *string   `json:"cwd,omitempty"`
+	Capabilities         *[]string `json:"capabilities,omitempty"`
+	TimeoutMinutes       *int      `json:"timeoutMinutes,omitempty"`
+	MaxAttempts          *int      `json:"maxAttempts,omitempty"`
 }
 
 type TriggerSpec struct {

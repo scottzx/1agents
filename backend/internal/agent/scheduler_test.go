@@ -1,9 +1,12 @@
 package agent
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/scottzx/1Agents/backend/internal/execution"
 )
 
 // newTestScheduler returns a scheduler (no runner: state transitions only)
@@ -563,5 +566,39 @@ func TestNextOccurrence(t *testing.T) {
 	iz := nextOccurrence(base, &Recurrence{Freq: "interval", EveryMinutes: 0})
 	if want := base.Add(time.Minute).UTC(); !iz.Equal(want) {
 		t.Fatalf("interval zero-guard: got %v, want %v", iz, want)
+	}
+}
+
+func TestRunExecutionJobPreambleFailureDoesNotStartAgent(t *testing.T) {
+	s, ref, store := newTestScheduler(t)
+	now := time.Now().UTC()
+	saveTasks(t, store, ref.Path, []Task{
+		srcReq(now),
+		withSource(Task{
+			ID: "task-1", Title: "Auto", Type: TaskTypeTask, Description: "do",
+			AcceptanceCriteria: "ok", Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now,
+		}),
+	})
+	s.SetRunner(NewTaskRunner(1, "", store, nil, s))
+	called := 0
+	s.SetPreambleRunner(func(task Task, workspacePath string, job execution.Job) (string, error) {
+		called++
+		return "", fmt.Errorf("boom")
+	})
+	if err := s.RunExecutionJob(context.Background(), execution.Job{
+		ID: "job-1", WorkItemID: "task-1", ProjectID: ref.ID, ExecutorKind: "agent",
+		PreambleFunctionType: "core.script",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && statusOf(t, store, ref.Path, "task-1") != TaskStatusFailed {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if called != 1 {
+		t.Fatalf("preamble calls = %d", called)
+	}
+	if got := statusOf(t, store, ref.Path, "task-1"); got != TaskStatusFailed {
+		t.Fatalf("status = %s", got)
 	}
 }

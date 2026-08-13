@@ -14,7 +14,8 @@ import (
 const executionUsage = `usage:
   1agents execution create --project <id> --item <work-item-id>
       [--executor agent|function|human] [--profile <profile-id>] [--legacy-agent <agent>]
-      [--function <type>] [--cwd <path>] [--timeout <minutes>] [--max-attempts <n>]
+      [--function <type>] [--preamble <type>] [--script <relpath>]
+      [--cwd <path>] [--timeout <minutes>] [--max-attempts <n>] [--business-ref <ref>]
   1agents execution get|runs <job-id>
   1agents execution pause|resume|archive|run <job-id>
   1agents execution trigger <job-id> --kind at|recurrence --spec '<json>'
@@ -72,19 +73,27 @@ func executionCreate(args []string) int {
 	profile := fs.String("profile", "", "agent profile id")
 	legacyAgent := fs.String("legacy-agent", "", "legacy agent type")
 	functionType := fs.String("function", "", "function type")
+	preamble := fs.String("preamble", "", "optional preamble function type for agent jobs")
+	script := fs.String("script", "", "relative script path stored as script:<path> capability")
 	cwd := fs.String("cwd", "", "working directory")
 	timeout := fs.Int("timeout", 0, "timeout in minutes")
 	maxAttempts := fs.Int("max-attempts", 1, "maximum attempts")
+	businessRef := fs.String("business-ref", "", "optional business ref, e.g. automation:<itemId>")
 	if err := fs.Parse(args); err != nil {
 		return 1
 	}
 	if *project == "" || *item == "" {
 		return fail("--project and --item are required\n%s", executionUsage)
 	}
+	var capabilities []string
+	if *script != "" {
+		capabilities = append(capabilities, "script:"+*script)
+	}
 	return executionRequest(http.MethodPost, "/api/execution-jobs", map[string]any{
 		"projectId": *project, "workItemId": *item, "executorKind": *executor,
 		"profileId": *profile, "legacyAgentType": *legacyAgent, "functionType": *functionType,
-		"cwd": *cwd, "timeoutMinutes": *timeout, "maxAttempts": *maxAttempts,
+		"preambleFunctionType": *preamble, "cwd": *cwd, "timeoutMinutes": *timeout,
+		"maxAttempts": *maxAttempts, "businessRef": *businessRef, "capabilities": capabilities,
 	})
 }
 
@@ -112,6 +121,17 @@ func executionTrigger(args []string) int {
 }
 
 func executionRequest(method, path string, body any) int {
+	data, err := daemonRequest(method, path, body)
+	if err != nil {
+		return fail("%v", err)
+	}
+	if len(data) > 0 {
+		fmt.Print(string(data))
+	}
+	return 0
+}
+
+func daemonRequest(method, path string, body any) ([]byte, error) {
 	baseURL := strings.TrimRight(os.Getenv("ONEAGENTS_URL"), "/")
 	if baseURL == "" {
 		baseURL = "http://127.0.0.1:38080"
@@ -120,28 +140,25 @@ func executionRequest(method, path string, body any) int {
 	if body != nil {
 		data, err := json.Marshal(body)
 		if err != nil {
-			return fail("encode request: %v", err)
+			return nil, fmt.Errorf("encode request: %w", err)
 		}
 		reader = bytes.NewReader(data)
 	}
 	req, err := http.NewRequest(method, baseURL+path, reader)
 	if err != nil {
-		return fail("build request: %v", err)
+		return nil, fmt.Errorf("build request: %w", err)
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return fail("call daemon: %v", err)
+		return nil, fmt.Errorf("call daemon: %w", err)
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fail("daemon returned %s: %s", resp.Status, strings.TrimSpace(string(data)))
+		return nil, fmt.Errorf("daemon returned %s: %s", resp.Status, strings.TrimSpace(string(data)))
 	}
-	if len(data) > 0 {
-		fmt.Print(string(data))
-	}
-	return 0
+	return data, nil
 }

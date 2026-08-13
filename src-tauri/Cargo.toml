@@ -35,3 +35,8 @@ uuid = { version = "1", features = ["v4"] }
 chrono = "0.4"
 dirs = "5"
 base64 = "0.22"
+
+[profile.dev]
+# Smaller debug artifacts while keeping usable backtraces / incremental rebuilds.
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
