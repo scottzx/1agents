@@ -65,7 +65,7 @@ preambleFunctionType                        // 仅 agent Job 可填；function/h
 | 前置 Function | `ExecutionJob.preambleFunctionType` |
 | 脚本路径 | `ExecutionJob.capabilities` 中的 `script:<relpath>`；缺省 `automation.py` |
 | 何时跑 | `ExecutionTrigger` |
-| 每次证据 | `TaskRun` |
+| 每次证据 | `TaskRun`；agent Run 还可通过 `origin_turn_id` 读同一份 Turn Change Report（本轮资产变化） |
 | 配方标记 | `ExecutionJob.businessRef = "automation:<itemId>"` |
 
 从 Automation UI 创建的 Job 必须写 `businessRef`。配方列表只展示带此前缀的 Job。看板里给普通 task 配的 Job 仍走现有执行控制面，不出现在配方列表，但可以出现在运行记录。
