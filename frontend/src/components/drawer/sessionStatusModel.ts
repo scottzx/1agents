@@ -287,11 +287,14 @@ function opFromTool(call: { toolName: string; input?: string; kind?: string }): 
     if (kind === 'edit' || /(write|create_file|apply_patch|multiedit|str_replace|\bedit\b)/.test(name)) {
         return /(write|create_file)/.test(name) ? 'added' : 'modified';
     }
-    if (kind === 'execute' || /(bash|shell|\brun\b|execute|command|terminal|exec)/.test(name)) return 'modified';
     return null;
 }
 
 function pathsFromCall(call: ToolCallInfo): string[] {
+    const command = commandFromInput(call.input);
+    if (looksLikeDeleteCommand(command)) {
+        return uniquePaths(pathsFromDeleteCommand(command));
+    }
     const paths = [
         ...(call.locations ?? []).map(location => location.path),
         ...(call.diffs ?? []).map(diff => diff.path),
@@ -306,11 +309,11 @@ function pathsFromCall(call: ToolCallInfo): string[] {
         } catch {
             // Tool input is a display string, not JSON.
         }
-        const command = commandFromInput(call.input);
-        if (looksLikeDeleteCommand(command)) {
-            paths.push(...pathsFromDeleteCommand(command));
-        }
     }
+    return uniquePaths(paths);
+}
+
+function uniquePaths(paths: string[]): string[] {
     const seen = new Set<string>();
     const out: string[] = [];
     for (const path of paths) {

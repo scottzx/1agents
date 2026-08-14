@@ -13,7 +13,6 @@ import { t } from '../../i18n';
 import * as sess from '../../stores/sessionStore';
 import * as ui from '../../stores/uiStore';
 import * as tabsStore from '../../stores/tabsStore';
-import { openFsNewItemModal } from '../../stores/modalStore';
 import { requestTurnFocus } from '../../stores/turnFocusStore';
 import { isChat } from '../types';
 import { globalBridgeManager } from '../chat/hooks';
@@ -300,7 +299,6 @@ export function BackgroundTaskPanel({ language }: { language: typeof ui.language
     const selectedId = useSignal<string | null>(null);
     const followLatest = useSignal(true);
     const contextOpen = useSignal(false);
-    const createOpen = useSignal(false);
     const session = sess.activeSession.value;
     const chat = session && isChat(session) ? session : null;
 
@@ -455,48 +453,6 @@ export function BackgroundTaskPanel({ language }: { language: typeof ui.language
                     >
                         ›
                     </button>
-                </div>
-                <div class="session-status-create">
-                    <IconButton
-                        title={t('sessionStatus.new', language)}
-                        onClick={() => {
-                            createOpen.value = !createOpen.value;
-                        }}
-                    >
-                        <svg
-                            viewBox="0 0 24 24"
-                            width="16"
-                            height="16"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2.5"
-                        >
-                            <line x1="12" y1="5" x2="12" y2="19" />
-                            <line x1="5" y1="12" x2="19" y2="12" />
-                        </svg>
-                    </IconButton>
-                    {createOpen.value && (
-                        <div class="session-status-create-menu">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    createOpen.value = false;
-                                    openFsNewItemModal('file', null);
-                                }}
-                            >
-                                {t('sessionStatus.newFile', language)}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    createOpen.value = false;
-                                    openFsNewItemModal('folder', null);
-                                }}
-                            >
-                                {t('sessionStatus.newFolder', language)}
-                            </button>
-                        </div>
-                    )}
                 </div>
             </header>
 

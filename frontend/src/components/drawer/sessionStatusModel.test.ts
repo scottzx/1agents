@@ -135,6 +135,32 @@ test('collects subagents only from the selected turn slice', () => {
     assert.equal(collectSubagents(items, turns[1])[0].status, 'completed');
 });
 
+test('deploy bash is not a file change', () => {
+    const items: ChatItem[] = [
+        user('u1', 'deploy'),
+        {
+            id: 'tool-bash',
+            kind: 'tool_use',
+            toolName: 'bash',
+            input: '',
+            calls: [
+                {
+                    toolName: 'Bash',
+                    input: JSON.stringify({
+                        command: 'cd /opt/deploy && make -C frontend && rsync -a dist/ /var/www/app',
+                    }),
+                    kind: 'execute',
+                    locations: [{ path: '/opt/deploy' }, { path: '/var/www/app' }],
+                    status: 'completed',
+                },
+            ],
+            createdAt: 2,
+        },
+    ];
+    const turns = collectSessionTurns(items, []);
+    assert.deepEqual(collectTurnFiles(items, turns[0]), []);
+});
+
 test('shell rm is a deleted file change', () => {
     const items: ChatItem[] = [
         user('u1', 'delete'),

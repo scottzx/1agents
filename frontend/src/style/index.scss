@@ -22358,41 +22358,6 @@ body {
   color: var(--text-muted);
 }
 
-.session-status-create {
-  position: relative;
-  flex-shrink: 0;
-}
-
-.session-status-create-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  z-index: 8;
-  min-width: 132px;
-  padding: 4px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--bento-radius-sm, 10px);
-  background: var(--bg-card);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-
-  button {
-    display: block;
-    width: 100%;
-    padding: 7px 10px;
-    border: none;
-    border-radius: 6px;
-    background: transparent;
-    color: var(--text-main);
-    font-size: 12px;
-    text-align: left;
-    cursor: pointer;
-
-    &:hover {
-      background: var(--btn-hover);
-    }
-  }
-}
-
 .session-status-context {
   flex-shrink: 0;
   margin: 8px 10px 0;
