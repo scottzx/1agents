@@ -181,3 +181,21 @@ func TestAggregateTurnChangesRecipeV1(t *testing.T) {
 		t.Fatalf("counts added=%d deleted=%d modified=%d files=%v", added, deleted, modified, files)
 	}
 }
+
+func TestAggregateTurnChangesShellRmIsDeleted(t *testing.T) {
+	items := []HistoryChangeItem{
+		{Kind: "tool_use", TurnID: "turn-rm", ToolName: "Bash", ToolCallID: "c1", Input: json.RawMessage(`{"command":"rm -f .tmp/1acp-turn-smoke.txt"}`)},
+	}
+	got := AggregateTurnChanges(items)
+	files := got["turn-rm"]
+	if len(files) != 1 {
+		t.Fatalf("files=%v", files)
+	}
+	if files[0].Path != ".tmp/1acp-turn-smoke.txt" || files[0].Op != TurnChangeDeleted {
+		t.Fatalf("file=%+v", files[0])
+	}
+	added, deleted, modified := CountTurnChangeOps(files)
+	if added != 0 || deleted != 1 || modified != 0 {
+		t.Fatalf("counts added=%d deleted=%d modified=%d", added, deleted, modified)
+	}
+}

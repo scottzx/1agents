@@ -12,7 +12,7 @@ import (
 // TurnChangeRecipeVersion is the independent invalidation key for 本轮资产变化.
 // Bump only when the aggregation rules change (how tool_use becomes file ops).
 // Global PRAGMA user_version must not be used as a recompute signal.
-const TurnChangeRecipeVersion = 1
+const TurnChangeRecipeVersion = 2
 
 type TurnChangeOp string
 
@@ -300,7 +300,7 @@ func filesFromTool(item HistoryChangeItem) []TurnChangeFile {
 		}
 		return files
 	case "execute":
-		return stampFiles(pathsFromInput(input), TurnChangeModified, item)
+		return filesFromExecute(item, input)
 	default: // edit / write / create / patch
 		op := TurnChangeModified
 		if looksLikeCreate(item.ToolName, input) {
@@ -308,6 +308,70 @@ func filesFromTool(item HistoryChangeItem) []TurnChangeFile {
 		}
 		return stampFiles(pathsFromInput(input), op, item)
 	}
+}
+
+func filesFromExecute(item HistoryChangeItem, input map[string]any) []TurnChangeFile {
+	cmd := firstString(input, "command", "cmd", "script")
+	if looksLikeDeleteCommand(cmd) {
+		return stampFiles(pathsFromDeleteCommand(cmd), TurnChangeDeleted, item)
+	}
+	paths := pathsFromInput(input)
+	if len(paths) == 0 {
+		paths = pathTokensFromCommand(cmd)
+	}
+	return stampFiles(paths, TurnChangeModified, item)
+}
+
+var deleteCommandRe = regexp.MustCompile(`(?i)(?:^|[;&|\n])\s*(?:sudo\s+)?(?:rm|unlink|rmdir)\b`)
+
+func looksLikeDeleteCommand(cmd string) bool {
+	return strings.TrimSpace(cmd) != "" && deleteCommandRe.MatchString(cmd)
+}
+
+func pathsFromDeleteCommand(cmd string) []string {
+	var paths []string
+	seenDelete := false
+	for _, raw := range strings.Fields(cmd) {
+		tok := strings.Trim(raw, `"'`)
+		low := strings.ToLower(tok)
+		if low == "sudo" {
+			continue
+		}
+		if low == "rm" || low == "unlink" || low == "rmdir" {
+			seenDelete = true
+			continue
+		}
+		if strings.ContainsAny(tok, ";&|") {
+			seenDelete = false
+			continue
+		}
+		if !seenDelete || tok == "--" || strings.HasPrefix(tok, "-") {
+			continue
+		}
+		if looksLikePathToken(tok) {
+			paths = append(paths, tok)
+		}
+	}
+	return uniqueNonEmptyPaths(paths)
+}
+
+func pathTokensFromCommand(cmd string) []string {
+	var paths []string
+	for _, raw := range strings.Fields(cmd) {
+		tok := strings.Trim(raw, `"'`)
+		if strings.HasPrefix(tok, "-") || !looksLikePathToken(tok) {
+			continue
+		}
+		paths = append(paths, tok)
+	}
+	return uniqueNonEmptyPaths(paths)
+}
+
+func looksLikePathToken(tok string) bool {
+	if tok == "" || tok == "." || tok == ".." {
+		return false
+	}
+	return strings.ContainsAny(tok, `/.\`)
 }
 
 func stampFiles(paths []string, op TurnChangeOp, item HistoryChangeItem) []TurnChangeFile {
