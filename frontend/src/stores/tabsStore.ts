@@ -20,6 +20,9 @@ import {
 import * as ui from './uiStore';
 import * as fs from './fsStore';
 import * as wsStore from './workspaceStore';
+import { isPinnedSidePanelTab, resolveSidePanelActiveId, withPinnedOverview } from './sidePanelModel';
+
+export { isPinnedSidePanelTab } from './sidePanelModel';
 
 /**
  * Tab / drawer / module navigation state. Previously lived on App's
@@ -90,6 +93,7 @@ const initialDrawerTab = (): RightDrawerTab => {
 };
 export const activeDrawerTab = signal<RightDrawerTab>(initialDrawerTab());
 
+// 'background' is the pinned Overview tab: always first, always present, not closable.
 export type SidePanelTabType = 'tasks' | 'files' | 'browser' | 'git' | 'terminal' | 'background';
 
 export interface SidePanelTab {
@@ -150,22 +154,51 @@ const defaultSidePanelTitle = (type: SidePanelTabType): string => {
 };
 
 const defaultReusableKey = (type: SidePanelTabType): string => `${type}:default`;
+const PINNED_OVERVIEW_TAB_ID = 'background-overview';
+
+const buildPinnedOverviewTab = (): SidePanelTab => {
+    const now = Date.now();
+    return {
+        id: PINNED_OVERVIEW_TAB_ID,
+        type: 'background',
+        title: defaultSidePanelTitle('background'),
+        reusableKey: defaultReusableKey('background'),
+        createdAt: now,
+        lastActiveAt: now,
+        mounted: true,
+    };
+};
+
+const normalizeSidePanelTabs = (tabs: SidePanelTab[]): SidePanelTab[] => {
+    const existing = tabs.find(isPinnedSidePanelTab);
+    const overview = existing
+        ? { ...existing, title: defaultSidePanelTitle('background'), reusableKey: defaultReusableKey('background') }
+        : buildPinnedOverviewTab();
+    return withPinnedOverview(tabs, overview);
+};
+
+const emptySidePanelState = (): SidePanelState => {
+    const tabs = normalizeSidePanelTabs([]);
+    return { panelOpen: false, activeTabId: tabs[0]?.id || null, tabs };
+};
 
 const loadSidePanelState = (ownerKey: string): SidePanelState => {
     try {
         const raw = localStorage.getItem(sidePanelStorageKey(ownerKey));
-        if (!raw) return { panelOpen: false, activeTabId: null, tabs: [] };
+        if (!raw) return emptySidePanelState();
         const parsed = JSON.parse(raw) as Partial<SidePanelState>;
-        const tabs = Array.isArray(parsed.tabs) ? parsed.tabs.filter(t => t && typeof t.id === 'string') : [];
+        const loaded = Array.isArray(parsed.tabs) ? parsed.tabs.filter(t => t && typeof t.id === 'string') : [];
+        const tabs = normalizeSidePanelTabs(loaded as SidePanelTab[]);
         return {
             panelOpen: Boolean(parsed.panelOpen),
-            activeTabId: typeof parsed.activeTabId === 'string' ? parsed.activeTabId : tabs[0]?.id || null,
-            tabs: (tabs as SidePanelTab[]).map(tab =>
-                tab.type === 'background' ? { ...tab, title: defaultSidePanelTitle('background') } : tab
+            activeTabId: resolveSidePanelActiveId(
+                tabs,
+                typeof parsed.activeTabId === 'string' ? parsed.activeTabId : null
             ),
+            tabs,
         };
     } catch {
-        return { panelOpen: false, activeTabId: null, tabs: [] };
+        return emptySidePanelState();
     }
 };
 
@@ -194,7 +227,7 @@ const persistSidePanelState = () => {
 };
 
 const activateSidePanelDrawer = (type?: SidePanelTabType) => {
-    const drawer = (type || activeSidePanelTab.value?.type || 'tasks') as RightDrawerTab;
+    const drawer = (type || activeSidePanelTab.value?.type || 'background') as RightDrawerTab;
     sidePanelOpen.value = true;
     activeDrawerTab.value = drawer;
     activeModulePath.value = '';
@@ -260,10 +293,27 @@ export const touchSidePanelTab = (tabId = activeSidePanelTabId.value) => {
 };
 
 export const openSidePanel = () => {
-    activateSidePanelDrawer(activeSidePanelTab.value?.type);
+    sidePanelTabs.value = normalizeSidePanelTabs(sidePanelTabs.value);
+    activeSidePanelTabId.value = resolveSidePanelActiveId(sidePanelTabs.value, activeSidePanelTabId.value);
+    activateSidePanelDrawer(activeSidePanelTab.value?.type || 'background');
 };
 
 export const openOrReuseSidePanelTab = (type: SidePanelTabType, payload: Partial<SidePanelTab> = {}) => {
+    if (type === 'background') {
+        sidePanelTabs.value = normalizeSidePanelTabs(sidePanelTabs.value);
+        const overview = sidePanelTabs.value.find(isPinnedSidePanelTab);
+        if (overview) {
+            updateSidePanelTab(overview.id, {
+                ...payload,
+                type,
+                title: defaultSidePanelTitle('background'),
+                mounted: true,
+            });
+            activeSidePanelTabId.value = overview.id;
+        }
+        activateSidePanelDrawer('background');
+        return;
+    }
     const reusableKey = payload.reusableKey || defaultReusableKey(type);
     const existing = sidePanelTabs.value.find(tab => tab.reusableKey === reusableKey);
     if (existing) {
@@ -278,15 +328,19 @@ export const openOrReuseSidePanelTab = (type: SidePanelTabType, payload: Partial
         activeSidePanelTabId.value = existing.id;
     } else {
         const tab = buildSidePanelTab(type, payload, reusableKey);
-        sidePanelTabs.value = [...sidePanelTabs.value, tab];
+        sidePanelTabs.value = normalizeSidePanelTabs([...sidePanelTabs.value, tab]);
         activeSidePanelTabId.value = tab.id;
     }
     activateSidePanelDrawer(type);
 };
 
 export const addSidePanelTab = (type: SidePanelTabType, payload: Partial<SidePanelTab> = {}) => {
+    if (type === 'background') {
+        openOrReuseSidePanelTab('background', payload);
+        return;
+    }
     const tab = buildSidePanelTab(type, payload, `${type}:${makeSidePanelTabId(type)}`);
-    sidePanelTabs.value = [...sidePanelTabs.value, tab];
+    sidePanelTabs.value = normalizeSidePanelTabs([...sidePanelTabs.value, tab]);
     activeSidePanelTabId.value = tab.id;
     activateSidePanelDrawer(type);
 };
@@ -332,20 +386,17 @@ const reclaimTerminalTab = (tab: SidePanelTab) => {
 
 export const closeSidePanelTab = (tabId: string) => {
     const tab = sidePanelTabs.value.find(t => t.id === tabId);
-    if (!tab) return;
+    if (!tab || isPinnedSidePanelTab(tab)) return;
     if (tab.type === 'terminal' && !tab.reclaimed) reclaimTerminalTab(tab);
     const current = sidePanelTabs.value;
     const index = current.findIndex(t => t.id === tabId);
-    const nextTabs = current.filter(t => t.id !== tabId);
+    const nextTabs = normalizeSidePanelTabs(current.filter(t => t.id !== tabId));
     sidePanelTabs.value = nextTabs;
     if (activeSidePanelTabId.value === tabId) {
-        const nextActive = nextTabs[index - 1] || nextTabs[index] || null;
-        activeSidePanelTabId.value = nextActive?.id || null;
+        const nextActive = nextTabs[index] || nextTabs[index - 1] || nextTabs[0] || null;
+        activeSidePanelTabId.value = resolveSidePanelActiveId(nextTabs, nextActive?.id || null);
         if (nextActive) activateSidePanelDrawer(nextActive.type);
-    }
-    if (nextTabs.length === 0) {
-        activeSidePanelTabId.value = null;
-        sidePanelOpen.value = true;
+        else activateSidePanelDrawer('background');
     }
     persistSidePanelState();
 };
@@ -363,6 +414,7 @@ const cleanupStoredSidePanelTabs = (now: number) => {
             let changed = false;
             const tabs = state.tabs.map(tab => {
                 if (!tab || typeof tab.id !== 'string') return tab;
+                if (isPinnedSidePanelTab(tab)) return tab;
                 if (now - (tab.lastActiveAt || 0) < SIDE_PANEL_IDLE_CLEANUP_MS) return tab;
                 if (tab.type === 'terminal' && !tab.reclaimed) {
                     if (typeof tab.terminalWindowIndex === 'number') {
@@ -389,6 +441,7 @@ const cleanupStoredSidePanelTabs = (now: number) => {
 const cleanupIdleSidePanelTabs = () => {
     const now = Date.now();
     for (const tab of sidePanelTabs.value) {
+        if (isPinnedSidePanelTab(tab)) continue;
         if (tab.id === activeSidePanelTabId.value && sidePanelOpen.value) continue;
         if (now - (tab.lastActiveAt || 0) < SIDE_PANEL_IDLE_CLEANUP_MS) continue;
         if (tab.type === 'terminal' && !tab.reclaimed) {

@@ -167,21 +167,23 @@ export function RightPanel({
                         {sideTabs.map(tab => (
                             <button
                                 key={tab.id}
-                                class={`side-panel-tab ${activeSideTab?.id === tab.id ? 'active' : ''} ${tab.reclaimed ? 'reclaimed' : ''}`}
+                                class={`side-panel-tab ${activeSideTab?.id === tab.id ? 'active' : ''} ${tab.reclaimed ? 'reclaimed' : ''} ${tabsStore.isPinnedSidePanelTab(tab) ? 'pinned' : ''}`}
                                 onClick={() => tabsStore.selectSidePanelTab(tab.id)}
                                 title={tab.title}
                             >
                                 <span class="side-panel-tab-title">{tab.title}</span>
-                                <span
-                                    class="side-panel-tab-close"
-                                    onClick={(e: MouseEvent) => {
-                                        e.stopPropagation();
-                                        tabsStore.closeSidePanelTab(tab.id);
-                                    }}
-                                    title={t('common.closeTab', language)}
-                                >
-                                    ×
-                                </span>
+                                {!tabsStore.isPinnedSidePanelTab(tab) && (
+                                    <span
+                                        class="side-panel-tab-close"
+                                        onClick={(e: MouseEvent) => {
+                                            e.stopPropagation();
+                                            tabsStore.closeSidePanelTab(tab.id);
+                                        }}
+                                        title={t('common.closeTab', language)}
+                                    >
+                                        ×
+                                    </span>
+                                )}
                             </button>
                         ))}
                         {sideTabs.length === 0 && (
@@ -536,7 +538,6 @@ function SidePanelAddMenu({ language }: { language: typeof ui.language.value }) 
         { type: 'browser', label: t('sidePanel.tab.browser', language) },
         { type: 'git', label: t('sidePanel.tab.git', language) },
         { type: 'terminal', label: t('sidePanel.tab.terminal', language) },
-        { type: 'background', label: t('sidePanel.tab.background', language) },
     ];
     return (
         <div class="side-panel-add-menu">
@@ -582,11 +583,6 @@ function SidePanelEmpty({ language }: { language: typeof ui.language.value }) {
             type: 'terminal',
             label: t('sidePanel.tab.terminal', language),
             desc: t('sidePanel.empty.terminal', language),
-        },
-        {
-            type: 'background',
-            label: t('sidePanel.tab.background', language),
-            desc: t('sidePanel.empty.background', language),
         },
     ];
     return (

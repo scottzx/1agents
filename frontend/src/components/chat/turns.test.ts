@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import type { GroupedChatItem, TurnContentItem } from './MessageBubble';
 import { groupHistoricalTurns } from './turns';
 
-const user = (id: string, queueStatus?: 'queued'): TurnContentItem => ({
+const user = (id: string, queueStatus?: 'queued'): Extract<TurnContentItem, { kind: 'user' }> => ({
     id,
     kind: 'user',
     content: id,
@@ -15,7 +15,7 @@ const user = (id: string, queueStatus?: 'queued'): TurnContentItem => ({
     ...(queueStatus ? { queueStatus } : {}),
 });
 
-const answer = (id: string): TurnContentItem => ({
+const answer = (id: string): Extract<TurnContentItem, { kind: 'assistant_text' }> => ({
     id,
     kind: 'assistant_text',
     content: id,
@@ -28,6 +28,26 @@ const thinking = (id: string): TurnContentItem => ({
     kind: 'thinking',
     content: id,
     createdAt: 2,
+});
+
+test('places change file lists after each turn', () => {
+    const report = {
+        turnId: 'turn-1',
+        recipeVersion: 1,
+        addedCount: 1,
+        deletedCount: 0,
+        modifiedCount: 0,
+        files: [{ path: 'a.ts', op: 'added' as const }],
+        source: 'live' as const,
+        computedAt: '2026-08-13T00:00:00Z',
+    };
+    const grouped = groupHistoricalTurns([{ ...user('u1'), turnId: 'turn-1', changeReport: report }, answer('a1')]);
+    assert.deepEqual(
+        grouped.map(item => item.kind),
+        ['user', 'assistant_text']
+    );
+    const assistant = grouped[1];
+    assert.equal(assistant.kind === 'assistant_text' ? assistant.changeReport?.addedCount : 0, 1);
 });
 
 test('groups the second-latest and older turns but leaves the newest turn flat', () => {
@@ -101,7 +121,28 @@ test('does not add a redundant wrapper when a historical turn only has its answe
     );
 });
 
-test('moves changeReport onto the folded turn and keeps it on the latest user', () => {
+test('keeps a trailing file list when a turn has changes but no assistant answer', () => {
+    const report = {
+        turnId: 'turn-1',
+        recipeVersion: 1,
+        addedCount: 0,
+        deletedCount: 1,
+        modifiedCount: 0,
+        files: [{ path: 'gone.ts', op: 'deleted' as const }],
+        source: 'live' as const,
+        computedAt: '2026-08-13T00:00:00Z',
+    };
+    const grouped = groupHistoricalTurns([
+        { ...user('u1'), turnId: 'turn-1', changeReport: report },
+        thinking('think'),
+    ]);
+    assert.deepEqual(
+        grouped.map(item => item.kind),
+        ['user', 'thinking', 'turn_changes']
+    );
+});
+
+test('moves changeReport onto the folded turn and the latest assistant', () => {
     const report = {
         turnId: 'turn-1',
         recipeVersion: 1,
@@ -122,9 +163,48 @@ test('moves changeReport onto the folded turn and keeps it on the latest user', 
     assert.equal(foldedUser.kind === 'user' ? foldedUser.changeReport : 'missing', undefined);
     assert.equal(foldedTurn.kind, 'turn');
     assert.equal(foldedTurn.kind === 'turn' ? foldedTurn.changeReport?.addedCount : 0, 1);
+    const foldedAnswer = foldedTurn.kind === 'turn' ? foldedTurn.items.find(item => item.id === 'a1') : undefined;
+    assert.equal(foldedAnswer?.kind === 'assistant_text' ? foldedAnswer.changeReport?.turnId : undefined, 'turn-1');
 
     const latest = grouped.find(item => item.kind === 'user' && item.id === 'u2');
-    assert.equal(latest?.kind === 'user' ? latest.changeReport?.turnId : undefined, 'turn-2');
+    assert.equal(latest?.kind === 'user' ? latest.changeReport : undefined, undefined);
+    assert.equal(
+        grouped.some(item => item.kind === 'turn_changes'),
+        false
+    );
+    const latestAssistant = grouped.find(item => item.kind === 'assistant_text' && item.id === 'a2');
+    assert.equal(
+        latestAssistant?.kind === 'assistant_text' ? latestAssistant.changeReport?.turnId : undefined,
+        'turn-2'
+    );
+});
+
+test('strips projected changeReport from non-final assistants', () => {
+    const report = {
+        turnId: 'turn-1',
+        recipeVersion: 1,
+        addedCount: 1,
+        deletedCount: 0,
+        modifiedCount: 0,
+        files: [{ path: 'a.ts', op: 'added' as const }],
+        source: 'live' as const,
+        computedAt: '2026-08-13T00:00:00Z',
+    };
+    const progress: TurnContentItem = { ...answer('progress'), changeReport: report };
+    const final: TurnContentItem = { ...answer('final'), changeReport: report };
+    const grouped = groupHistoricalTurns([
+        { ...user('u1'), turnId: 'turn-1', changeReport: report },
+        thinking('think'),
+        progress,
+        final,
+        user('u2'),
+        answer('a2'),
+    ]);
+    const folded = grouped.find(item => item.kind === 'turn');
+    assert.ok(folded && folded.kind === 'turn');
+    const inner = folded.items.filter(item => item.kind === 'assistant_text');
+    assert.equal(inner[0]?.kind === 'assistant_text' ? inner[0].changeReport : undefined, undefined);
+    assert.equal(inner[1]?.kind === 'assistant_text' ? inner[1].changeReport?.turnId : undefined, 'turn-1');
 });
 
 test('uses the persisted turn id and status when explicit attribution is available', () => {

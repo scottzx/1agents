@@ -7,7 +7,10 @@ import { useEffect, useRef, useMemo, useState } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 import { marked } from 'marked';
 import { t, getLang, type Lang } from '../../i18n';
-import type { PermissionDecision } from '../types';
+import { isChat, type PermissionDecision } from '../types';
+import { displayWorkdirPath } from '../drawer/sessionStatusModel';
+import * as sess from '../../stores/sessionStore';
+import * as wsStore from '../../stores/workspaceStore';
 import type {
     AskUserAnswerValue,
     AskUserOutcome,
@@ -82,6 +85,7 @@ export type TurnContentItem =
           streaming: boolean;
           turnId?: string;
           turnStatus?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+          changeReport?: TurnChangeReport;
       }
     | {
           id: string;
@@ -151,6 +155,14 @@ export type GroupedChatItem =
           turnId?: string;
           turnStatus?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
           changeReport?: TurnChangeReport;
+      }
+    | {
+          id: string;
+          kind: 'turn_changes';
+          createdAt: number;
+          turnId?: string;
+          turnStatus?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+          changeReport?: TurnChangeReport;
       };
 
 interface MessageBubbleProps {
@@ -183,34 +195,26 @@ export function MessageBubble({
     onEditTurn,
 }: MessageBubbleProps) {
     switch (item.kind) {
-        case 'user': {
-            const lang = getLang();
+        case 'user':
             return (
-                <>
-                    <UserBubble
-                        content={item.content}
-                        queueStatus={item.queueStatus}
-                        queueRequestId={item.queueRequestId}
-                        turnId={item.turnId}
-                        turnStatus={item.turnStatus}
-                        onCancel={onCancelQueued}
-                        onEdit={onEditTurn}
-                    />
-                    {hasTurnChanges(item.changeReport) && (
-                        <div class="chat-turn-changes-inline">
-                            <div class="chat-turn-summary">
-                                {t('chat.turn.changes.title', lang)}
-                                <TurnChangeCounts report={item.changeReport} lang={lang} />
-                            </div>
-                            <TurnChangeFileList report={item.changeReport} lang={lang} />
-                        </div>
-                    )}
-                </>
+                <UserBubble
+                    content={item.content}
+                    queueStatus={item.queueStatus}
+                    queueRequestId={item.queueRequestId}
+                    turnId={item.turnId}
+                    turnStatus={item.turnStatus}
+                    onCancel={onCancelQueued}
+                    onEdit={onEditTurn}
+                />
             );
-        }
         case 'assistant_text':
             return (
-                <AssistantBubble content={item.content} streaming={item.streaming} limitHeight={!isLatestAssistant} />
+                <AssistantBubble
+                    content={item.content}
+                    streaming={item.streaming}
+                    limitHeight={!isLatestAssistant}
+                    changeReport={item.changeReport}
+                />
             );
         case 'thinking':
             return <ThinkingBubble content={item.content} streaming={!!active && isLast} />;
@@ -235,6 +239,8 @@ export function MessageBubble({
             );
         case 'turn_receipt':
             return <TurnReceiptBubble content={item.content} status={item.status} />;
+        case 'turn_changes':
+            return <TurnChangesFooter report={item.changeReport} />;
         case 'subagent_turn':
             return (
                 <SubagentTurnBubble
@@ -283,6 +289,7 @@ function HistoricalTurnBubble({
     };
     const expanded = isExpanded.value;
     const visibleItems = expanded ? items : outcome ? [outcome] : [];
+    const assistantOwnsReport = items.some(item => item.kind === 'assistant_text' && hasTurnChanges(item.changeReport));
 
     return (
         <div class={`chat-turn ${expanded ? 'is-expanded' : 'is-collapsed'}`}>
@@ -313,7 +320,6 @@ function HistoricalTurnBubble({
             </button>
             {visibleItems.length > 0 && (
                 <div class="chat-turn-items">
-                    {expanded && <TurnChangeFileList report={changeReport} lang={lang} />}
                     {visibleItems.map((item, index) => (
                         <MessageBubble
                             key={item.id}
@@ -323,8 +329,10 @@ function HistoricalTurnBubble({
                             isLatestAssistant={false}
                         />
                     ))}
+                    {!assistantOwnsReport && <TurnChangesFooter report={changeReport} />}
                 </div>
             )}
+            {visibleItems.length === 0 && !assistantOwnsReport && <TurnChangesFooter report={changeReport} />}
         </div>
     );
 }
@@ -347,25 +355,54 @@ export function TurnChangeCounts({ report, lang }: { report?: TurnChangeReport; 
     );
 }
 
+function sessionPwd(): string {
+    const session = sess.activeSession.value;
+    if (session && isChat(session) && session.cwd?.trim()) return session.cwd.trim();
+    const workspaceId = session?.workspaceId || wsStore.activeWorkspaceId.value;
+    return wsStore.workspaces.value.find(workspace => workspace.id === workspaceId)?.path?.trim() || '';
+}
+
 export function TurnChangeFileList({ report, lang }: { report?: TurnChangeReport; lang: Lang }) {
     if (!hasTurnChanges(report) || report.files.length === 0) return null;
+    const pwd = sessionPwd();
     return (
         <div class="chat-turn-change-list" aria-label={t('chat.turn.changes.title', lang)}>
-            {report.files.map(file => (
-                <button
-                    key={`${file.op}:${file.path}`}
-                    type="button"
-                    class="chat-turn-change-file"
-                    title={file.path}
-                    onClick={() => {
-                        const name = file.path.split('/').pop() || file.path;
-                        void tabsStore.openPreviewTab(file.path, name);
-                    }}
-                >
-                    <span class={`chat-turn-change-op is-${file.op}`}>{t(`chat.turn.changes.${file.op}`, lang)}</span>
-                    <span class="chat-turn-change-path">{file.path}</span>
-                </button>
-            ))}
+            {report.files.map(file => {
+                const deleted = file.op === 'deleted';
+                return (
+                    <button
+                        key={`${file.op}:${file.path}`}
+                        type="button"
+                        class="chat-turn-change-file"
+                        title={file.path}
+                        disabled={deleted}
+                        onClick={() => {
+                            if (deleted) return;
+                            const name = file.path.split('/').pop() || file.path;
+                            void tabsStore.openPreviewTab(file.path, name);
+                        }}
+                    >
+                        <span class={`chat-turn-change-op is-${file.op}`}>
+                            {t(`chat.turn.changes.${file.op}`, lang)}
+                        </span>
+                        <span class="chat-turn-change-path">{displayWorkdirPath(file.path, pwd)}</span>
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
+function TurnChangesFooter({ report }: { report?: TurnChangeReport }) {
+    const lang = getLang();
+    if (!hasTurnChanges(report)) return null;
+    return (
+        <div class="chat-turn-changes-footer">
+            <div class="chat-turn-summary">
+                {t('chat.turn.changes.title', lang)}
+                <TurnChangeCounts report={report} lang={lang} />
+            </div>
+            <TurnChangeFileList report={report} lang={lang} />
         </div>
     );
 }
@@ -633,16 +670,19 @@ function AssistantBubble({
     content,
     streaming,
     limitHeight = true,
+    changeReport,
 }: {
     content: string;
     streaming: boolean;
     limitHeight?: boolean;
+    changeReport?: TurnChangeReport;
 }) {
     return (
         <div class="chat-message-row chat-message-row-assistant">
             <div class="chat-bubble chat-bubble-assistant">
                 <div class="chat-bubble-body">
                     <AssistantContent content={content} streaming={streaming} showActions limitHeight={limitHeight} />
+                    <TurnChangesFooter report={changeReport} />
                 </div>
             </div>
         </div>

@@ -10,6 +10,7 @@ import {
     collectSubagents,
     collectTurnFiles,
     collectUploads,
+    displayWorkdirPath,
     isArtifactPath,
     promptSnippet,
     splitTurnFiles,
@@ -134,6 +135,32 @@ test('collects subagents only from the selected turn slice', () => {
     assert.equal(collectSubagents(items, turns[1])[0].status, 'completed');
 });
 
+test('shell rm is a deleted file change', () => {
+    const items: ChatItem[] = [
+        user('u1', 'delete'),
+        {
+            id: 'tool-rm',
+            kind: 'tool_use',
+            toolName: 'bash',
+            input: '',
+            calls: [
+                {
+                    toolName: 'Bash',
+                    input: JSON.stringify({ command: 'rm -f .tmp/1acp-turn-smoke.txt' }),
+                    kind: 'execute',
+                    status: 'completed',
+                },
+            ],
+            createdAt: 2,
+        },
+    ];
+    const turns = collectSessionTurns(items, []);
+    const files = collectTurnFiles(items, turns[0]);
+    assert.equal(files.length, 1);
+    assert.equal(files[0].path, '.tmp/1acp-turn-smoke.txt');
+    assert.equal(files[0].op, 'deleted');
+});
+
 test('live tool calls fill files when no change report exists', () => {
     const items: ChatItem[] = [
         user('u1', 'edit'),
@@ -179,4 +206,13 @@ test('artifact classifier recognizes plan and markdown deliverables', () => {
     assert.equal(isArtifactPath('implementation_plan.md'), true);
     assert.equal(isArtifactPath('src/main.go'), false);
     assert.equal(promptSnippet('hello world\n/tmp/a.png'), 'hello world');
+});
+
+test('displayWorkdirPath hides the current pwd and keeps outside paths absolute', () => {
+    const pwd = '/Users/scott/proj';
+    assert.equal(displayWorkdirPath('/Users/scott/proj/src/app.ts', pwd), 'src/app.ts');
+    assert.equal(displayWorkdirPath('/Users/scott/proj/', pwd), '.');
+    assert.equal(displayWorkdirPath('src/app.ts', pwd), 'src/app.ts');
+    assert.equal(displayWorkdirPath('/tmp/other.txt', pwd), '/tmp/other.txt');
+    assert.equal(displayWorkdirPath('/Users/scott/proj-other/a.ts', pwd), '/Users/scott/proj-other/a.ts');
 });

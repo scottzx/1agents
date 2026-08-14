@@ -1,4 +1,6 @@
+import type { TurnChangeReport } from '@1agents/core/services/activityService';
 import type { GroupedChatItem, TurnContentItem } from './MessageBubble';
+import { inferFilesFromTurnItems, mergeChangeReport } from '../drawer/sessionStatusModel';
 
 /**
  * Collapse every completed turn except the newest one into a single render
@@ -19,7 +21,16 @@ export function groupHistoricalTurns(items: GroupedChatItem[]): GroupedChatItem[
         }
     }
 
-    if (turnStarts.length < 2) return items;
+    if (turnStarts.length === 0) return items;
+
+    if (turnStarts.length === 1) {
+        const start = turnStarts[0];
+        const user = items[start];
+        const turnItems = items.slice(start + 1) as TurnContentItem[];
+        const rawReport = user.kind === 'user' ? user.changeReport : undefined;
+        const report = mergeChangeReport(rawReport, inferFilesFromTurnItems(turnItems));
+        if (!hasChangeCounts(report)) return items;
+    }
 
     const result: GroupedChatItem[] = items.slice(0, turnStarts[0]);
 
@@ -27,12 +38,13 @@ export function groupHistoricalTurns(items: GroupedChatItem[]): GroupedChatItem[
         const start = turnStarts[turnIndex];
         const end = turnStarts[turnIndex + 1] ?? items.length;
         const user = items[start];
-        const report = user.kind === 'user' ? user.changeReport : undefined;
+        const rawReport = user.kind === 'user' ? user.changeReport : undefined;
         const turnItems = items.slice(start + 1, end) as TurnContentItem[];
+        const report = mergeChangeReport(rawReport, inferFilesFromTurnItems(turnItems));
         const isLatestTurn = turnIndex === turnStarts.length - 1;
         if (isLatestTurn || turnItems.length === 0) {
-            result.push(user);
-            result.push(...turnItems);
+            result.push(user.kind === 'user' && user.changeReport ? { ...user, changeReport: undefined } : user);
+            pushFlatTurnItems(result, user, turnItems, report);
             continue;
         }
 
@@ -59,18 +71,16 @@ export function groupHistoricalTurns(items: GroupedChatItem[]): GroupedChatItem[
 
         const hasHiddenProcess = turnItems.some(item => item.id !== outcomeId);
         if (!hasHiddenProcess) {
-            result.push(user);
-            result.push(...turnItems);
+            result.push(user.kind === 'user' && user.changeReport ? { ...user, changeReport: undefined } : user);
+            pushFlatTurnItems(result, user, turnItems, report);
             continue;
         }
 
-        // Folded turns render the report on the process header. Strip it from
-        // the user bubble so the same +N ~N −N is not shown twice.
-        result.push(user.kind === 'user' && report ? { ...user, changeReport: undefined } : user);
+        result.push(user.kind === 'user' && user.changeReport ? { ...user, changeReport: undefined } : user);
         result.push({
             id: `turn-${user.turnId || user.id}`,
             kind: 'turn',
-            items: turnItems,
+            items: attachChangeReport(turnItems, report),
             outcomeId,
             createdAt: user.createdAt,
             turnId: user.turnId,
@@ -80,4 +90,47 @@ export function groupHistoricalTurns(items: GroupedChatItem[]): GroupedChatItem[
     }
 
     return result;
+}
+
+function hasChangeCounts(report: TurnChangeReport | undefined): report is TurnChangeReport {
+    return !!report && (report.addedCount > 0 || report.deletedCount > 0 || report.modifiedCount > 0);
+}
+
+/**
+ * Pin the file list to the last assistant answer so it renders at the
+ * bottom of that block. Turns without an answer keep a trailing sibling.
+ */
+function pushFlatTurnItems(
+    result: GroupedChatItem[],
+    user: GroupedChatItem,
+    turnItems: TurnContentItem[],
+    report: TurnChangeReport | undefined
+): void {
+    const annotated = attachChangeReport(turnItems, report);
+    result.push(...annotated);
+    if (hasChangeCounts(report) && !annotated.some(item => item.kind === 'assistant_text' && item.changeReport)) {
+        result.push({
+            id: `turn-changes-${user.turnId || user.id}`,
+            kind: 'turn_changes',
+            createdAt: user.createdAt,
+            turnId: user.turnId,
+            turnStatus: user.kind === 'user' ? user.turnStatus : undefined,
+            changeReport: report,
+        });
+    }
+}
+
+function attachChangeReport(items: TurnContentItem[], report: TurnChangeReport | undefined): TurnContentItem[] {
+    const stripped = items.map(item =>
+        item.kind === 'assistant_text' && item.changeReport ? { ...item, changeReport: undefined } : item
+    );
+    if (!hasChangeCounts(report)) return stripped;
+    for (let index = stripped.length - 1; index >= 0; index--) {
+        const item = stripped[index];
+        if (item.kind !== 'assistant_text') continue;
+        const next = stripped.slice();
+        next[index] = { ...item, changeReport: report };
+        return next;
+    }
+    return stripped;
 }

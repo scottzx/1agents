@@ -1,7 +1,7 @@
 // Session status panel (right side panel).
 // Monitors the active chat session's execution state, resources, and
-// deliverables — subagents, file changes, artifacts, uploads, and
-// background bash tasks — scoped to the selected Agent Turn.
+// file changes — subagents, file changes, uploads, and background bash
+// tasks — scoped to the selected Agent Turn.
 
 import { h, Fragment, type ComponentChildren } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
@@ -27,7 +27,6 @@ import {
     displayFilePath,
     itemsForTurn,
     promptSnippet,
-    splitTurnFiles,
     type SessionFileEntry,
     type SessionSubagent,
     type SessionTurnRef,
@@ -204,8 +203,17 @@ function StatusSection({
 }
 
 function FileRow({ file }: { file: SessionFileEntry }) {
+    const deleted = file.op === 'deleted';
     return (
-        <button type="button" class="session-status-file" title={file.path} onClick={() => openPath(file.path)}>
+        <button
+            type="button"
+            class="session-status-file"
+            title={file.path}
+            disabled={deleted}
+            onClick={() => {
+                if (!deleted) openPath(file.path);
+            }}
+        >
             <span class={`session-status-file-op is-${file.op}`}>
                 {file.op === 'added' ? '+' : file.op === 'deleted' ? '−' : '~'}
             </span>
@@ -369,7 +377,7 @@ export function BackgroundTaskPanel({ language }: { language: typeof ui.language
     };
 
     const subagents = selected ? collectSubagents(items, selected) : [];
-    const files = selected ? splitTurnFiles(collectTurnFiles(items, selected)) : { code: [], artifacts: [] };
+    const files = selected ? collectTurnFiles(items, selected) : [];
     const uploads = selected ? collectUploads(selected.promptText) : [];
     const media = uploads.filter(item => item.isImage);
     const otherUploads = uploads.filter(item => !item.isImage);
@@ -552,20 +560,10 @@ export function BackgroundTaskPanel({ language }: { language: typeof ui.language
 
                 <StatusSection
                     title={t('sessionStatus.section.files', language)}
-                    count={files.code.length}
+                    count={files.length}
                     empty={t('sessionStatus.section.empty', language)}
                 >
-                    {files.code.map(file => (
-                        <FileRow key={`${file.op}:${file.path}`} file={file} />
-                    ))}
-                </StatusSection>
-
-                <StatusSection
-                    title={t('sessionStatus.section.artifacts', language)}
-                    count={files.artifacts.length}
-                    empty={t('sessionStatus.section.empty', language)}
-                >
-                    {files.artifacts.map(file => (
+                    {files.map(file => (
                         <FileRow key={`${file.op}:${file.path}`} file={file} />
                     ))}
                 </StatusSection>

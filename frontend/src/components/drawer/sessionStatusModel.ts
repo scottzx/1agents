@@ -63,6 +63,18 @@ export function displayFilePath(path: string): string {
     return parts.slice(-2).join('/');
 }
 
+/** Hide the current PWD prefix; leave paths outside the workdir absolute. */
+export function displayWorkdirPath(path: string, pwd?: string): string {
+    const file = path.replace(/\\/g, '/').replace(/\/+$/, '');
+    const root = (pwd || '').replace(/\\/g, '/').replace(/\/+$/, '');
+    if (!file) return path;
+    if (!root || root === '/' || root === '.') return file;
+    if (file === root) return '.';
+    const prefix = root.endsWith('/') ? root : `${root}/`;
+    if (file.startsWith(prefix)) return file.slice(prefix.length) || '.';
+    return file;
+}
+
 export function isArtifactPath(path: string): boolean {
     const name = displayFileName(path);
     return ARTIFACT_NAME_RE.test(name) || ARTIFACT_EXT_RE.test(name);
@@ -219,11 +231,59 @@ function filesFromReport(report?: TurnChangeReport): SessionFileEntry[] {
     return [...seen.values()];
 }
 
-function opFromTool(call: ToolCallInfo): TurnChangeOp | null {
+function commandFromInput(input?: string): string {
+    if (!input) return '';
+    try {
+        const parsed = JSON.parse(input) as Record<string, unknown>;
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            for (const key of ['command', 'cmd', 'script']) {
+                const value = parsed[key];
+                if (typeof value === 'string' && value.trim()) return value;
+            }
+        }
+    } catch {
+        // Tool input is a display string, not JSON.
+    }
+    return input;
+}
+
+function looksLikeDeleteCommand(cmd: string): boolean {
+    return /(?:^|[;&|\n])\s*(?:sudo\s+)?(?:rm|unlink|rmdir)\b/i.test(cmd);
+}
+
+function looksLikePathToken(tok: string): boolean {
+    return !!tok && tok !== '.' && tok !== '..' && /[/\\.]/.test(tok);
+}
+
+function pathsFromDeleteCommand(cmd: string): string[] {
+    const paths: string[] = [];
+    let seenDelete = false;
+    for (const raw of cmd.split(/\s+/)) {
+        const tok = raw.replace(/^['"]|['"]$/g, '');
+        const low = tok.toLowerCase();
+        if (low === 'sudo') continue;
+        if (low === 'rm' || low === 'unlink' || low === 'rmdir') {
+            seenDelete = true;
+            continue;
+        }
+        if (/[;&|]/.test(tok)) {
+            seenDelete = false;
+            continue;
+        }
+        if (!seenDelete || tok === '--' || tok.startsWith('-')) continue;
+        if (looksLikePathToken(tok)) paths.push(tok);
+    }
+    return paths;
+}
+
+function opFromTool(call: { toolName: string; input?: string; kind?: string }): TurnChangeOp | null {
     const kind = (call.kind || '').toLowerCase();
     const name = call.toolName.toLowerCase();
+    const command = commandFromInput(call.input);
     if (kind === 'read' || kind === 'search' || kind === 'think' || kind === 'fetch') return null;
-    if (kind === 'delete' || /(delete|remove|\brm\b|unlink)/.test(name)) return 'deleted';
+    if (kind === 'delete' || /(delete|remove|\brm\b|unlink)/.test(name) || looksLikeDeleteCommand(command)) {
+        return 'deleted';
+    }
     if (kind === 'edit' || /(write|create_file|apply_patch|multiedit|str_replace|\bedit\b)/.test(name)) {
         return /(write|create_file)/.test(name) ? 'added' : 'modified';
     }
@@ -245,6 +305,10 @@ function pathsFromCall(call: ToolCallInfo): string[] {
             }
         } catch {
             // Tool input is a display string, not JSON.
+        }
+        const command = commandFromInput(call.input);
+        if (looksLikeDeleteCommand(command)) {
+            paths.push(...pathsFromDeleteCommand(command));
         }
     }
     const seen = new Set<string>();
@@ -276,10 +340,62 @@ function filesFromLiveItems(slice: ChatItem[]): SessionFileEntry[] {
     return [...seen.values()];
 }
 
+export function inferFilesFromTurnItems(items: Array<{ kind: string; calls?: ToolCallInfo[] }>): SessionFileEntry[] {
+    const seen = new Map<string, SessionFileEntry>();
+    for (const item of items) {
+        if (!item.calls?.length) continue;
+        for (const call of item.calls) {
+            const op = opFromTool(call);
+            if (!op) continue;
+            for (const path of pathsFromCall(call)) {
+                seen.set(path, stampFile(path, op));
+            }
+        }
+    }
+    return [...seen.values()];
+}
+
 export function collectTurnFiles(items: ChatItem[], turn: SessionTurnRef): SessionFileEntry[] {
-    const fromReport = filesFromReport(turn.changeReport);
-    if (fromReport.length > 0) return fromReport;
-    return filesFromLiveItems(itemsForTurn(items, turn));
+    return mergeFileEntries(filesFromReport(turn.changeReport), filesFromLiveItems(itemsForTurn(items, turn)));
+}
+
+export function mergeFileEntries(...groups: SessionFileEntry[][]): SessionFileEntry[] {
+    const seen = new Map<string, SessionFileEntry>();
+    for (const group of groups) {
+        for (const file of group) {
+            const prev = seen.get(file.path);
+            if (!prev || file.op === 'deleted' || prev.op !== 'deleted') {
+                seen.set(file.path, file);
+            }
+        }
+    }
+    return [...seen.values()];
+}
+
+export function mergeChangeReport(
+    report: TurnChangeReport | undefined,
+    inferred: SessionFileEntry[]
+): TurnChangeReport | undefined {
+    const files = mergeFileEntries(filesFromReport(report), inferred);
+    if (files.length === 0) return report;
+    let addedCount = 0;
+    let deletedCount = 0;
+    let modifiedCount = 0;
+    for (const file of files) {
+        if (file.op === 'added') addedCount++;
+        else if (file.op === 'deleted') deletedCount++;
+        else modifiedCount++;
+    }
+    return {
+        turnId: report?.turnId || '',
+        recipeVersion: report?.recipeVersion || 0,
+        addedCount,
+        deletedCount,
+        modifiedCount,
+        files: files.map(file => ({ path: file.path, op: file.op })),
+        source: report?.source || 'live',
+        computedAt: report?.computedAt || new Date().toISOString(),
+    };
 }
 
 export function splitTurnFiles(files: SessionFileEntry[]): { code: SessionFileEntry[]; artifacts: SessionFileEntry[] } {
