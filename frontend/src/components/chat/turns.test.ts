@@ -101,6 +101,32 @@ test('does not add a redundant wrapper when a historical turn only has its answe
     );
 });
 
+test('moves changeReport onto the folded turn and keeps it on the latest user', () => {
+    const report = {
+        turnId: 'turn-1',
+        recipeVersion: 1,
+        addedCount: 1,
+        deletedCount: 0,
+        modifiedCount: 0,
+        files: [{ path: 'a.ts', op: 'added' as const }],
+        source: 'live' as const,
+        computedAt: '2026-08-13T00:00:00Z',
+    };
+    const firstUser = { ...user('u1'), turnId: 'turn-1', changeReport: report };
+    const latestUser = { ...user('u2'), turnId: 'turn-2', changeReport: { ...report, turnId: 'turn-2' } };
+    const grouped = groupHistoricalTurns([firstUser, thinking('think'), answer('a1'), latestUser, answer('a2')]);
+
+    const foldedUser = grouped[0];
+    const foldedTurn = grouped[1];
+    assert.equal(foldedUser.kind, 'user');
+    assert.equal(foldedUser.kind === 'user' ? foldedUser.changeReport : 'missing', undefined);
+    assert.equal(foldedTurn.kind, 'turn');
+    assert.equal(foldedTurn.kind === 'turn' ? foldedTurn.changeReport?.addedCount : 0, 1);
+
+    const latest = grouped.find(item => item.kind === 'user' && item.id === 'u2');
+    assert.equal(latest?.kind === 'user' ? latest.changeReport?.turnId : undefined, 'turn-2');
+});
+
 test('uses the persisted turn id and status when explicit attribution is available', () => {
     const firstUser = { ...user('u1'), turnId: 'turn-123', turnStatus: 'failed' as const };
     const receipt: TurnContentItem = {

@@ -150,7 +150,11 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
     };
     const focusRequest =
         turnFocusRequest.value?.sessionId === session.id
-            ? { turnId: turnFocusRequest.value.turnId, nonce: turnFocusRequest.value.nonce }
+            ? {
+                  turnId: turnFocusRequest.value.turnId,
+                  aliases: turnFocusRequest.value.aliases,
+                  nonce: turnFocusRequest.value.nonce,
+              }
             : null;
 
     return (

@@ -383,6 +383,7 @@ export function RightPanel({
                     panelType !== 'tasks' &&
                     panelType !== 'browser' &&
                     panelType !== 'terminal' &&
+                    panelType !== 'background' &&
                     panelType !== 'none'
                         ? 'flex'
                         : 'none'

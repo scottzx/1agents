@@ -16,9 +16,11 @@ import type {
     ExitPlanOutcome,
     ToolCallInfo,
 } from '@1agents/core/protocol/types';
+import type { TurnChangeReport } from '@1agents/core/services/activityService';
 import { renderMarkdown } from '../../utils/markdown';
 import { renderMermaidBlocks } from '../../utils/mermaid';
 import { activeProjectName } from '../../stores/taskNavStore';
+import * as tabsStore from '../../stores/tabsStore';
 import { showToast, theme } from '../../stores/uiStore';
 import { ToolDiffView, deriveDiffsFromInput, deriveLocationsFromInput } from './ToolDiffView';
 import { deriveToolKind } from './ToolKindIcon';
@@ -70,6 +72,7 @@ export type TurnContentItem =
           queueRequestId?: string;
           turnId?: string;
           turnStatus?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+          changeReport?: TurnChangeReport;
       }
     | {
           id: string;
@@ -147,6 +150,7 @@ export type GroupedChatItem =
           createdAt: number;
           turnId?: string;
           turnStatus?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+          changeReport?: TurnChangeReport;
       };
 
 interface MessageBubbleProps {
@@ -179,18 +183,31 @@ export function MessageBubble({
     onEditTurn,
 }: MessageBubbleProps) {
     switch (item.kind) {
-        case 'user':
+        case 'user': {
+            const lang = getLang();
             return (
-                <UserBubble
-                    content={item.content}
-                    queueStatus={item.queueStatus}
-                    queueRequestId={item.queueRequestId}
-                    turnId={item.turnId}
-                    turnStatus={item.turnStatus}
-                    onCancel={onCancelQueued}
-                    onEdit={onEditTurn}
-                />
+                <>
+                    <UserBubble
+                        content={item.content}
+                        queueStatus={item.queueStatus}
+                        queueRequestId={item.queueRequestId}
+                        turnId={item.turnId}
+                        turnStatus={item.turnStatus}
+                        onCancel={onCancelQueued}
+                        onEdit={onEditTurn}
+                    />
+                    {hasTurnChanges(item.changeReport) && (
+                        <div class="chat-turn-changes-inline">
+                            <div class="chat-turn-summary">
+                                {t('chat.turn.changes.title', lang)}
+                                <TurnChangeCounts report={item.changeReport} lang={lang} />
+                            </div>
+                            <TurnChangeFileList report={item.changeReport} lang={lang} />
+                        </div>
+                    )}
+                </>
             );
+        }
         case 'assistant_text':
             return (
                 <AssistantBubble content={item.content} streaming={item.streaming} limitHeight={!isLatestAssistant} />
@@ -208,7 +225,14 @@ export function MessageBubble({
                 />
             );
         case 'turn':
-            return <HistoricalTurnBubble items={item.items} outcomeId={item.outcomeId} turnStatus={item.turnStatus} />;
+            return (
+                <HistoricalTurnBubble
+                    items={item.items}
+                    outcomeId={item.outcomeId}
+                    turnStatus={item.turnStatus}
+                    changeReport={item.changeReport}
+                />
+            );
         case 'turn_receipt':
             return <TurnReceiptBubble content={item.content} status={item.status} />;
         case 'subagent_turn':
@@ -232,10 +256,12 @@ function HistoricalTurnBubble({
     items,
     outcomeId,
     turnStatus,
+    changeReport,
 }: {
     items: TurnContentItem[];
     outcomeId?: string;
     turnStatus?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+    changeReport?: TurnChangeReport;
 }) {
     const isExpanded = useSignal(false);
     const lang = getLang();
@@ -275,6 +301,7 @@ function HistoricalTurnBubble({
                         thoughts: String(thinkingCount),
                         tools: String(toolCount),
                     })}
+                    <TurnChangeCounts report={changeReport} lang={lang} />
                 </span>
                 <span class="chat-tool-group-processed">
                     {turnStatus === 'failed'
@@ -286,6 +313,7 @@ function HistoricalTurnBubble({
             </button>
             {visibleItems.length > 0 && (
                 <div class="chat-turn-items">
+                    {expanded && <TurnChangeFileList report={changeReport} lang={lang} />}
                     {visibleItems.map((item, index) => (
                         <MessageBubble
                             key={item.id}
@@ -297,6 +325,47 @@ function HistoricalTurnBubble({
                     ))}
                 </div>
             )}
+        </div>
+    );
+}
+
+function hasTurnChanges(report?: TurnChangeReport): report is TurnChangeReport {
+    return !!report && (report.addedCount > 0 || report.deletedCount > 0 || report.modifiedCount > 0);
+}
+
+export function TurnChangeCounts({ report, lang }: { report?: TurnChangeReport; lang: Lang }) {
+    if (!hasTurnChanges(report)) return null;
+    return (
+        <span class="chat-turn-changes">
+            {' · '}
+            {t('chat.turn.changes', lang, {
+                added: String(report.addedCount),
+                modified: String(report.modifiedCount),
+                deleted: String(report.deletedCount),
+            })}
+        </span>
+    );
+}
+
+export function TurnChangeFileList({ report, lang }: { report?: TurnChangeReport; lang: Lang }) {
+    if (!hasTurnChanges(report) || report.files.length === 0) return null;
+    return (
+        <div class="chat-turn-change-list" aria-label={t('chat.turn.changes.title', lang)}>
+            {report.files.map(file => (
+                <button
+                    key={`${file.op}:${file.path}`}
+                    type="button"
+                    class="chat-turn-change-file"
+                    title={file.path}
+                    onClick={() => {
+                        const name = file.path.split('/').pop() || file.path;
+                        void tabsStore.openPreviewTab(file.path, name);
+                    }}
+                >
+                    <span class={`chat-turn-change-op is-${file.op}`}>{t(`chat.turn.changes.${file.op}`, lang)}</span>
+                    <span class="chat-turn-change-path">{file.path}</span>
+                </button>
+            ))}
         </div>
     );
 }

@@ -160,7 +160,9 @@ const loadSidePanelState = (ownerKey: string): SidePanelState => {
         return {
             panelOpen: Boolean(parsed.panelOpen),
             activeTabId: typeof parsed.activeTabId === 'string' ? parsed.activeTabId : tabs[0]?.id || null,
-            tabs: tabs as SidePanelTab[],
+            tabs: (tabs as SidePanelTab[]).map(tab =>
+                tab.type === 'background' ? { ...tab, title: defaultSidePanelTitle('background') } : tab
+            ),
         };
     } catch {
         return { panelOpen: false, activeTabId: null, tabs: [] };

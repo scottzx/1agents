@@ -35,7 +35,7 @@ interface MessageListProps {
     /** Optional references rendered inside the same scroll timeline. */
     timelineFooter?: ComponentChildren;
     /** One-shot request to reveal a persisted Turn after cross-navigation. */
-    focusTurn?: { turnId: string; nonce: number } | null;
+    focusTurn?: { turnId: string; aliases?: string[]; nonce: number } | null;
 }
 
 function isCallRenderable(call: GroupedToolCall): boolean {
@@ -415,7 +415,8 @@ export function MessageList({
             const el = scrollRef.current;
             if (!el) return;
             const anchors = Array.from(el.querySelectorAll<HTMLElement>('[data-turn-anchor]'));
-            const anchor = anchors.find(node => node.dataset.turnAnchor === focusTurn.turnId);
+            const ids = new Set([focusTurn.turnId, ...(focusTurn.aliases ?? [])].filter(Boolean));
+            const anchor = anchors.find(node => !!node.dataset.turnAnchor && ids.has(node.dataset.turnAnchor));
             if (!anchor) return;
             focusedNonceRef.current = focusTurn.nonce;
             anchor.scrollIntoView({ block: 'start', behavior: 'smooth' });

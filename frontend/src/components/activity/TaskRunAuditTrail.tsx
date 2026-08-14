@@ -1,23 +1,41 @@
 import { h } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 
-import { activityService, type TaskRun } from '@1agents/core/services/activityService';
+import { activityService, type TaskRun, type TurnChangeReport } from '@1agents/core/services/activityService';
 import { agentService } from '@1agents/core/services/agentService';
+import { t, getLang } from '../../i18n';
 import * as sessionStore from '../../stores/sessionStore';
 import { requestTurnFocus } from '../../stores/turnFocusStore';
 import { showToast } from '../../stores/uiStore';
+import { TurnChangeCounts, TurnChangeFileList } from '../chat/MessageBubble';
 
 export function TaskRunAuditTrail({ taskId }: { taskId: string }) {
     const [runs, setRuns] = useState<TaskRun[]>([]);
+    const [reports, setReports] = useState<Record<string, TurnChangeReport>>({});
     const [error, setError] = useState('');
+    const lang = getLang();
 
     useEffect(() => {
         let cancelled = false;
         setError('');
         void activityService
             .listTaskRuns(taskId)
-            .then(items => {
-                if (!cancelled) setRuns(items);
+            .then(async items => {
+                if (cancelled) return;
+                setRuns(items);
+                const next: Record<string, TurnChangeReport> = {};
+                await Promise.all(
+                    items
+                        .filter(run => run.originTurnId && run.projectId)
+                        .map(async run => {
+                            const page = await activityService
+                                .listTurns(run.projectId, { turnId: run.originTurnId })
+                                .catch(() => ({ items: [] as { changeReport?: TurnChangeReport }[] }));
+                            const report = page.items[0]?.changeReport;
+                            if (report && run.originTurnId) next[run.originTurnId] = report;
+                        })
+                );
+                if (!cancelled) setReports(next);
             })
             .catch(err => {
                 if (!cancelled) setError((err as Error).message);
@@ -65,6 +83,15 @@ export function TaskRunAuditTrail({ taskId }: { taskId: string }) {
                     <div style={{ display: 'grid', gap: '5px', marginTop: '8px', fontSize: '12px' }}>
                         <span>TaskRun: {run.id}</span>
                         {run.originTurnId && <span>Origin Turn: {run.originTurnId}</span>}
+                        {run.originTurnId && reports[run.originTurnId] && (
+                            <div>
+                                <span>
+                                    {t('chat.turn.changes.title', lang)}
+                                    <TurnChangeCounts report={reports[run.originTurnId]} lang={lang} />
+                                </span>
+                                <TurnChangeFileList report={reports[run.originTurnId]} lang={lang} />
+                            </div>
+                        )}
                         {run.evidence.map(evidence => (
                             <span key={evidence.id}>
                                 Evidence · {evidence.kind}: {evidence.summary}

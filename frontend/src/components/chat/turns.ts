@@ -27,11 +27,11 @@ export function groupHistoricalTurns(items: GroupedChatItem[]): GroupedChatItem[
         const start = turnStarts[turnIndex];
         const end = turnStarts[turnIndex + 1] ?? items.length;
         const user = items[start];
-        result.push(user);
-
+        const report = user.kind === 'user' ? user.changeReport : undefined;
         const turnItems = items.slice(start + 1, end) as TurnContentItem[];
         const isLatestTurn = turnIndex === turnStarts.length - 1;
         if (isLatestTurn || turnItems.length === 0) {
+            result.push(user);
             result.push(...turnItems);
             continue;
         }
@@ -59,10 +59,14 @@ export function groupHistoricalTurns(items: GroupedChatItem[]): GroupedChatItem[
 
         const hasHiddenProcess = turnItems.some(item => item.id !== outcomeId);
         if (!hasHiddenProcess) {
+            result.push(user);
             result.push(...turnItems);
             continue;
         }
 
+        // Folded turns render the report on the process header. Strip it from
+        // the user bubble so the same +N ~N −N is not shown twice.
+        result.push(user.kind === 'user' && report ? { ...user, changeReport: undefined } : user);
         result.push({
             id: `turn-${user.turnId || user.id}`,
             kind: 'turn',
@@ -71,6 +75,7 @@ export function groupHistoricalTurns(items: GroupedChatItem[]): GroupedChatItem[
             createdAt: user.createdAt,
             turnId: user.turnId,
             turnStatus: user.turnStatus,
+            changeReport: report,
         });
     }
 

@@ -107,7 +107,7 @@ export function projectChatTurns(
         }
 
         for (const item of items.slice(start, end)) {
-            output.push({ ...item, turnId: turn.id, turnStatus: turn.status });
+            output.push({ ...item, turnId: turn.id, turnStatus: turn.status, changeReport: turn.changeReport });
         }
 
         for (const entry of activityByTurn.get(turn.id) ?? []) {

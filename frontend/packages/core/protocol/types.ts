@@ -138,6 +138,27 @@ export type HistoryItem =
           createdAt?: string;
       };
 
+export type TurnChangeOp = 'added' | 'deleted' | 'modified';
+export type TurnChangeSource = 'live' | 'backfill' | 'unavailable';
+
+export interface TurnChangeFile {
+    path: string;
+    op: TurnChangeOp;
+    tool?: string;
+    toolCallId?: string;
+}
+
+export interface TurnChangeReport {
+    turnId: string;
+    recipeVersion: number;
+    addedCount: number;
+    deletedCount: number;
+    modifiedCount: number;
+    files: TurnChangeFile[];
+    source: TurnChangeSource;
+    computedAt: string;
+}
+
 export type TurnAwareHistoryItem = HistoryItem & { turnId?: string };
 
 export type ChatTurnStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -147,6 +168,7 @@ export interface ChatTurnMetadata {
     turnId?: string;
     turnStatus?: ChatTurnStatus;
     queuePosition?: number;
+    changeReport?: TurnChangeReport;
 }
 
 export type ChatItem = (

@@ -1,4 +1,7 @@
 import { apiFetch } from './apiClient';
+import type { TurnChangeFile, TurnChangeOp, TurnChangeReport, TurnChangeSource } from '../protocol/types';
+
+export type { TurnChangeFile, TurnChangeOp, TurnChangeReport, TurnChangeSource };
 
 export type AgentTurnStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export type ProjectActivityStatus = 'succeeded' | 'rejected' | 'failed';
@@ -20,6 +23,7 @@ export interface AgentTurn {
     completedAt?: string;
     createdAt: string;
     updatedAt: string;
+    changeReport?: TurnChangeReport;
 }
 
 export interface ProjectActivityTarget {
@@ -102,6 +106,7 @@ export interface TaskRun {
 
 export interface TurnQuery {
     sessionId?: string;
+    turnId?: string;
     status?: AgentTurnStatus;
     cursor?: string;
     limit?: number;
@@ -137,6 +142,7 @@ export const activityService = {
         return page<AgentTurn>(
             `/agent/turns?${queryString(workspaceId, {
                 session_id: query.sessionId,
+                turn_id: query.turnId,
                 status: query.status,
                 cursor: query.cursor,
                 limit: query.limit,
