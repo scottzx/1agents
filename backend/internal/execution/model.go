@@ -5,8 +5,14 @@ package execution
 
 import (
 	"encoding/json"
+	"errors"
 	"time"
 )
+
+// ErrWorkspaceBusy is returned by the southbound dispatcher when this
+// workspace already has a running job. RunNow defers the job by
+// workspaceBusyRetry instead of failing the caller.
+var ErrWorkspaceBusy = errors.New("workspace already has a running job")
 
 type ProfileBindingSource string
 
@@ -27,6 +33,8 @@ const (
 	TriggerArmed      = "armed"
 	TriggerPaused     = "paused"
 	TriggerExhausted  = "exhausted"
+
+	workspaceBusyRetry = 3 * time.Minute
 )
 
 // Job is the durable execution definition for exactly one board work item in

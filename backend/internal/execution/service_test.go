@@ -2,6 +2,8 @@ package execution
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -102,6 +104,165 @@ func TestSchedulerDispatchesDueAtTriggerOnce(t *testing.T) {
 	}
 	if trigger.Status != TriggerExhausted {
 		t.Fatalf("trigger status = %q", trigger.Status)
+	}
+}
+
+func TestSchedulerDelaysWhenWorkspaceBusy(t *testing.T) {
+	db, err := meta.Open(filepath.Join(t.TempDir(), "meta.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	workspace := t.TempDir()
+	store := meta.NewTaskStore(db)
+	if err := store.Mutate(workspace, func(cfg *meta.TasksConfig) bool {
+		cfg.Tasks = append(cfg.Tasks, meta.Task{ID: "task-1", Title: "Run", Type: meta.ItemTypeTask, IssueState: meta.IssueOpen})
+		return true
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var projectID string
+	if err := db.SQL().QueryRow(`SELECT id FROM projects WHERE workspace_path=?`, workspace).Scan(&projectID); err != nil {
+		t.Fatal(err)
+	}
+	repo, err := NewRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(repo, nil)
+	job, err := service.CreateJob(CreateJobInput{ProjectID: projectID, WorkItemID: "task-1", ExecutorKind: "function", FunctionType: "core.noop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	called := 0
+	service.SetDispatcher(func(context.Context, Job) error {
+		called++
+		return ErrWorkspaceBusy
+	})
+	past := time.Now().UTC().Add(-time.Minute)
+	if _, err := service.UpsertTrigger(job.ID, TriggerSpec{Kind: TriggerAt, Spec: []byte(`{"at":"2026-08-12T00:00:00Z"}`), NextRunAt: &past}); err != nil {
+		t.Fatal(err)
+	}
+	before := time.Now().UTC()
+	NewScheduler(service).Tick(context.Background())
+	if called != 1 {
+		t.Fatalf("dispatches = %d, want 1", called)
+	}
+	trigger, err := repo.TriggerByJob(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if trigger.Status != TriggerArmed {
+		t.Fatalf("trigger status = %q, want armed", trigger.Status)
+	}
+	if trigger.NextRunAt == nil {
+		t.Fatal("nextRunAt missing")
+	}
+	delay := trigger.NextRunAt.Sub(before)
+	if delay < workspaceBusyRetry-time.Second || delay > workspaceBusyRetry+2*time.Second {
+		t.Fatalf("retry delay = %s, want ~%s", delay, workspaceBusyRetry)
+	}
+
+	NewScheduler(service).Tick(context.Background())
+	if called != 1 {
+		t.Fatalf("second tick dispatched = %d, want still 1", called)
+	}
+}
+
+func TestSchedulerDoesNotDelayOnOtherDispatchError(t *testing.T) {
+	db, err := meta.Open(filepath.Join(t.TempDir(), "meta.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	workspace := t.TempDir()
+	store := meta.NewTaskStore(db)
+	if err := store.Mutate(workspace, func(cfg *meta.TasksConfig) bool {
+		cfg.Tasks = append(cfg.Tasks, meta.Task{ID: "task-1", Title: "Run", Type: meta.ItemTypeTask, IssueState: meta.IssueOpen})
+		return true
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var projectID string
+	if err := db.SQL().QueryRow(`SELECT id FROM projects WHERE workspace_path=?`, workspace).Scan(&projectID); err != nil {
+		t.Fatal(err)
+	}
+	repo, err := NewRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(repo, nil)
+	job, err := service.CreateJob(CreateJobInput{ProjectID: projectID, WorkItemID: "task-1", ExecutorKind: "function", FunctionType: "core.noop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.SetDispatcher(func(context.Context, Job) error { return errors.New("profile unavailable") })
+	past := time.Now().UTC().Add(-time.Minute)
+	if _, err := service.UpsertTrigger(job.ID, TriggerSpec{Kind: TriggerAt, Spec: []byte(`{"at":"2026-08-12T00:00:00Z"}`), NextRunAt: &past}); err != nil {
+		t.Fatal(err)
+	}
+	NewScheduler(service).Tick(context.Background())
+	trigger, err := repo.TriggerByJob(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if trigger.Status != TriggerArmed {
+		t.Fatalf("trigger status = %q", trigger.Status)
+	}
+	if trigger.NextRunAt == nil || trigger.NextRunAt.After(time.Now().UTC()) {
+		t.Fatalf("other errors must leave the trigger due, next=%v", trigger.NextRunAt)
+	}
+}
+
+func TestRunNowDefersManualJobWithoutTrigger(t *testing.T) {
+	service, projectID := newFunctionService(t)
+	job, err := service.CreateJob(CreateJobInput{ProjectID: projectID, WorkItemID: "task-1", ExecutorKind: "function", FunctionType: "core.noop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.SetDispatcher(func(context.Context, Job) error { return ErrWorkspaceBusy })
+	before := time.Now().UTC()
+	err = service.RunNow(context.Background(), job.ID)
+	if !errors.Is(err, ErrWorkspaceBusy) {
+		t.Fatalf("err = %v, want ErrWorkspaceBusy", err)
+	}
+	var deferred deferredBusyError
+	if !errors.As(err, &deferred) {
+		t.Fatalf("err = %v, want deferredBusyError", err)
+	}
+	trigger, err := service.repo.TriggerByJob(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if trigger.Kind != TriggerAt || trigger.Status != TriggerArmed || trigger.NextRunAt == nil {
+		t.Fatalf("trigger = %#v", trigger)
+	}
+	delay := trigger.NextRunAt.Sub(before)
+	if delay < workspaceBusyRetry-time.Second || delay > workspaceBusyRetry+2*time.Second {
+		t.Fatalf("retry delay = %s, want ~%s", delay, workspaceBusyRetry)
+	}
+}
+
+func TestHandlerRunDefersWhenWorkspaceBusy(t *testing.T) {
+	service, projectID := newFunctionService(t)
+	job, err := service.CreateJob(CreateJobInput{ProjectID: projectID, WorkItemID: "task-1", ExecutorKind: "function", FunctionType: "core.noop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.SetDispatcher(func(context.Context, Job) error { return ErrWorkspaceBusy })
+	handler := NewHandler(service)
+	req := httptest.NewRequest(http.MethodPost, "/api/execution-jobs/"+job.ID+"/run", nil)
+	res := httptest.NewRecorder()
+	handler.Item(res, req)
+	if res.Code != http.StatusAccepted {
+		t.Fatalf("status = %d body=%s", res.Code, res.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["accepted"] != true || body["delayed"] != true || body["nextRunAt"] == nil {
+		t.Fatalf("body = %#v", body)
 	}
 }
 

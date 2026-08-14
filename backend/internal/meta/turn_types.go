@@ -44,6 +44,9 @@ type AgentTurn struct {
 	CompletedAt        *time.Time      `json:"completedAt,omitempty"`
 	CreatedAt          time.Time       `json:"createdAt"`
 	UpdatedAt          time.Time       `json:"updatedAt"`
+	// ChangeReport is the cached 本轮资产变化 for this Turn. It is not a
+	// column on agent_turns; HandleTurns attaches it from turn_change_reports.
+	ChangeReport *TurnChangeReport `json:"changeReport,omitempty"`
 }
 
 type AgentTurnTransition struct {

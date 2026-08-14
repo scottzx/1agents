@@ -31,7 +31,7 @@ func RegisterKernelLedger(r *Registry) error {
 		// workspace / project / task kernel (internal/meta)
 		"projects", "project_items", "task_deps", "replies", "milestones",
 		// execution & audit kernel (internal/meta)
-		"sessions", "agent_turns", "task_runs", "project_events",
+		"sessions", "agent_turns", "task_runs", "turn_change_reports", "project_events",
 		// WorkCase coordination object (internal/meta, schema v30)
 		"work_cases", "work_case_links",
 		// feature catalog (internal/meta)

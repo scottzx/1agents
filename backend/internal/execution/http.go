@@ -2,6 +2,7 @@ package execution
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 )
@@ -134,10 +135,19 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := h.service.RunNow(r.Context(), id); err != nil {
+			if errors.Is(err, ErrWorkspaceBusy) {
+				payload := map[string]any{"accepted": true, "delayed": true}
+				var deferred deferredBusyError
+				if errors.As(err, &deferred) {
+					payload["nextRunAt"] = deferred.next
+				}
+				writeJSON(w, http.StatusAccepted, payload)
+				return
+			}
 			writeError(w, http.StatusConflict, err)
 			return
 		}
-		writeJSON(w, http.StatusAccepted, map[string]bool{"accepted": true})
+		writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true})
 	default:
 		http.NotFound(w, r)
 	}

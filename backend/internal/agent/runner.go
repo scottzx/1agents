@@ -226,19 +226,12 @@ func (r *TaskRunner) execute(workspacePath, workspaceID string, task Task, runMe
 			}
 		case "tool_call":
 			bridge.resetTurnText()
-		case "done":
+		case "done", "turn_terminal":
+			if !isExecutionTurnDone(msg) {
+				continue
+			}
 			writeAgentReply(bridge, r.tasksStore, r.chatStore)
-			summary := msg.Summary
-			if summary == "" {
-				summary = "Execution completed."
-			}
-			// #50: a task configured for verification doesn't complete here — it
-			// hands off to pending_review, where the scheduler runs a headless
-			// verifier pass (r.Verify). Without a verifier it completes as before.
-			terminal := TaskStatusCompleted
-			if needsReview(&task) {
-				terminal = TaskStatusPendingReview
-			}
+			terminal, summary := executionResultFromTurnDone(msg, task)
 			r.finish(workspacePath, task.ID, sessionID, taskRunID, terminal, summary)
 			// Politely close the agent session so the runtime doesn't keep
 			// an idle process around for a finished scheduled task.
@@ -263,6 +256,50 @@ func (r *TaskRunner) execute(workspacePath, workspaceID string, task Task, runMe
 			return
 		}
 	}
+}
+
+func isExecutionTurnDone(msg WsMessage) bool {
+	switch msg.Event {
+	case "done":
+		return true
+	case "turn_terminal":
+		if msg.Status == "" {
+			return true
+		}
+		return terminalTurnStatus(meta.AgentTurnStatus(msg.Status))
+	default:
+		return false
+	}
+}
+
+func executionResultFromTurnDone(msg WsMessage, task Task) (TaskStatus, string) {
+	summary := firstNonEmpty(msg.Summary, msg.FinalAnswer, msg.StopReason, "Execution completed.")
+	status := TaskStatusCompleted
+	if msg.Event == "done" && msg.Stopped {
+		status = TaskStatusCancelled
+	}
+	if msg.Event == "turn_terminal" {
+		switch meta.AgentTurnStatus(msg.Status) {
+		case meta.AgentTurnFailed:
+			status = TaskStatusFailed
+			if errText := turnDoneErrorText(msg); errText != "" {
+				summary = errText
+			}
+		case meta.AgentTurnCancelled:
+			status = TaskStatusCancelled
+		}
+	}
+	if status == TaskStatusCompleted && needsReview(&task) {
+		status = TaskStatusPendingReview
+	}
+	return status, summary
+}
+
+func turnDoneErrorText(msg WsMessage) string {
+	if msg.Error != nil && msg.Error.Message != "" {
+		return msg.Error.Message
+	}
+	return firstNonEmpty(msg.Message, msg.ErrorText)
 }
 
 func buildTaskInstruction(task Task, workspaceID, workspacePath string) string {
@@ -557,7 +594,10 @@ func (r *TaskRunner) runVerifierPass(workspacePath, workspaceID string, task Tas
 					return
 				}
 			}
-		case "done":
+		case "done", "turn_terminal":
+			if !isExecutionTurnDone(msg) {
+				continue
+			}
 			// The verdict (via submit_review → applyReviewVerdict) was pooled. If
 			// this pass added nothing to the pool, the verifier ended without a
 			// verdict — record a synthetic rejection so the panel advances.

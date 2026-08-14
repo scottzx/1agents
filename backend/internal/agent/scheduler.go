@@ -130,7 +130,7 @@ func (s *Scheduler) RunExecutionJob(ctx context.Context, job execution.Job) erro
 		})
 	}
 	if !s.Lock.TryAcquire(task.WorkspacePath, task.ID) {
-		return fmt.Errorf("execution job %s: workspace already has a running job", job.ID)
+		return fmt.Errorf("execution job %s: %w", job.ID, execution.ErrWorkspaceBusy)
 	}
 	now := time.Now().UTC()
 	if err := s.tasksStore.Mutate(task.WorkspacePath, func(cfg *TasksConfig) bool {

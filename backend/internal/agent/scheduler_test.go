@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -566,6 +567,27 @@ func TestNextOccurrence(t *testing.T) {
 	iz := nextOccurrence(base, &Recurrence{Freq: "interval", EveryMinutes: 0})
 	if want := base.Add(time.Minute).UTC(); !iz.Equal(want) {
 		t.Fatalf("interval zero-guard: got %v, want %v", iz, want)
+	}
+}
+
+func TestRunExecutionJobReturnsWorkspaceBusy(t *testing.T) {
+	s, ref, store := newTestScheduler(t)
+	now := time.Now().UTC()
+	saveTasks(t, store, ref.Path, []Task{
+		srcReq(now),
+		withSource(Task{
+			ID: "task-1", Title: "Auto", Type: TaskTypeTask, Description: "do",
+			AcceptanceCriteria: "ok", Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now,
+		}),
+	})
+	if !s.Lock.TryAcquire(ref.Path, "other") {
+		t.Fatal("acquire lock")
+	}
+	err := s.RunExecutionJob(context.Background(), execution.Job{
+		ID: "job-1", WorkItemID: "task-1", ProjectID: ref.ID, ExecutorKind: "agent",
+	})
+	if !errors.Is(err, execution.ErrWorkspaceBusy) {
+		t.Fatalf("err = %v, want ErrWorkspaceBusy", err)
 	}
 }
 

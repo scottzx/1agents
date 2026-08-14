@@ -3,7 +3,9 @@ package execution
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -279,7 +281,8 @@ func (s *Service) DeleteTrigger(id string) error { return s.repo.DeleteTrigger(i
 
 // RunNow asks the registered Executor to start one immediate occurrence. The
 // executor owns the concrete TaskRun creation because it owns the actual
-// process/session lifecycle.
+// process/session lifecycle. If the workspace is already running a job,
+// RunNow arms a retry workspaceBusyRetry later and returns ErrWorkspaceBusy.
 func (s *Service) RunNow(ctx context.Context, id string) error {
 	job, err := s.GetJob(id)
 	if err != nil {
@@ -291,7 +294,48 @@ func (s *Service) RunNow(ctx context.Context, id string) error {
 	if s.dispatch == nil {
 		return errDispatchNotEnabled{}
 	}
-	return s.dispatch(ctx, job)
+	err = s.dispatch(ctx, job)
+	if !errors.Is(err, ErrWorkspaceBusy) {
+		return err
+	}
+	next, delayErr := s.deferBusyRun(job.ID)
+	if delayErr != nil {
+		return fmt.Errorf("execution: delay busy job %s: %w", job.ID, delayErr)
+	}
+	log.Printf("[execution] job %s workspace busy; retry at %s", job.ID, next.Format(time.RFC3339))
+	return deferredBusyError{next: next}
+}
+
+type deferredBusyError struct{ next time.Time }
+
+func (e deferredBusyError) Error() string {
+	return fmt.Sprintf("%s; retry at %s", ErrWorkspaceBusy.Error(), e.next.Format(time.RFC3339))
+}
+
+func (e deferredBusyError) Unwrap() error { return ErrWorkspaceBusy }
+
+func (s *Service) deferBusyRun(jobID string) (time.Time, error) {
+	next := time.Now().UTC().Add(workspaceBusyRetry)
+	existing, err := s.repo.TriggerByJob(jobID)
+	if err == nil {
+		if advErr := s.repo.AdvanceTrigger(existing.ID, TriggerArmed, &next); advErr != nil {
+			return time.Time{}, advErr
+		}
+		return next, nil
+	}
+	if !errors.Is(err, meta.ErrNotFound) {
+		return time.Time{}, err
+	}
+	spec, marshalErr := json.Marshal(map[string]string{"at": next.Format(time.RFC3339)})
+	if marshalErr != nil {
+		return time.Time{}, marshalErr
+	}
+	if _, upsertErr := s.UpsertTrigger(jobID, TriggerSpec{
+		Kind: TriggerAt, Spec: spec, NextRunAt: &next, MisfirePolicy: "run_once",
+	}); upsertErr != nil {
+		return time.Time{}, upsertErr
+	}
+	return next, nil
 }
 
 func (s *Service) ListRuns(id string) ([]meta.TaskRun, error) {

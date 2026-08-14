@@ -97,6 +97,10 @@ type ActiveBridge struct {
 	// this short bootstrap window; afterwards this in-memory state is
 	// authoritative. Headless paths without a bridge retain the DB fallback.
 	turnSyncReceived bool
+	// lastFinishedTurnID is the canonical Turn that just reached a terminal
+	// event. The next history_response for this session must recompute that
+	// Turn's 本轮资产变化 even if a current recipe_version row already exists.
+	lastFinishedTurnID string
 	// turnText accumulates the assistant's streamed output text for the
 	// current turn; reset on each tool call so that at `done` it holds the
 	// final assistant message (text after the last tool call).
@@ -687,6 +691,8 @@ func (c *AcpxClient) readFromServerLoop(bridge *ActiveBridge, scheduler *Schedul
 					log.Printf("[acpx_client] Deleted session %s from meta.db", targetSid)
 				}
 			}
+		} else if msg.Event == "history_response" {
+			c.ingestTurnChangeReports(bridge, raw)
 		} else if msg.Event == "text_delta" {
 			// Accumulate the assistant's streamed output for the issue
 			// timeline write-back ('thought' chunks are not part of the
@@ -721,6 +727,7 @@ func (c *AcpxClient) readFromServerLoop(bridge *ActiveBridge, scheduler *Schedul
 			log.Printf("[acpx_client] Turn terminal: session_id=%s turn_id=%s status=%s",
 				bridge.SessionID, msg.TurnID, msg.Status)
 			turnID := msg.TurnID
+			rememberFinishedTurn(bridge, turnID)
 			var explicit bool
 			raw, explicit = c.finishActiveTurn(bridge, msg, raw, tasksStore, chatStore)
 			if explicit {
@@ -743,6 +750,9 @@ func (c *AcpxClient) readFromServerLoop(bridge *ActiveBridge, scheduler *Schedul
 			}
 		} else if msg.Event == "done" {
 			log.Printf("[acpx_client] Turn done for session %s (stopped=%v). Intercepted summary: %s", bridge.SessionID, msg.Stopped, msg.Summary)
+			if turnID := activeBridgeTurnID(bridge); turnID != "" {
+				rememberFinishedTurn(bridge, turnID)
+			}
 			if activeBridgeTurnID(bridge) == "" {
 				writeAgentReply(bridge, tasksStore, chatStore)
 				c.handleTaskSessionDone(bridge.WorkspacePath, taskId, bridge.SessionID, "", msg.Summary, msg.Stopped, tasksStore)

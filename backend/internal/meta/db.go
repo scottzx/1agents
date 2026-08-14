@@ -105,7 +105,7 @@ func (db *DB) Close() error { return db.sql.Close() }
 // migrations without touching the global schemaVersion counter.
 func (db *DB) SQL() *sql.DB { return db.sql }
 
-const schemaVersion = 31
+const schemaVersion = 32
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -285,6 +285,14 @@ func (db *DB) migrateSchema() error {
 			return fmt.Errorf("meta: apply schema v30: %w", err)
 		}
 	}
+	// v32 adds turn_change_reports (Turn 本轮资产变化). DDL is reconciled by
+	// ensureTurnChangeReportSchema below. Open() does not backfill content —
+	// recipe_version, not user_version, decides whether a report is stale.
+	if version < 32 {
+		if _, err := db.sql.Exec(schemaV32); err != nil {
+			return fmt.Errorf("meta: apply schema v32: %w", err)
+		}
+	}
 	// Schema v9–v12 only add project_items columns, but the v9 branch collision
 	// between #47 (source, user_confirm) and #50 (verifier/review fields) left
 	// some DBs with user_version bumped to the latest while the other branch's
@@ -350,6 +358,9 @@ func (db *DB) migrateSchema() error {
 	// missing tables/indexes. Idempotent (CREATE IF NOT EXISTS).
 	if err := db.ensureWorkCaseSchema(); err != nil {
 		return fmt.Errorf("meta: reconcile work case schema: %w", err)
+	}
+	if err := db.ensureTurnChangeReportSchema(); err != nil {
+		return fmt.Errorf("meta: reconcile turn change report schema: %w", err)
 	}
 	// v28 (#290) adds the feature catalog tables and milestones.version.
 	// Reconcile unconditionally so databases whose user_version was advanced by
@@ -1021,6 +1032,12 @@ const schemaV29 = ``
 // intentionally empty — the DDL is reconciled by ensureWorkCaseSchema so a
 // database whose user_version was advanced on another branch also heals.
 const schemaV30 = ``
+
+// schemaV32 adds turn_change_reports. The const body is empty — DDL is
+// reconciled by ensureTurnChangeReportSchema so a database whose user_version
+// was advanced on another branch also heals. Content backfill is not part of
+// Open(); see TurnChangeRecipeVersion.
+const schemaV32 = ``
 
 func (db *DB) ensureFeatureCatalogSchema() error {
 	if _, err := db.sql.Exec(`

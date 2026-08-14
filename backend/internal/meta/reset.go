@@ -13,6 +13,7 @@ package meta
 var dataTables = []string{
 	"project_events",
 	"task_runs",
+	"turn_change_reports",
 	"agent_turns",
 	"feature_catalog_restore_requests",
 	"feature_catalog_versions",

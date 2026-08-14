@@ -3,6 +3,8 @@ package agent
 import (
 	"strings"
 	"testing"
+
+	"github.com/scottzx/1Agents/backend/internal/meta"
 )
 
 func TestBuildTaskInstructionAppendsProjectExecutorPrompt(t *testing.T) {
@@ -86,6 +88,59 @@ func TestBuildTaskInstructionAppendsFunctionContext(t *testing.T) {
 	plain := buildTaskInstruction(Task{ID: "task-uuid-4", Title: "摘要邮件", Description: "根据 function_context 写摘要"}, "ws-4", "/tmp/ws-four")
 	if strings.Contains(plain, "=== function_context ===") {
 		t.Fatalf("no-preamble instruction should stay unchanged: %q", plain)
+	}
+}
+
+func TestIsExecutionTurnDone(t *testing.T) {
+	if !isExecutionTurnDone(WsMessage{Event: "done"}) {
+		t.Fatal("done should finish the TaskRun")
+	}
+	if !isExecutionTurnDone(WsMessage{Event: "turn_terminal", Status: string(meta.AgentTurnCompleted)}) {
+		t.Fatal("turn_terminal completed should finish the TaskRun")
+	}
+	if !isExecutionTurnDone(WsMessage{Event: "turn_terminal"}) {
+		t.Fatal("turn_terminal with empty status should finish the TaskRun")
+	}
+	if isExecutionTurnDone(WsMessage{Event: "turn_terminal", Status: string(meta.AgentTurnRunning)}) {
+		t.Fatal("running turn_terminal must not finish the TaskRun")
+	}
+	if isExecutionTurnDone(WsMessage{Event: "text_delta"}) {
+		t.Fatal("text_delta must not finish the TaskRun")
+	}
+}
+
+func TestExecutionResultFromTurnTerminal(t *testing.T) {
+	task := Task{ID: "t1"}
+	status, summary := executionResultFromTurnDone(WsMessage{
+		Event:       "turn_terminal",
+		Status:      string(meta.AgentTurnCompleted),
+		FinalAnswer: "摘要完成",
+		StopReason:  "end_turn",
+	}, task)
+	if status != TaskStatusCompleted || summary != "摘要完成" {
+		t.Fatalf("completed = %s %q", status, summary)
+	}
+
+	status, summary = executionResultFromTurnDone(WsMessage{
+		Event:   "turn_terminal",
+		Status:  string(meta.AgentTurnFailed),
+		Message: "bridge died",
+	}, task)
+	if status != TaskStatusFailed || summary != "bridge died" {
+		t.Fatalf("failed = %s %q", status, summary)
+	}
+
+	status, _ = executionResultFromTurnDone(WsMessage{
+		Event:  "turn_terminal",
+		Status: string(meta.AgentTurnCancelled),
+	}, task)
+	if status != TaskStatusCancelled {
+		t.Fatalf("cancelled = %s", status)
+	}
+
+	status, _ = executionResultFromTurnDone(WsMessage{Event: "done", Stopped: true}, task)
+	if status != TaskStatusCancelled {
+		t.Fatalf("stopped done = %s", status)
 	}
 }
 

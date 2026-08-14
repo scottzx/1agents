@@ -63,6 +63,28 @@ func TestActivityAndTurnQueryAPIs(t *testing.T) {
 		t.Fatalf("turns status=%d page=%+v", rr.Code, turns)
 	}
 
+	if err := h.turnStore.ChangeReports().Upsert(meta.TurnChangeReport{
+		TurnID:        turn.ID,
+		RecipeVersion: meta.TurnChangeRecipeVersion,
+		AddedCount:    1,
+		Files:         []meta.TurnChangeFile{{Path: "a.ts", Op: meta.TurnChangeAdded, Tool: "Write"}},
+		Source:        meta.TurnChangeLive,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet,
+		"/api/agent/turns?workspace_id="+wsID+"&turn_id="+turn.ID, nil)
+	h.HandleTurns(rr, req)
+	var one meta.AgentTurnPage
+	if err := json.NewDecoder(rr.Body).Decode(&one); err != nil {
+		t.Fatal(err)
+	}
+	if rr.Code != http.StatusOK || len(one.Items) != 1 || one.Items[0].ChangeReport == nil ||
+		one.Items[0].ChangeReport.AddedCount != 1 || one.Items[0].ChangeReport.Files[0].Path != "a.ts" {
+		t.Fatalf("changeReport status=%d page=%+v", rr.Code, one)
+	}
+
 	for _, path := range []string{
 		"/api/agent/activity?workspace_id=" + wsID + "&cursor=invalid",
 		"/api/agent/turns?workspace_id=" + wsID + "&limit=0",

@@ -97,7 +97,8 @@ func (h *Handler) HandleTurns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sessionID := r.URL.Query().Get("session_id")
-	if err := h.validateActivityScope(wsID, projectID, sessionID, ""); err != nil {
+	turnID := r.URL.Query().Get("turn_id")
+	if err := h.validateActivityScope(wsID, projectID, sessionID, turnID); err != nil {
 		writeReadScopeError(w, err)
 		return
 	}
@@ -114,6 +115,21 @@ func (h *Handler) HandleTurns(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid Turn status", http.StatusBadRequest)
 		return
 	}
+	if turnID != "" {
+		turn, ok, err := h.turnStore.Get(turnID)
+		if err != nil {
+			writeReadScopeError(w, err)
+			return
+		}
+		if !ok || turn.ProjectID != projectID {
+			http.Error(w, "turn not found", http.StatusNotFound)
+			return
+		}
+		page := meta.AgentTurnPage{Items: []meta.AgentTurn{turn}}
+		h.attachChangeReports(&page)
+		writeJSON(w, page)
+		return
+	}
 	page, err := h.turnStore.List(meta.AgentTurnListOptions{
 		ProjectID: projectID,
 		SessionID: sessionID,
@@ -125,7 +141,32 @@ func (h *Handler) HandleTurns(w http.ResponseWriter, r *http.Request) {
 		writeReadScopeError(w, err)
 		return
 	}
+	h.attachChangeReports(&page)
 	writeJSON(w, page)
+}
+
+func (h *Handler) attachChangeReports(page *meta.AgentTurnPage) {
+	if h == nil || h.turnStore == nil || page == nil || len(page.Items) == 0 {
+		return
+	}
+	store := h.turnStore.ChangeReports()
+	if store == nil {
+		return
+	}
+	ids := make([]string, len(page.Items))
+	for i, turn := range page.Items {
+		ids[i] = turn.ID
+	}
+	reports, err := store.ListByTurnIDs(ids)
+	if err != nil {
+		return
+	}
+	for i := range page.Items {
+		if report, ok := reports[page.Items[i].ID]; ok {
+			copied := report
+			page.Items[i].ChangeReport = &copied
+		}
+	}
 }
 
 // HandleProjectActivity serves the aggregated ProjectActivityEntry projection.
