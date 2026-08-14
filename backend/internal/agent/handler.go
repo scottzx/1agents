@@ -206,25 +206,15 @@ func (h *Handler) HandleSessionsItem(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "session not found", http.StatusNotFound)
 			return
 		}
-		if rec.AcpSessionID != "" && !rec.UserNamed {
-			name := rec.Name
-			if name == "" || name == "聊天会话" || name == "新建会话" || strings.HasPrefix(name, "Chat") || strings.HasSuffix(name, "会话") {
-				titlePath := strings.TrimSpace(rec.Cwd)
-				if titlePath == "" {
-					if p, err := h.resolveWorkspacePath(rec.WorkspaceID); err == nil {
-						titlePath = p
-					}
-				}
-				if titlePath != "" {
-					if title := resolveAcpSessionTitle(titlePath, rec.AcpSessionID, name); title != "" && title != name {
-						rec.Name = title
-						go func(id, newName string) {
-							_ = h.store.UpdateName(id, newName)
-						}(rec.ID, title)
-					}
+		maybeSurfaceAutoTitle(h.store, &rec, func() string {
+			titlePath := strings.TrimSpace(rec.Cwd)
+			if titlePath == "" {
+				if p, err := h.resolveWorkspacePath(rec.WorkspaceID); err == nil {
+					return p
 				}
 			}
-		}
+			return titlePath
+		}())
 		writeJSON(w, rec)
 	case http.MethodPatch:
 		// PATCH body fields (all optional, at least one required for a useful call):
@@ -351,21 +341,11 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		// the user, even if the new name happens to match the default pattern
 		// (e.g. "我的项目会话" ends in "会话"). UpdateName sets user_named=1 so
 		// subsequent list calls leave the title alone.
-		if rec.AcpSessionID != "" && !rec.UserNamed {
-			name := rec.Name
-			if name == "" || name == "聊天会话" || name == "新建会话" || strings.HasPrefix(name, "Chat") || strings.HasSuffix(name, "会话") {
-				titlePath := wsPath
-				if rec.Cwd != "" {
-					titlePath = rec.Cwd
-				}
-				if title := resolveAcpSessionTitle(titlePath, rec.AcpSessionID, name); title != "" && title != name {
-					rec.Name = title
-					go func(id, newName string) {
-						_ = h.store.UpdateName(id, newName)
-					}(rec.ID, title)
-				}
-			}
+		titlePath := wsPath
+		if rec.Cwd != "" {
+			titlePath = rec.Cwd
 		}
+		maybeSurfaceAutoTitle(h.store, rec, titlePath)
 	}
 
 	writeJSON(w, recs)
@@ -2027,13 +2007,49 @@ func getProjectSlug(path string) string {
 	return sb.String()
 }
 
+// applyAcpAutoTitle is the main auto-title write: first turn_terminal/done
+// (and list/get as a fallback) persist an agent title only while the row is
+// still a default name and user_named=0.
+func applyAcpAutoTitle(store *Store, sessionID, workspacePath string) {
+	if store == nil || sessionID == "" {
+		return
+	}
+	rec, ok, err := store.Get(sessionID)
+	if err != nil || !ok || rec.AcpSessionID == "" {
+		return
+	}
+	titlePath := strings.TrimSpace(rec.Cwd)
+	if titlePath == "" {
+		titlePath = workspacePath
+	}
+	title := resolveAcpSessionTitle(titlePath, rec.AcpSessionID, rec.Name)
+	if _, err := store.ApplyAutoTitle(sessionID, title); err != nil {
+		log.Printf("[agent] ApplyAutoTitle(%s): %v", sessionID, err)
+	}
+}
+
+func maybeSurfaceAutoTitle(store *Store, rec *ChatSessionRecord, titlePath string) {
+	if rec.AcpSessionID == "" || rec.UserNamed || !meta.IsDefaultSessionName(rec.Name) {
+		return
+	}
+	title := resolveAcpSessionTitle(titlePath, rec.AcpSessionID, rec.Name)
+	if title == "" || title == rec.Name {
+		return
+	}
+	rec.Name = title
+	go func(id, newName string) {
+		_, _ = store.ApplyAutoTitle(id, newName)
+	}(rec.ID, title)
+}
+
 // resolveAcpSessionTitle resolves a human-readable session title for sidebar
 // display when the chat record still has a default name. Order:
 //  1. Claude Code: ~/.claude/projects/<slug>/<id>.jsonl (aiTitle, then slug)
 //  2. Grok Build:  ~/.grok/sessions/<url-encoded-cwd>/<id>/summary.json
 //     (generated_title, then session_summary)
+//  3. Cursor ACP:  ~/.cursor/acp-sessions/<id>/meta.json (title)
 //
-// Falls back to defaultName when neither source has a title yet.
+// Falls back to defaultName when no source has a title yet.
 func resolveAcpSessionTitle(workspacePath, acpSessionID, defaultName string) string {
 	if acpSessionID == "" {
 		return defaultName
@@ -2042,6 +2058,9 @@ func resolveAcpSessionTitle(workspacePath, acpSessionID, defaultName string) str
 		return title
 	}
 	if title, err := meta.ResolveGrokSessionTitle(workspacePath, acpSessionID); err == nil && title != "" {
+		return title
+	}
+	if title, err := meta.ResolveCursorSessionTitle(acpSessionID); err == nil && title != "" {
 		return title
 	}
 	return defaultName

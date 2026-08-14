@@ -728,6 +728,7 @@ func (c *AcpxClient) readFromServerLoop(bridge *ActiveBridge, scheduler *Schedul
 				bridge.SessionID, msg.TurnID, msg.Status)
 			turnID := msg.TurnID
 			rememberFinishedTurn(bridge, turnID)
+			go applyAcpAutoTitle(chatStore, bridge.SessionID, bridge.WorkspacePath)
 			var explicit bool
 			raw, explicit = c.finishActiveTurn(bridge, msg, raw, tasksStore, chatStore)
 			if explicit {
@@ -750,6 +751,7 @@ func (c *AcpxClient) readFromServerLoop(bridge *ActiveBridge, scheduler *Schedul
 			}
 		} else if msg.Event == "done" {
 			log.Printf("[acpx_client] Turn done for session %s (stopped=%v). Intercepted summary: %s", bridge.SessionID, msg.Stopped, msg.Summary)
+			go applyAcpAutoTitle(chatStore, bridge.SessionID, bridge.WorkspacePath)
 			if turnID := activeBridgeTurnID(bridge); turnID != "" {
 				rememberFinishedTurn(bridge, turnID)
 			}

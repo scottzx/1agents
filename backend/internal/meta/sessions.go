@@ -143,6 +143,33 @@ func (s *SessionStore) UpdateName(id, name string) error {
 	return s.execOne(`UPDATE sessions SET name = ?, user_named = 1 WHERE id = ?`, name, id)
 }
 
+// ApplyAutoTitle writes an agent-generated title onto a session the user has
+// not named. It updates name only when user_named=0 and the current name is
+// still a default placeholder. It does not flip user_named.
+func (s *SessionStore) ApplyAutoTitle(id, title string) (bool, error) {
+	title = strings.TrimSpace(title)
+	if id == "" || title == "" {
+		return false, nil
+	}
+	rec, ok, err := s.Get(id)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return false, ErrNotFound
+	}
+	if rec.UserNamed || !isDefaultSessionName(rec.Name) || rec.Name == title {
+		return false, nil
+	}
+	if err := s.execOne(`UPDATE sessions SET name = ? WHERE id = ? AND user_named = 0`, title, id); err != nil {
+		if err == ErrNotFound {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 // ClearUserNamed resets the user_named flag for a session, allowing the next
 // list/get to overwrite the title with an AI-resolved default. Not currently
 // exposed via HTTP (no reset-to-AI-title endpoint yet); reserved for future
@@ -178,8 +205,8 @@ func (s *SessionStore) UpdateProfile(id, profileID string, revision int) error {
 // (and find its native storage, e.g. Claude Code's <uuid>.jsonl or
 // Grok's ~/.grok/sessions/.../summary.json).
 // It also tries to resolve a descriptive session title from Claude's
-// sessions index, then Grok's generated_title, when the session still has
-// a default or empty name.
+// sessions index, then Grok's generated_title, then Cursor's meta.json,
+// when the session still has a default or empty name.
 func (s *SessionStore) UpdateACP(id, acpSessionID string) error {
 	if acpSessionID == "" {
 		return nil
@@ -204,6 +231,8 @@ func (s *SessionStore) UpdateACP(id, acpSessionID string) error {
 			// Walk-only: UpdateACP has no workspace path; Grok layout is
 			// ~/.grok/sessions/<encoded-cwd>/<id>/summary.json.
 			newName = title
+		} else if title, err := ResolveCursorSessionTitle(acpSessionID); err == nil && title != "" {
+			newName = title
 		}
 	}
 	if newAcp == rec.AcpSessionID && newName == rec.Name {
@@ -221,6 +250,12 @@ func (s *SessionStore) DeleteACP(id string) error {
 // UpdateAuthStatus is a stub method since auth status is only kept in memory on backend.
 func (s *SessionStore) UpdateAuthStatus(id string, status string) error {
 	return nil
+}
+
+// IsDefaultSessionName reports whether name is still a placeholder the
+// auto-title path may replace (empty, "新建会话", "Chat…", or "…会话").
+func IsDefaultSessionName(name string) bool {
+	return isDefaultSessionName(name)
 }
 
 func isDefaultSessionName(name string) bool {

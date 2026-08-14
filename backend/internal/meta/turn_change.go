@@ -12,7 +12,7 @@ import (
 // TurnChangeRecipeVersion is the independent invalidation key for 本轮资产变化.
 // Bump only when the aggregation rules change (how tool_use becomes file ops).
 // Global PRAGMA user_version must not be used as a recompute signal.
-const TurnChangeRecipeVersion = 2
+const TurnChangeRecipeVersion = 3
 
 type TurnChangeOp string
 
@@ -181,8 +181,8 @@ func (s *TurnChangeStore) Upsert(report TurnChangeReport) error {
 	return err
 }
 
-// ResolveTurnID maps a history item turnId (canonical id, clientRequestId, or
-// runtimeRequestId) onto agent_turns.id for the given session.
+// ResolveTurnID maps a history item turnId (canonical id, clientRequestId,
+// runtimeRequestId, or promptMessageId) onto agent_turns.id for the given session.
 func (s *TurnChangeStore) ResolveTurnID(sessionID, historyTurnID string) (string, bool, error) {
 	if s == nil || sessionID == "" || historyTurnID == "" {
 		return "", false, nil
@@ -190,8 +190,10 @@ func (s *TurnChangeStore) ResolveTurnID(sessionID, historyTurnID string) (string
 	var id string
 	err := s.db.sql.QueryRow(`
 		SELECT id FROM agent_turns
-		WHERE session_id = ? AND (id = ? OR client_request_id = ? OR runtime_request_id = ?)
-		LIMIT 1`, sessionID, historyTurnID, historyTurnID, historyTurnID).Scan(&id)
+		WHERE session_id = ? AND (
+			id = ? OR client_request_id = ? OR runtime_request_id = ? OR prompt_message_id = ?
+		)
+		LIMIT 1`, sessionID, historyTurnID, historyTurnID, historyTurnID, historyTurnID).Scan(&id)
 	if err == sql.ErrNoRows {
 		return "", false, nil
 	}
@@ -228,6 +230,7 @@ func scanTurnChangeReport(row rowScanner) (TurnChangeReport, error) {
 type HistoryChangeItem struct {
 	Kind       string          `json:"kind"`
 	ToolName   string          `json:"toolName"`
+	ToolKind   string          `json:"toolKind,omitempty"`
 	Input      json.RawMessage `json:"input"`
 	ToolCallID string          `json:"toolCallId"`
 	TurnID     string          `json:"turnId"`
@@ -283,6 +286,9 @@ func CountTurnChangeOps(files []TurnChangeFile) (added, deleted, modified int) {
 
 func filesFromTool(item HistoryChangeItem) []TurnChangeFile {
 	kind := classifyToolKind(item.ToolName)
+	if kind == "ignore" || kind == "" {
+		kind = classifyToolKind(item.ToolKind)
+	}
 	input := parseToolInput(item.Input)
 	switch kind {
 	case "ignore", "":
@@ -312,14 +318,10 @@ func filesFromTool(item HistoryChangeItem) []TurnChangeFile {
 
 func filesFromExecute(item HistoryChangeItem, input map[string]any) []TurnChangeFile {
 	cmd := firstString(input, "command", "cmd", "script")
-	if looksLikeDeleteCommand(cmd) {
-		return stampFiles(pathsFromDeleteCommand(cmd), TurnChangeDeleted, item)
+	if !looksLikeDeleteCommand(cmd) {
+		return nil
 	}
-	paths := pathsFromInput(input)
-	if len(paths) == 0 {
-		paths = pathTokensFromCommand(cmd)
-	}
-	return stampFiles(paths, TurnChangeModified, item)
+	return stampFiles(pathsFromDeleteCommand(cmd), TurnChangeDeleted, item)
 }
 
 var deleteCommandRe = regexp.MustCompile(`(?i)(?:^|[;&|\n])\s*(?:sudo\s+)?(?:rm|unlink|rmdir)\b`)
@@ -351,18 +353,6 @@ func pathsFromDeleteCommand(cmd string) []string {
 		if looksLikePathToken(tok) {
 			paths = append(paths, tok)
 		}
-	}
-	return uniqueNonEmptyPaths(paths)
-}
-
-func pathTokensFromCommand(cmd string) []string {
-	var paths []string
-	for _, raw := range strings.Fields(cmd) {
-		tok := strings.Trim(raw, `"'`)
-		if strings.HasPrefix(tok, "-") || !looksLikePathToken(tok) {
-			continue
-		}
-		paths = append(paths, tok)
 	}
 	return uniqueNonEmptyPaths(paths)
 }
@@ -400,7 +390,19 @@ var (
 )
 
 func classifyToolKind(toolName string) string {
-	n := strings.ToLower(toolName)
+	n := strings.ToLower(strings.TrimSpace(toolName))
+	switch n {
+	case "edit":
+		return "edit"
+	case "delete":
+		return "delete"
+	case "move":
+		return "move"
+	case "execute":
+		return "execute"
+	case "read", "search", "think", "fetch", "other":
+		return "ignore"
+	}
 	switch {
 	case toolKindEdit.MatchString(n):
 		return "edit"

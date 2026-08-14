@@ -230,6 +230,7 @@ func (r *TaskRunner) execute(workspacePath, workspaceID string, task Task, runMe
 			if !isExecutionTurnDone(msg) {
 				continue
 			}
+			applyAcpAutoTitle(r.chatStore, sessionID, workspacePath)
 			writeAgentReply(bridge, r.tasksStore, r.chatStore)
 			terminal, summary := executionResultFromTurnDone(msg, task)
 			r.finish(workspacePath, task.ID, sessionID, taskRunID, terminal, summary)
@@ -598,6 +599,7 @@ func (r *TaskRunner) runVerifierPass(workspacePath, workspaceID string, task Tas
 			if !isExecutionTurnDone(msg) {
 				continue
 			}
+			applyAcpAutoTitle(r.chatStore, sessionID, workspacePath)
 			// The verdict (via submit_review → applyReviewVerdict) was pooled. If
 			// this pass added nothing to the pool, the verifier ended without a
 			// verdict — record a synthetic rejection so the panel advances.

@@ -92,12 +92,13 @@ func TestTurnChangeStoreUpsertAndResolve(t *testing.T) {
 	if _, err := turns.Transition(created.ID, AgentTurnTransition{
 		Status:           AgentTurnRunning,
 		RuntimeRequestID: "runtime-1",
+		PromptMessageID:  "user-msg-1",
 	}); err != nil {
 		t.Fatal(err)
 	}
 
 	store := NewTurnChangeStore(db)
-	for _, key := range []string{created.ID, "req-1", "runtime-1"} {
+	for _, key := range []string{created.ID, "req-1", "runtime-1", "user-msg-1"} {
 		id, ok, err := store.ResolveTurnID("s1", key)
 		if err != nil || !ok || id != created.ID {
 			t.Fatalf("ResolveTurnID(%q)=%s ok=%v err=%v want %s", key, id, ok, err, created.ID)
@@ -179,6 +180,27 @@ func TestAggregateTurnChangesRecipeV1(t *testing.T) {
 	added, deleted, modified := CountTurnChangeOps(files)
 	if added != 1 || deleted != 1 || modified != 1 {
 		t.Fatalf("counts added=%d deleted=%d modified=%d files=%v", added, deleted, modified, files)
+	}
+}
+
+func TestAggregateTurnChangesCursorEditFileTitle(t *testing.T) {
+	items := []HistoryChangeItem{
+		{Kind: "tool_use", TurnID: "turn-c", ToolName: "Edit File", ToolKind: "edit", ToolCallID: "c1", Input: json.RawMessage(`{"path":"src/app.ts"}`)},
+	}
+	got := AggregateTurnChanges(items)
+	files := got["turn-c"]
+	if len(files) != 1 || files[0].Path != "src/app.ts" || files[0].Op != TurnChangeModified {
+		t.Fatalf("cursor edit: %+v", files)
+	}
+}
+
+func TestAggregateTurnChangesIgnoresDeployBash(t *testing.T) {
+	items := []HistoryChangeItem{
+		{Kind: "tool_use", TurnID: "turn-d", ToolName: "Bash", ToolCallID: "c1", Input: json.RawMessage(`{"command":"cd /opt/deploy && make -C frontend && rsync -a dist/ /var/www/app"}`)},
+	}
+	got := AggregateTurnChanges(items)
+	if len(got["turn-d"]) != 0 {
+		t.Fatalf("deploy bash must not count as file changes: %v", got["turn-d"])
 	}
 }
 
