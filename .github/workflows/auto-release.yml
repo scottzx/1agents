@@ -269,10 +269,19 @@ jobs:
         run: |
           cargo build \
             --manifest-path modules/HarnessKit/Cargo.toml \
+            --target-dir modules/HarnessKit/target \
             --release \
             --target ${{ matrix.rust_target }} \
             -p hk-cli
-          cp modules/HarnessKit/target/${{ matrix.rust_target }}/release/hk build/hk
+          if [ -f "modules/HarnessKit/target/${{ matrix.rust_target }}/release/hk" ]; then
+            cp "modules/HarnessKit/target/${{ matrix.rust_target }}/release/hk" build/hk
+          elif [ -f "target/${{ matrix.rust_target }}/release/hk" ]; then
+            cp "target/${{ matrix.rust_target }}/release/hk" build/hk
+          elif [ -f "modules/HarnessKit/target/release/hk" ]; then
+            cp "modules/HarnessKit/target/release/hk" build/hk
+          else
+            cp target/release/hk build/hk
+          fi
 
       # cloudflared is optional: tunnel supervisor downloads it on demand
       # (PATH → ~/.1agents/bin → GitHub releases). Not shipped in the archive.
@@ -436,9 +445,14 @@ jobs:
         run: |
           cargo build \
             --manifest-path modules/HarnessKit/Cargo.toml \
+            --target-dir modules/HarnessKit/target \
             --release \
             -p hk-cli
-          cp modules/HarnessKit/target/release/hk build-ttyd/hk
+          if [ -f "modules/HarnessKit/target/release/hk" ]; then
+            cp modules/HarnessKit/target/release/hk build-ttyd/hk
+          else
+            cp target/release/hk build-ttyd/hk
+          fi
 
       - name: Build happy bundle
         run: ./scripts/build-happy-bundle.sh "$PWD/build-ttyd"
@@ -637,12 +651,21 @@ jobs:
         run: |
           cargo build \
             --manifest-path modules/HarnessKit/Cargo.toml \
+            --target-dir modules/HarnessKit/target \
             --release \
             -p hk-cli
           if [ "${{ matrix.os_name }}" = "windows" ]; then
-            cp modules/HarnessKit/target/release/hk.exe build/hk.exe
+            if [ -f "modules/HarnessKit/target/release/hk.exe" ]; then
+              cp modules/HarnessKit/target/release/hk.exe build/hk.exe
+            else
+              cp target/release/hk.exe build/hk.exe
+            fi
           else
-            cp modules/HarnessKit/target/release/hk build/hk
+            if [ -f "modules/HarnessKit/target/release/hk" ]; then
+              cp modules/HarnessKit/target/release/hk build/hk
+            else
+              cp target/release/hk build/hk
+            fi
           fi
 
       - name: Build happy bundle

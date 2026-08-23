@@ -34,3 +34,6 @@
 [submodule "modules/deepseek-harness"]
 	path = modules/deepseek-harness
 	url = https://github.com/deepseek-ai/deepseek-harness.git
+[submodule "modules/myContext"]
+	path = modules/myContext
+	url = https://github.com/scottzx/myContext.git
