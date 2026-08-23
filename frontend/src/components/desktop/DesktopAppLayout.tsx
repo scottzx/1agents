@@ -17,6 +17,8 @@ import * as sess from '../../stores/sessionStore';
 import * as modal from '../../stores/modalStore';
 import * as tabsStore from '../../stores/tabsStore';
 import * as stage from '../../stores/stageStore';
+import { chromeMode } from '../../stores/chromeModeStore';
+import { ChatModeShell } from '../chatmode/ChatModeShell';
 import { globalBridgeManager } from '../chat/hooks';
 import { paneWorkspaceIdFor, paneWorkspacePathFor } from '../../utils/oneshot';
 
@@ -42,6 +44,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
             void sess.activeSession.value;
             void sess.terminalWindows.value;
             void wsStore.folders.value;
+            void chromeMode.value;
             this.forceUpdate();
         });
     }
@@ -104,6 +107,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
         const showRightPane = hasContent || sidePaneActive;
         // Browser/preview can open from project-overview; still show workbench split.
         const workbenchVisible = isFocusOrSplit || sidePaneActive || activeDrawerTab === 'browser';
+        const isChatMode = chromeMode.value === 'chat';
         // Left column flex: hidden when railed, split-share otherwise.
         const chatPaneStyle =
             collapsed === 'chat'
@@ -137,7 +141,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                     style="display: flex; flex: 1; flex-direction: row; overflow: hidden; width: 100%;"
                 >
                     {/* [COLUMN 1]: LEFT Workspaces Tree Sidebar */}
-                    {isShell && (
+                    {isShell && !isChatMode && (
                         <Fragment>
                             <LeftSidebar
                                 folders={folders}
@@ -213,7 +217,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                           a fixed breadcrumb instead of session context and hides
                           the workbench column controls.
                         */}
-                        {isShell && !isNewChat && (
+                        {isShell && (!isNewChat || isChatMode) && (
                             <WorkspaceHeader
                                 leftSidebarOpen={leftSidebarOpen}
                                 toggleLeftSidebar={ui.toggleLeftSidebar}
@@ -279,19 +283,25 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                             ]
                                           : undefined
                                 }
-                                showControls={isFocusOrSplit}
+                                showControls={isFocusOrSplit && !isChatMode}
                             />
                         )}
 
+                        {isShell && isChatMode && <ChatModeShell language={language} />}
+
                         {/* [项目总览]: the 项目 card wall (empty drill stack). */}
-                        {isShell && mode === 'project-overview' && !sidePaneActive && activeDrawerTab !== 'browser' && (
-                            <ProjectHome />
-                        )}
+                        {isShell &&
+                            !isChatMode &&
+                            mode === 'project-overview' &&
+                            !sidePaneActive &&
+                            activeDrawerTab !== 'browser' && <ProjectHome />}
 
                         {/* [项目详情]: a drilled-in project's detail page. */}
-                        {isShell && mode === 'project' && !sidePaneActive && activeDrawerTab !== 'browser' && (
-                            <ProjectDetailShell app={app} />
-                        )}
+                        {isShell &&
+                            !isChatMode &&
+                            mode === 'project' &&
+                            !sidePaneActive &&
+                            activeDrawerTab !== 'browser' && <ProjectDetailShell app={app} />}
 
                         {/*
                           [WORKBENCH BODY]: the unified two-column shell —
@@ -302,7 +312,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                           discovery/settings) take over as a single full-width
                           pane instead.
                         */}
-                        {isShell && workbenchVisible && (
+                        {isShell && !isChatMode && workbenchVisible && (
                             <div
                                 class={`workspace-body-container ${activeDrawerTab !== 'none' && !isFullPageTab(activeDrawerTab) ? 'drawer-open' : ''}`}
                             >

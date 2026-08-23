@@ -18,6 +18,7 @@
     "build": "NODE_ENV=production webpack && gulp",
     "inline": "NODE_ENV=production webpack && gulp inline",
     "test:roundtable": "node --import tsx --test src/components/roundtable/*.test.ts",
+    "test:chrome-mode": "node --import tsx --test src/stores/chromeMode.test.ts src/stores/agentChatRoom.test.ts src/stores/agentChatBridge.test.ts",
     "check": "gts check",
     "fix": "gts fix"
   },

@@ -2,6 +2,8 @@ import { h, Component, Fragment } from 'preact';
 import { effect } from '@preact/signals';
 
 import { WorkspaceHeader } from '../header/WorkspaceHeader';
+import { ModeSwitcher } from '../header/ModeSwitcher';
+import { ChatModeShell } from '../chatmode/ChatModeShell';
 import { isChat, type Session } from '../types';
 import { NewChatHome } from '../chat/NewChatHome';
 import { AgentAvatar } from '../chat/AgentAvatar';
@@ -22,6 +24,7 @@ import * as sess from '../../stores/sessionStore';
 import * as modal from '../../stores/modalStore';
 import * as tabsStore from '../../stores/tabsStore';
 import * as stage from '../../stores/stageStore';
+import { chromeMode } from '../../stores/chromeModeStore';
 import { activeL1PageId } from '../../stores/appManifestStore';
 import { globalBridgeManager } from '../chat/hooks';
 import { SETTINGS_STATIC_MANIFEST, type SettingsCategory } from '../../modules/settings-manifest';
@@ -222,6 +225,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
     private _prevActiveTabId = tabsStore.activeTabId.value;
     private _disposeTabSync: (() => void) | null = null;
     private _disposeDeepLink: (() => void) | null = null;
+    private _disposeChrome: (() => void) | null = null;
 
     // Swipe-to-archive state (class-level, no re-renders during active drag)
     private _swipeEl: HTMLElement | null = null;
@@ -235,6 +239,11 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
     private _didSwipe = false;
 
     componentDidMount() {
+        this._disposeChrome = effect(() => {
+            void chromeMode.value;
+            this.forceUpdate();
+        });
+
         this._disposeTabSync = effect(() => {
             const id = tabsStore.activeTabId.value;
             if (id !== this._prevActiveTabId) {
@@ -276,6 +285,10 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
         if (this._disposeDeepLink) {
             this._disposeDeepLink();
             this._disposeDeepLink = null;
+        }
+        if (this._disposeChrome) {
+            this._disposeChrome();
+            this._disposeChrome = null;
         }
     }
 
@@ -402,6 +415,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
         const tmuxMouseOn = sess.tmuxMouseOn.value;
         const selectedFsEntry = fs.selectedFsEntry.value;
         const language = ui.language.value;
+        const isChatMode = chromeMode.value === 'chat';
         const theme = ui.theme.value;
         const keyboardVisible = ui.keyboardVisible.value;
         const viewportHeight = ui.viewportHeight.value;
@@ -450,6 +464,19 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                         >
                             <L1AppPage mountId={l1MountId} />
                         </div>
+                    </div>
+                </div>
+            );
+        }
+
+        if (isChatMode) {
+            return (
+                <div class="mobile-app-layout" style={viewportStyle} data-chrome-mode="chat">
+                    <div class="mobile-viewport" style="display:flex;flex-direction:column;min-height:0;flex:1;">
+                        <div class="mobile-subview-header">
+                            <ModeSwitcher language={language} />
+                        </div>
+                        <ChatModeShell language={language} />
                     </div>
                 </div>
             );
@@ -527,6 +554,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                 <div class="mobile-tab-content">
                                     <div class="mobile-menu-view scrollable">
                                         <div class="mobile-menu-header">
+                                            <ModeSwitcher language={language} />
                                             <h2>{t('mobile.home.title', language) || '对话'}</h2>
                                             <p>{t('mobile.home.desc', language) || '继续已有会话，或新建一个'}</p>
                                         </div>

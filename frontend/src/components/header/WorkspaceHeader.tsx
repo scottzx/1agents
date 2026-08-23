@@ -13,6 +13,11 @@ import * as taskNav from '../../stores/taskNavStore';
 import { activeWorkspaceDeviceId, activeWorkspaceId, remoteDevices, workspaces } from '../../stores/workspaceStore';
 import * as shellStore from '../../stores/productShellStore';
 import { ShellIcon } from '../settings/ProductShellPanel';
+import { ModeSwitcher } from './ModeSwitcher';
+import { ShellSwitcher } from './ShellSwitcher';
+import { chromeMode } from '../../stores/chromeModeStore';
+import { pickWorkbenchSurface } from '../../stores/chromeModeActions';
+import { buildWorkbenchMenu, resolveActiveMenuId } from '../../stores/chromeMode';
 
 interface WorkspaceHeaderProps {
     leftSidebarOpen: boolean;
@@ -269,10 +274,12 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
     const sessionActive = activeDrawerTab === 'none';
     const sidePanelOpen = tabsStore.sidePanelOpen.value;
 
-    // Product Shells (#328): enabled shells + the active one, for the mobile
-    // menu drawer's switch section (desktop uses the header <ShellSwitcher />).
+    // Product Shells (#328) + 聊天: one chrome menu for the mobile drawer.
+    // Desktop keeps ModeSwitcher (工作台/聊天) separate from ShellSwitcher.
     const shellList = shellStore.enabledShells.value;
     const activeShellId = shellStore.activeShellId.value;
+    const chromeMenu = buildWorkbenchMenu(shellList.map(s => ({ id: s.id, name: s.name })));
+    const activeChromeMenuId = resolveActiveMenuId(chromeMode.value, activeShellId, chromeMenu);
 
     // Entity context (breadcrumb L3): when the active workspace is an assistant
     // OR a project, the session view's header shows the full 助理/项目 › <name> ›
@@ -340,6 +347,8 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
         <Fragment>
             <header class="workspace-header">
                 <div class="header-left">
+                    {(!leftSidebarOpen || chromeMode.value === 'chat') && <ModeSwitcher language={language} />}
+                    {chromeMode.value !== 'chat' && <ShellSwitcher language={language} />}
                     {effectiveBack ? (
                         <button
                             type="button"
@@ -662,25 +671,38 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     )}
                 </button>
 
-                {/* Product Shells (#328): switch the active product shell. */}
-                {shellList.length > 0 && (
+                {/* Product shells + 聊天 (one chrome menu). */}
+                {chromeMenu.some(i => i.kind === 'shell') && (
                     <div class="mobile-menu-section-title">{t('settings.nav.shells', language)}</div>
                 )}
-                {shellList.map(s => (
+                {chromeMenu.map(item => (
                     <button
-                        key={s.id}
-                        id={`mob-menu-shell-${s.id}`}
-                        class={`mobile-menu-item ${activeShellId === s.id ? 'active' : ''}`}
+                        key={`${item.kind}:${item.id}`}
+                        id={item.kind === 'chat' ? 'mob-menu-shell-chat' : `mob-menu-shell-${item.id}`}
+                        class={`mobile-menu-item ${activeChromeMenuId === item.id ? 'active' : ''}`}
                         onClick={() => {
                             closeMobileMenu();
-                            if (activeShellId !== s.id) stage.switchShell(s.id);
+                            pickWorkbenchSurface({ id: item.id, kind: item.kind });
                         }}
                     >
                         <span class="mob-menu-icon">
-                            <ShellIcon id={s.id} />
+                            {item.kind === 'chat' ? (
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                                </svg>
+                            ) : (
+                                <ShellIcon id={item.id} />
+                            )}
                         </span>
-                        <span class="mob-menu-label">{s.name}</span>
-                        {activeShellId === s.id && (
+                        <span class="mob-menu-label">{item.name}</span>
+                        {activeChromeMenuId === item.id && (
                             <span class="mob-menu-badge">{t('header.mobile.current', language)}</span>
                         )}
                     </button>
