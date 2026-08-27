@@ -3,6 +3,7 @@ package supervisor
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -17,6 +18,7 @@ import (
 type AcpxSupervisor struct {
 	cfg          *config.Config
 	cmd          *exec.Cmd
+	stdin        io.WriteCloser
 	mu           sync.Mutex
 	restartCount int
 	done         chan struct{}
@@ -135,13 +137,22 @@ func (s *AcpxSupervisor) startProcess(ctx context.Context, bridge acpBridge) err
 	cmd.Stderr = os.Stderr
 
 	stdin, err := cmd.StdinPipe()
-	if err == nil {
-		defer stdin.Close()
-	}
 
 	s.mu.Lock()
 	s.cmd = cmd
+	s.stdin = stdin
 	s.mu.Unlock()
+
+	if stdin != nil {
+		defer func() {
+			s.mu.Lock()
+			if s.stdin != nil {
+				_ = s.stdin.Close()
+				s.stdin = nil
+			}
+			s.mu.Unlock()
+		}()
+	}
 
 	log.Printf("[acpx-sup] exec: %s", label)
 	err = cmd.Run()
@@ -280,6 +291,12 @@ func fileExists(p string) bool {
 func (s *AcpxSupervisor) stopProcess() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	if s.stdin != nil {
+		log.Println("[acpx-sup] Closing stdin to acpx-server...")
+		_ = s.stdin.Close()
+		s.stdin = nil
+	}
 
 	if s.cmd != nil && s.cmd.Process != nil {
 		log.Println("[acpx-sup] Sending SIGINT to acpx-server...")

@@ -1118,6 +1118,14 @@ async function flushSessionHistoryPush(sessionId, state) {
 // ----------------------------------------------------
 const wss = new WebSocketServer({ host: "127.0.0.1", port: PORT });
 
+wss.on("error", (err) => {
+  console.error("[acpx-server] WebSocketServer error:", err);
+  if (err?.code === "EADDRINUSE") {
+    console.error(`[acpx-server] Port ${PORT} already in use. Exiting immediately.`);
+    process.exit(1);
+  }
+});
+
 wss.on("connection", (ws) => {
   console.log("[acpx-server] Go backend client connected.");
 
@@ -3246,35 +3254,63 @@ async function killAllManagedAgents() {
   agentSessionToClientSession.clear();
 }
 
+let isShuttingDown = false;
+async function gracefulExit(source) {
+  if (isShuttingDown) {
+    return;
+  }
+  isShuttingDown = true;
+
+  // 1. Immediately pause and destroy stdin to prevent libuv busy polling on EOF
+  try {
+    process.stdin.pause();
+    process.stdin.destroy();
+  } catch {}
+
+  // 2. Failsafe timeout: force exit after 3 seconds even if cleanup hangs
+  const forceExitTimer = setTimeout(() => {
+    console.error(`[acpx-server] Shutdown timed out (3s, source: ${source}). Force exiting...`);
+    process.exit(0);
+  }, 3000);
+  forceExitTimer.unref();
+
+  try {
+    await killAllManagedAgents();
+  } catch (err) {
+    console.error("[acpx-server] Error during agent cleanup:", err);
+  } finally {
+    process.exit(0);
+  }
+}
+
 // 1. Parent process stdin close check (Double protection)
 process.stdin.resume();
-process.stdin.on("end", async () => {
+process.stdin.on("end", () => {
   console.error("[acpx-server] Parent process standard input closed. Shutting down...");
-  await killAllManagedAgents();
-  process.exit(0);
+  void gracefulExit("stdin-end");
 });
 
-process.stdin.on("close", async () => {
+process.stdin.on("close", () => {
   console.error("[acpx-server] Parent process standard input closed. Shutting down...");
-  await killAllManagedAgents();
-  process.exit(0);
+  void gracefulExit("stdin-close");
 });
 
 // 2. Process termination signal handlers
-process.on("SIGINT", async () => {
+process.on("SIGINT", () => {
   console.log("[acpx-server] Received SIGINT. Terminating...");
-  await killAllManagedAgents();
-  process.exit(0);
+  void gracefulExit("SIGINT");
 });
 
-process.on("SIGTERM", async () => {
+process.on("SIGTERM", () => {
   console.log("[acpx-server] Received SIGTERM. Terminating...");
-  await killAllManagedAgents();
-  process.exit(0);
+  void gracefulExit("SIGTERM");
 });
 
 process.on("uncaughtException", (err) => {
   console.error("[acpx-server] Uncaught Exception:", err);
+  if (err?.code === "EADDRINUSE") {
+    process.exit(1);
+  }
 });
 
 process.on("unhandledRejection", (reason, promise) => {
