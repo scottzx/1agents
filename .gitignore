@@ -66,6 +66,9 @@ modules/ttyd/src/html.h
 # Stray `go build ./cmd/backend` output (real builds go to build/); never commit
 /backend/backend
 
+# Local reference code only (not a submodule, not tracked)
+modules/grok-bot-0.18-reconstructed/
+
 # Project files
 !init.d
 node_modules
