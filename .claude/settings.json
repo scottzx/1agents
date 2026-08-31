@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/scott/Documents/01-开发项目/1agents/1agents_app/modules/gstack/hosts/claude/hooks/question-log-hook",
+            "command": "/Users/scott/Documents/01-开发项目/1agents/1agents_app/reference_repo/gstack/hosts/claude/hooks/question-log-hook",
             "timeout": 5
           }
         ],
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/scott/Documents/01-开发项目/1agents/1agents_app/modules/gstack/hosts/claude/hooks/auq-error-fallback-hook",
+            "command": "/Users/scott/Documents/01-开发项目/1agents/1agents_app/reference_repo/gstack/hosts/claude/hooks/auq-error-fallback-hook",
             "timeout": 5
           }
         ],
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/scott/Documents/01-开发项目/1agents/1agents_app/modules/gstack/hosts/claude/hooks/question-preference-hook",
+            "command": "/Users/scott/Documents/01-开发项目/1agents/1agents_app/reference_repo/gstack/hosts/claude/hooks/question-preference-hook",
             "timeout": 5
           }
         ],

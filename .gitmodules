@@ -7,30 +7,9 @@
 [submodule "modules/happy-cli"]
 	path = modules/happy-cli
 	url = https://github.com/scottzx/happy-cli.git
-[submodule "modules/superpowers"]
-	path = modules/superpowers
-	url = https://github.com/obra/superpowers.git
-[submodule "modules/gstack"]
-	path = modules/gstack
-	url = https://github.com/garrytan/gstack.git
-[submodule "modules/grok-build"]
-	path = modules/grok-build
-	url = https://github.com/xai-org/grok-build
 [submodule "modules/1skills"]
 	path = modules/1skills
 	url = https://github.com/scottzx/1skills.git
 [submodule "modules/HarnessKit"]
 	path = modules/HarnessKit
 	url = https://github.com/scottzx/HarnessKit.git
-[submodule "modules/AgentTeams"]
-	path = modules/AgentTeams
-	url = https://github.com/agentscope-ai/AgentTeams.git
-[submodule "modules/transcribe.cpp"]
-	path = modules/transcribe.cpp
-	url = https://github.com/handy-computer/transcribe.cpp.git
-[submodule "modules/gbrain"]
-	path = modules/gbrain
-	url = https://github.com/garrytan/gbrain
-[submodule "modules/myContext"]
-	path = modules/myContext
-	url = https://github.com/scottzx/myContext.git

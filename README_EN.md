@@ -182,8 +182,7 @@ modules/cc-switch-cli/ Agent provider / model configuration switching sidecar
 modules/HarnessKit/    Controlled fork for extension inventory, audit, marketplace, adapters, and Kits
 modules/1acp/          Agent Client Protocol adapters, examples, and conformance tests
 modules/happy-cli/     Happy agent CLI and local launcher packaging source
-modules/gstack/        Built-in engineering skills, QA, release, and browser automation workflows
-modules/grok-build/    Grok-related agent, CLI, and build components
+reference_repo/        Read-only reference code (gstack, superpowers, grok-build, ...); not part of the build
 build/                 Local build outputs
 docs/                  Product, design, and architecture docs
 ```

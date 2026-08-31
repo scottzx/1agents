@@ -179,8 +179,7 @@ modules/cc-switch-cli/ Agent provider / 模型配置切换 sidecar
 modules/HarnessKit/    受控 Fork；Extensions 清单、审计、市场、Agent Adapter 和 Kits
 modules/1acp/          Agent Client Protocol 适配、示例和一致性测试
 modules/happy-cli/     Happy agent CLI 及本地 launcher 打包来源
-modules/gstack/        项目内置工程技能、QA、发布和浏览器自动化工作流
-modules/grok-build/    Grok 相关 agent、CLI 和构建组件
+reference_repo/        只读参考代码（gstack、superpowers、grok-build 等，不参与构建）
 build/                 本地构建产物
 docs/                  产品、设计和架构文档
 ```

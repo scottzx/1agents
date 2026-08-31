@@ -18,7 +18,7 @@ import (
 // (source / license / upstream_sha) 并写一份 .absorbed.json 做增量同步。
 //
 // 双轨 (RFC §5)：
-//   - 轨道 A：modules/superpowers、modules/gstack 作为 submodule 只读参照源，
+//   - 轨道 A：reference_repo/superpowers、reference_repo/gstack 作为只读参照源，
 //     钉 SHA，不参与构建、不在此修改。
 //   - 轨道 B：转化成品落 backend/internal/agent/{skills,roles}/，随二进制 embed。
 //
@@ -40,7 +40,7 @@ const (
 // the allowlist of what is format-clean enough to transform.
 type AbsorbEntry struct {
 	// Source is the upstream project id, also the provenance label ("superpowers"
-	// | "gstack"). It selects which submodule dir the SrcPath is relative to.
+	// | "gstack"). It selects which reference_repo dir the SrcPath is relative to.
 	Source string
 	// SrcPath is the SKILL.md path relative to the submodule root.
 	SrcPath string
@@ -54,7 +54,7 @@ type AbsorbEntry struct {
 
 // AbsorbConfig points the absorber at the upstream submodules and the sinks.
 type AbsorbConfig struct {
-	// ModulesDir is the repo's modules/ dir holding the upstream submodules.
+	// ModulesDir is the repo's reference_repo/ dir holding the upstream sources.
 	ModulesDir string
 	// SkillsDir is the backend embed skills dir (sink for AbsorbSkill).
 	SkillsDir string

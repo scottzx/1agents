@@ -1,7 +1,7 @@
 // Command absorb-upstream runs the open-source absorption pipeline (#188 / RFC
 // §5): it transforms a curated set of SKILL.md files from the read-only upstream
-// submodules (modules/superpowers, modules/gstack) into our format with
-// provenance frontmatter, writes them into the backend embed dirs
+// reference repos (reference_repo/superpowers, reference_repo/gstack) into our
+// format with provenance frontmatter, writes them into the backend embed dirs
 // (internal/agent/{skills,roles}), and records each in
 // internal/agent/.absorbed.json for incremental re-runs.
 //
@@ -32,7 +32,7 @@ func main() {
 
 	agentDir := filepath.Join(root, "backend", "internal", "agent")
 	cfg := agent.AbsorbConfig{
-		ModulesDir: filepath.Join(root, "modules"),
+		ModulesDir: filepath.Join(root, "reference_repo"),
 		SkillsDir:  filepath.Join(agentDir, "skills"),
 		RolesDir:   filepath.Join(agentDir, "roles"),
 		LedgerPath: filepath.Join(agentDir, ".absorbed.json"),
