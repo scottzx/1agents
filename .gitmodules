@@ -7,9 +7,6 @@
 [submodule "modules/happy-cli"]
 	path = modules/happy-cli
 	url = https://github.com/scottzx/happy-cli.git
-[submodule "modules/1skills"]
-	path = modules/1skills
-	url = https://github.com/scottzx/1skills.git
 [submodule "modules/HarnessKit"]
 	path = modules/HarnessKit
 	url = https://github.com/scottzx/HarnessKit.git

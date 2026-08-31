@@ -13,13 +13,17 @@
 
 ## 当前内容
 
-- `gstack` — 工程技能 / QA / 发布工作流。被 `.claude/settings.json` 的 3 个 hook
-  和 `backend/cmd/absorb-upstream` 按路径读取（只读吸收，不编译进产物）。
-- `superpowers` — 方法论 skills，同样被 `absorb-upstream` 只读吸收。
-- `AgentTeams`、`gbrain`、`grok-build`、`grok-bot-0.18-reconstructed`、
-  `myContext`、`transcribe.cpp` — 纯查阅参考。
+`AgentTeams`、`gbrain`、`grok-bot-0.18-reconstructed`、`grok-build`、`gstack`、
+`myContext`、`superpowers`、`transcribe.cpp`
+
+全部是纯查阅参考，**没有任何一个被代码、配置或构建引用**。
+
+gstack 和 superpowers 曾经有引用（`.claude/settings.json` 的 3 个 hook、
+`backend/cmd/absorb-upstream`），都已删除。当年从它们吸收来的 skills/roles 已经
+定稿在 `backend/internal/agent/{skills,roles}/` 并 embed 进二进制，出处记在各文件
+frontmatter 里，不再需要回读上游。
 
 ## 注意
 
-因为整个目录不被跟踪，换机器时不会自动出现，需要自己 clone。
-`gstack` 和 `superpowers` 缺失会让上面提到的 hook 和 `absorb-upstream` 找不到路径。
+整个目录不被跟踪，换机器时不会自动出现，需要自己 clone。
+删掉或不 clone 都不会影响构建和运行。
