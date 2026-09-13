@@ -10,3 +10,6 @@
 [submodule "modules/HarnessKit"]
 	path = modules/HarnessKit
 	url = https://github.com/scottzx/HarnessKit.git
+[submodule "modules/session-reader"]
+	path = modules/session-reader
+	url = https://github.com/scottzx/session-reader.git
