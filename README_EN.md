@@ -1,5 +1,32 @@
 # 1agents
 
+> ## ⚠️ This project is no longer under development (2026-09-14)
+>
+> **1agents' capabilities have moved to the [DeepSeek Harness (dsh)](https://github.com/deepseek-ai/deepseek-harness) plugin ecosystem.**
+>
+> Everything this repository built — terminal, sidebar and drawer layout, built-in browser,
+> task board, skills management, remote web UI, IM sync, Git panel, scheduling and automated
+> tasks, multi-agent orchestration, ACP/MCP integration — exists in dsh either as a core
+> package (`packages/terminal`, `packages/acp`, `packages/mcp`, `packages/schedule`,
+> `packages/subagent`, `packages/workflow`, …) or as a ready-made plugin in its marketplace.
+> Continuing here would only reinvent those wheels.
+>
+> **What continues:**
+>
+> | Direction | Repository | Why dsh does not cover it |
+> |---|---|---|
+> | Cross-harness session read plane | [session-reader](https://github.com/scottzx/session-reader) | dsh's `packages/session-query` reads only dsh's own sessions; session-reader reads the raw on-disk logs of claude / codex / antigravity / grok / dsh |
+> | iOS / Android native capability node | `1agents_phone` (Yima) | 27 native capability bridges (HealthKit, HomeKit, EventKit, NFC, CoreBluetooth, AlarmKit, …) plus a local iSH shell. dsh web runs in a browser and cannot reach these |
+> | Device collaboration protocol | [dreammate-network](https://github.com/scottzx/dreammate-network) | A node/capability protocol independent of any single harness |
+>
+> Architecture notes live in `docs/architecture/dreammate-network/` in the workspace.
+>
+> Historical branches were deleted; unmerged work is preserved as `archive/*` tags:
+> `archive/feat/1agents-bots`, `archive/feat/local-chrome-browser`,
+> `archive/feat/workspace-chat-mode`, `archive/grok-bots`.
+>
+> Everything below is kept as-is, as a record of the design and implementation.
+
 **1agents** is an open-source, self-hosted AI-native work operating system and an **Agent Infra** for multi-agent collaboration. It connects data, requirements, tasks, context, executors, verification, and state write-back into a continuously evolving work Graph, so one person can organize an AI team that keeps work moving.
 
 Traditional AI assistants improve one prompt or one chat turn. 1agents focuses on the full path from work entering the system to work being verified as done. It brings Inbox, IM, data sources, projects, task blueprints, agent sessions, terminals, files, agenda, and extensions together not as a pile of features, but as a way to capture, understand, structure, schedule, execute, and verify work while turning each result into context for the next action.

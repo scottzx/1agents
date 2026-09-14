@@ -1,5 +1,31 @@
 # 1agents
 
+> ## ⚠️ 本项目已停止开发（2026-09-14）
+>
+> **1agents 的能力已迁移至 [DeepSeek Harness（dsh）](https://github.com/deepseek-ai/deepseek-harness) 的插件生态。**
+>
+> 本仓库做过的东西——终端、侧边栏与抽屉布局、内置浏览器、任务看板、Skills 管理、
+> 远程 Web UI、IM 同步、Git 面板、调度与自动任务、多智能体编排、ACP/MCP 接入——
+> 在 dsh 里要么是核心包（`packages/terminal`、`packages/acp`、`packages/mcp`、
+> `packages/schedule`、`packages/subagent`、`packages/workflow` …），
+> 要么是插件市场里的现成插件。继续在这里开发只是重复造轮子。
+>
+> **仍在继续的部分：**
+>
+> | 方向 | 仓库 | 为什么不被 dsh 覆盖 |
+> |---|---|---|
+> | 跨 harness 会话读平面 | [session-reader](https://github.com/scottzx/session-reader) | dsh 的 `packages/session-query` 只读 dsh 自己的会话；session-reader 读 claude / codex / antigravity / grok / dsh 五家的原始落盘文件 |
+> | iOS / Android 原生能力节点 | `1agents_phone`（Yima / 一伴） | 27 个原生能力桥（HealthKit、HomeKit、EventKit、NFC、CoreBluetooth、AlarmKit…）+ iSH 本地 shell。dsh web 跑在浏览器里，拿不到这些 |
+> | 设备协作网络协议 | [dreammate-network](https://github.com/scottzx/dreammate-network) | 与具体 harness 无关的节点/能力协议 |
+>
+> 架构设计与演进记录见工作区的 `docs/architecture/dreammate-network/`。
+>
+> 历史分支已删除，未合并的工作保留为 `archive/*` tag：
+> `archive/feat/1agents-bots`、`archive/feat/local-chrome-browser`、
+> `archive/feat/workspace-chat-mode`、`archive/grok-bots`。
+>
+> 以下内容保留原样，作为设计与实现的历史记录。
+
 **1agents** 是一个开源、自托管的 AI-native 工作操作系统，也是一套面向多智能体协作的 **Agent Infra**。它把数据、需求、任务、上下文、执行者、验证和状态回写连接成一张持续运转的工作 Graph，让一个人也能组织一支持续工作的 AI 团队。
 
 传统 AI 助手解决的是一次对话里的单点效率；1agents 解决的是一件工作从进入系统到被验证完成的完整链路。它把 Inbox、IM、数据源、项目、任务蓝图、Agent 会话、终端、文件、日程和扩展能力组织在一起，不是为了堆功能，而是为了让工作可以被接住、被理解、被拆解、被调度、被执行、被验收，并让结果成为下一轮行动的上下文。
