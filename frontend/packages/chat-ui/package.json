@@ -1,0 +1,52 @@
+{
+  "name": "@1agents/chat-ui",
+  "version": "0.1.0",
+  "description": "Conversation and chat timeline rendering components for 1Agents, cross-agent session inspection and workbench embeds.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "style": "./dist/style.css",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./style.css": "./dist/style.css"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node build.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "preact": ">=10.0.0"
+  },
+  "dependencies": {
+    "highlight.js": "^11.11.1",
+    "marked": "^18.0.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "preact": "^10.19.6",
+    "typescript": "^5.3.3"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/scottzx/1agents.git",
+    "directory": "frontend/packages/chat-ui"
+  },
+  "bugs": {
+    "url": "https://github.com/scottzx/1agents/issues"
+  },
+  "homepage": "https://github.com/scottzx/1agents/tree/main/frontend/packages/chat-ui#readme"
+}
