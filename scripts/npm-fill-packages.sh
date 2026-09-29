@@ -108,17 +108,12 @@ if [ -d "$ACPX_SRC" ] && [ -f "$ACPX_SRC/package.json" ]; then
   find "$PKG/acpx/dist" -type f -name '*.bak' -delete
   echo "  + acpx dist from $ACPX_SRC"
 
-  # Keep bridge-server.mjs in sync with modules/1acp/bridge-server.js
-  # (import runtime from published @1agents/acpx, not monorepo ./src).
-  if [ -f "$ACPX_SRC/bridge-server.js" ]; then
-    sed 's|from "./src/runtime.js"|from "@1agents/acpx/runtime"|g' \
-      "$ACPX_SRC/bridge-server.js" > "$PKG/acp-bridge/bridge-server.mjs"
-    echo "  + acp-bridge/bridge-server.mjs synced from modules/1acp"
-  fi
+  # acp-bridge is a checked-in launcher for @1agents/acp-service.
+  # Do not overwrite it with the former action/event server.
 elif [ -f "$PKG/acpx/dist/runtime.js" ]; then
   echo "  + acpx: keeping pre-filled dist (modules/1acp not available)"
 else
-  echo "WARNING: modules/1acp missing and no pre-filled @1agents/acpx dist — Chat ACP bridge will lack Grok host extensions unless filled later"
+  echo "WARNING: modules/1acp missing and no pre-filled @1agents/acpx dist — fill the standalone acpx package before publishing"
 fi
 
 echo "=== npm-fill-packages done"

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/scottzx/1Agents/backend/internal/acpwire"
 	"github.com/scottzx/1Agents/backend/internal/execution"
 	"github.com/scottzx/1Agents/backend/internal/meta"
 	"github.com/scottzx/1Agents/backend/internal/provider"
@@ -159,7 +159,7 @@ func (r *TaskRunner) execute(workspacePath, workspaceID string, task Task, runMe
 	r.attachSessionMetadata(workspacePath, task.ID, sessionID, agentType)
 
 	serverURL := fmt.Sprintf("ws://127.0.0.1:%d", r.serverPort)
-	conn, _, err := websocket.DefaultDialer.Dial(serverURL, nil)
+	conn, err := acpwire.Dial(serverURL, agentType)
 	if err != nil {
 		r.finish(workspacePath, task.ID, sessionID, taskRunID, TaskStatusFailed, "bridge unavailable: "+err.Error())
 		return
@@ -546,7 +546,7 @@ func (r *TaskRunner) runVerifierPass(workspacePath, workspaceID string, task Tas
 	}
 
 	serverURL := fmt.Sprintf("ws://127.0.0.1:%d", r.serverPort)
-	conn, _, err := websocket.DefaultDialer.Dial(serverURL, nil)
+	conn, err := acpwire.Dial(serverURL, verifier)
 	if err != nil {
 		r.rejectNoVerdict(workspacePath, task.ID, verifier, poolBefore, "bridge unavailable: "+err.Error())
 		r.finishVerificationRun(workspacePath, task.ID, sessionID, verifyRun.ID, "bridge unavailable: "+err.Error())

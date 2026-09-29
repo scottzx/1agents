@@ -1,7 +1,7 @@
 {
   "name": "@1agents/acp-bridge",
   "version": "0.0.0-dev",
-  "description": "1agents ACP WebSocket bridge-server (wraps acpx runtime for Chat UI)",
+  "description": "ACP JSON-RPC service launcher for 1agents",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -13,11 +13,10 @@
     "README.md"
   ],
   "dependencies": {
-    "@1agents/acpx": "0.0.0-dev",
-    "ws": "^8.18.0"
+    "@1agents/acp-service": "^0.2.0"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.13.0"
   },
   "publishConfig": {
     "access": "public"

@@ -52,7 +52,7 @@ func (s *AcpxSupervisor) supervisionLoop(ctx context.Context) {
 	bridge, err := resolveAcpBridge(cwd)
 	if err != nil {
 		log.Printf("[acpx-sup] FATAL: cannot locate ACP bridge-server: %v", err)
-		log.Printf("[acpx-sup] Install @1agents/acp-bridge (dependency of @1agents/1agents), or run from a monorepo checkout with modules/1acp.")
+		log.Printf("[acpx-sup] Install @1agents/acp-bridge (dependency of @1agents/1agents), or use a checkout with services/acp-service.")
 		return
 	}
 	log.Printf("[acpx-sup] Using ACP bridge: %s (dir=%s, via=%s)", bridge.script, bridge.workDir, bridge.via)
@@ -104,7 +104,8 @@ type acpBridge struct {
 	script  string // absolute path to bridge-server.mjs / bridge-server.js
 	workDir string // directory for cmd.Dir (must exist)
 	via     string // how it was resolved (for logs)
-	useTsx  bool   // monorepo dev: run via npx tsx
+	useTsx  bool   // source service: run via its local tsx
+	service bool   // acp-service CLI accepts explicit serve arguments
 }
 
 func (s *AcpxSupervisor) startProcess(ctx context.Context, bridge acpBridge) error {
@@ -116,16 +117,20 @@ func (s *AcpxSupervisor) startProcess(ctx context.Context, bridge acpBridge) err
 	var cmd *exec.Cmd
 	var label string
 	if bridge.useTsx {
-		cmd = exec.CommandContext(ctx, "npx", "tsx", filepath.Base(bridge.script))
+		tsx := filepath.Join(filepath.Dir(bridge.workDir), "node_modules", "tsx", "dist", "cli.mjs")
+		cmd = exec.CommandContext(ctx, "node", tsx, bridge.script)
 		cmd.Dir = bridge.workDir
-		label = fmt.Sprintf("npx tsx %s (dir=%s, %s)", filepath.Base(bridge.script), bridge.workDir, bridge.via)
+		label = fmt.Sprintf("node tsx %s (dir=%s, %s)", filepath.Base(bridge.script), bridge.workDir, bridge.via)
 	} else {
-		// Production: plain node on packaged bridge-server.mjs (imports acpx/runtime).
+		// Production: plain node on packaged bridge-server.mjs (imports @1agents/acp-service).
 		cmd = exec.CommandContext(ctx, "node", bridge.script)
 		cmd.Dir = bridge.workDir
 		label = fmt.Sprintf("node %s (dir=%s, %s)", bridge.script, bridge.workDir, bridge.via)
 	}
 
+	if bridge.service {
+		cmd.Args = append(cmd.Args, "serve", "--port", acpxPort, "--host", "127.0.0.1", "--no-report")
+	}
 	cmd.Env = os.Environ()
 	if home, err := os.UserHomeDir(); err != nil {
 		log.Printf("[acpx-sup] Unable to resolve user home for agent PATH: %v", err)
@@ -169,8 +174,16 @@ func (s *AcpxSupervisor) startProcess(ctx context.Context, bridge acpBridge) err
 // Order:
 //  1. node_modules/@1agents/acp-bridge/bridge-server.mjs (local / nested under @1agents/1agents)
 //  2. npm global root: $(npm root -g)/@1agents/acp-bridge/...
-//  3. monorepo modules/1acp/bridge-server.js (dev, via tsx)
+//
+// Source checkouts use services/acp-service before installed packages.
 func resolveAcpBridge(cwd string) (acpBridge, error) {
+	// Source checkout: use the service that owns the ACP implementation.
+	for _, root := range acpSearchRoots(cwd) {
+		entry := filepath.Join(root, "services", "acp-service", "bin", "acp-service.ts")
+		if fileExists(entry) {
+			return acpBridge{script: entry, workDir: filepath.Dir(entry), via: "services/acp-service", useTsx: true, service: true}, nil
+		}
+	}
 	// 1) Walk cwd / parents and executable parents for node_modules/@1agents/acp-bridge
 	for _, start := range acpSearchRoots(cwd) {
 		for _, rel := range []string{
@@ -209,25 +222,7 @@ func resolveAcpBridge(cwd string) (acpBridge, error) {
 		}
 	}
 
-	// 3) Dev: modules/1acp in monorepo
-	for _, start := range acpSearchRoots(cwd) {
-		devBridge := filepath.Join(start, "modules", "1acp", "bridge-server.js")
-		if fileExists(devBridge) {
-			abs, _ := filepath.Abs(devBridge)
-			return acpBridge{
-				script:  abs,
-				workDir: filepath.Dir(abs),
-				via:     "modules/1acp (dev)",
-				useTsx:  true,
-			}, nil
-		}
-	}
-
-	return acpBridge{}, fmt.Errorf(
-		"@1agents/acp-bridge not found (looked under node_modules and npm root -g); " +
-			"also no modules/1acp/bridge-server.js for dev. " +
-			"Reinstall: npm i -g @1agents/1agents (pulls @1agents/acp-bridge)",
-	)
+	return acpBridge{}, fmt.Errorf("ACP service launcher not found; install the updated @1agents/acp-bridge or use a checkout with services/acp-service")
 }
 
 func acpSearchRoots(cwd string) []string {

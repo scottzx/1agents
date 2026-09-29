@@ -64,3 +64,25 @@ func countPath(paths []string, target string) int {
 	}
 	return count
 }
+
+func TestResolveAcpBridgeUsesServiceSource(t *testing.T) {
+	root := t.TempDir()
+	entry := filepath.Join(root, "services", "acp-service", "bin", "acp-service.ts")
+	if err := os.MkdirAll(filepath.Dir(entry), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(entry, []byte("// fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	app := filepath.Join(root, "1agents_app", "backend")
+	if err := os.MkdirAll(app, 0700); err != nil {
+		t.Fatal(err)
+	}
+	found, err := resolveAcpBridge(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found.script != entry || !found.useTsx || !found.service {
+		t.Fatalf("wrong service launch: %+v", found)
+	}
+}

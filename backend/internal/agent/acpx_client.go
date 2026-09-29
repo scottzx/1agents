@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/scottzx/1Agents/backend/internal/acpwire"
 	"github.com/scottzx/1Agents/backend/internal/localtoken"
 	"github.com/scottzx/1Agents/backend/internal/meta"
 )
@@ -45,6 +46,13 @@ var nativeSystemPromptAgents = map[string]bool{
 	string(AgentTypeClaudecode): true,
 }
 
+type serviceConnection interface {
+	Close() error
+	WriteJSON(any) error
+	WriteMessage(int, []byte) error
+	ReadMessage() (int, []byte, error)
+}
+
 type ActiveBridge struct {
 	SessionID     string
 	ProjectID     string
@@ -52,7 +60,7 @@ type ActiveBridge struct {
 	mu            sync.Mutex
 	projectionMu  sync.Mutex
 	ClientConn    *websocket.Conn
-	ServerConn    *websocket.Conn
+	ServerConn    serviceConnection
 	// MsgChan carries raw server→client frames. The relay forwards bytes
 	// verbatim (lossless): WsMessage is only a typed *peek* for the
 	// interception branches, never re-serialized, so new bridge event
@@ -411,7 +419,7 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, projectID, w
 	dialStart := time.Now()
 	log.Printf("[acpx_client] Dialing bridge-server at %s", serverURL)
 
-	serverConn, _, err := websocket.DefaultDialer.Dial(serverURL, nil)
+	serverConn, err := acpwire.Dial(serverURL, agentType)
 	if err != nil {
 		dialDur := time.Since(dialStart)
 		log.Printf("[acpx_client] Dial bridge-server failed for %s: %v (took %v)", sessionId, err, dialDur)

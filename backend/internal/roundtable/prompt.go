@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/scottzx/1Agents/backend/internal/acpwire"
 )
 
 // SeatPromptRequest is one model turn against a seat's Grok Build session.
@@ -114,7 +114,7 @@ func (p *BridgeSeatPrompter) Prompt(req SeatPromptRequest) (SeatPromptResult, er
 	}
 
 	serverURL := fmt.Sprintf("ws://127.0.0.1:%d", p.Port)
-	conn, _, err := websocket.DefaultDialer.Dial(serverURL, nil)
+	conn, err := acpwire.Dial(serverURL, agentType)
 	if err != nil {
 		return SeatPromptResult{}, fmt.Errorf("bridge unavailable: %w", err)
 	}

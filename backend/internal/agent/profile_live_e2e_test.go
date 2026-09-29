@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/scottzx/1Agents/backend/internal/acpwire"
 	"github.com/scottzx/1Agents/backend/internal/provider"
 )
 
@@ -25,6 +25,7 @@ import (
 //	ONEAGENTS_REAL_PROFILE_E2E=1 go test ./internal/agent -run TestRealProfileThrough1ACP -v
 //
 // ONEAGENTS_REAL_PROFILE_ID may select a profile other than deepseek-build.
+// ONEAGENTS_REAL_PROFILE_MODEL overrides the model only for this isolated run.
 func TestRealProfileThrough1ACP(t *testing.T) {
 	if os.Getenv("ONEAGENTS_REAL_PROFILE_E2E") != "1" {
 		t.Skip("set ONEAGENTS_REAL_PROFILE_E2E=1 to run the real Provider Profile E2E")
@@ -39,6 +40,15 @@ func TestRealProfileThrough1ACP(t *testing.T) {
 	launch, _, err := resolveProfile(provider.NewStore(""), profileID)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if model := strings.TrimSpace(os.Getenv("ONEAGENTS_REAL_PROFILE_MODEL")); model != "" {
+		launch.Model = model
+		launch.Env["GROK_DEFAULT_MODEL"] = model
+		for i := 0; i+1 < len(launch.Argv); i++ {
+			if launch.Argv[i] == "--model" {
+				launch.Argv[i+1] = model
+			}
+		}
 	}
 	secret := launch.TransientCredentials["xai.api_key"]
 	if secret == "" {
@@ -60,7 +70,7 @@ func TestRealProfileThrough1ACP(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	isolatedHome := t.TempDir()
-	cmd := exec.CommandContext(ctx, tsx, "bridge-server.js")
+	cmd := exec.CommandContext(ctx, tsx, "bin/acp-service.ts", "serve", "--host", "127.0.0.1", "--no-report", "--port", fmt.Sprint(port))
 	cmd.Dir = bridgeDir
 	cmd.Env = append(withoutProcessEnv(os.Environ(), "HOME", "USERPROFILE", "ACPX_PORT"),
 		"HOME="+isolatedHome,
@@ -84,10 +94,10 @@ func TestRealProfileThrough1ACP(t *testing.T) {
 	})
 
 	endpoint := url.URL{Scheme: "ws", Host: fmt.Sprintf("127.0.0.1:%d", port)}
-	var conn *websocket.Conn
+	var conn *acpwire.Conn
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
-		conn, _, err = websocket.DefaultDialer.Dial(endpoint.String(), nil)
+		conn, err = acpwire.Dial(endpoint.String(), launch.RuntimeID)
 		if err == nil {
 			break
 		}
@@ -139,17 +149,17 @@ func find1ACPDir(t *testing.T) string {
 		t.Fatal(err)
 	}
 	for dir := cwd; ; dir = filepath.Dir(dir) {
-		candidate := filepath.Join(dir, "modules", "1acp", "bridge-server.js")
+		candidate := filepath.Join(dir, "services", "acp-service", "package.json")
 		if _, err := os.Stat(candidate); err == nil {
 			return filepath.Dir(candidate)
 		}
 		if filepath.Dir(dir) == dir {
-			t.Fatal("modules/1acp/bridge-server.js not found")
+			t.Fatal("services/acp-service not found")
 		}
 	}
 }
 
-func waitForBridgeEvent(t *testing.T, conn *websocket.Conn, wanted, secret string) {
+func waitForBridgeEvent(t *testing.T, conn *acpwire.Conn, wanted, secret string) {
 	t.Helper()
 	for {
 		var message WsMessage
