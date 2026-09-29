@@ -28,11 +28,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..");
 const SDK_ACP = path.join(
   REPO_ROOT,
-  "modules/1acp/node_modules/@agentclientprotocol/sdk/dist/acp.js",
+  "modules/1acp/packages/runtime/node_modules/@agentclientprotocol/sdk/dist/acp.js",
 );
 const SDK_STREAM = path.join(
   REPO_ROOT,
-  "modules/1acp/node_modules/@agentclientprotocol/sdk/dist/stream.js",
+  "modules/1acp/packages/runtime/node_modules/@agentclientprotocol/sdk/dist/stream.js",
 );
 
 const { ClientSideConnection } = await import(SDK_ACP);

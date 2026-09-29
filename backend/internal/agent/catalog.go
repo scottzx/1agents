@@ -104,7 +104,7 @@ type AgentStatus struct {
 	InstallCommand string      `json:"install_command,omitempty"`
 	// ChatReady is true when the web chat path can launch this agent: either
 	// its CLI binary is installed, or its ACP adapter is vendored in
-	// modules/1acp/node_modules. The chat picker gates on this; the settings
+	// modules/1acp/packages/runtime/node_modules. The chat picker gates on this; the settings
 	// detection list keeps using Installed (the CLI probe).
 	ChatReady bool `json:"chat_ready"`
 }
@@ -196,7 +196,7 @@ func findAgentBinary(binary string) (string, error) {
 	return "", pathErr
 }
 
-// acpAdapterDir resolves modules/1acp/node_modules by walking up from the
+// acpAdapterDir resolves modules/1acp/packages/runtime/node_modules by walking up from the
 // working directory (mirrors the lookup in internal/supervisor/acpx.go).
 // Returns "" if modules/1acp can't be located.
 func acpAdapterDir() string {
@@ -206,7 +206,7 @@ func acpAdapterDir() string {
 	}
 	dir := cwd
 	for {
-		candidate := filepath.Join(dir, "modules", "1acp")
+		candidate := filepath.Join(dir, "modules", "1acp", "packages", "runtime")
 		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
 			return filepath.Join(candidate, "node_modules")
 		}
@@ -219,7 +219,7 @@ func acpAdapterDir() string {
 }
 
 // adapterVendored reports whether the named ACP adapter package is installed
-// under modules/1acp/node_modules (so the web chat path can launch it without
+// under modules/1acp/packages/runtime/node_modules (so the web chat path can launch it without
 // a runtime npx download). A blank pkg or unresolved adapter dir returns false.
 func adapterVendored(adapterDir, pkg string) bool {
 	if adapterDir == "" || pkg == "" {

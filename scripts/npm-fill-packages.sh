@@ -73,20 +73,21 @@ if [ -n "${HAPPY_OUT:-}" ] && [ -d "$HAPPY_OUT/happy-cli" ]; then
   echo "  + happy from $HAPPY_OUT"
 fi
 
-# @1agents/acpx — forked acpx runtime (Grok _x.ai/* host extensions) from modules/1acp
-# Shared package (once per fill). Skipped when modules/1acp is absent (e.g. tarball-only fill).
-ACPX_SRC="${ACPX_SRC:-$ROOT/modules/1acp}"
+# @1agents/acpx — forked acpx runtime (Grok _x.ai/* host extensions) from modules/1acp/packages/runtime
+# Shared package (once per fill). Skipped when modules/1acp/packages/runtime is absent (e.g. tarball-only fill).
+ACPX_SRC="${ACPX_SRC:-$ROOT/modules/1acp/packages/runtime}"
 if [ -d "$ACPX_SRC" ] && [ -f "$ACPX_SRC/package.json" ]; then
   if [ ! -f "$ACPX_SRC/dist/runtime.js" ]; then
-    echo "=== building modules/1acp dist for @1agents/acpx ==="
+    echo "=== building modules/1acp/packages/runtime dist for @1agents/acpx ==="
     if command -v pnpm >/dev/null 2>&1; then
       (cd "$ACPX_SRC" && pnpm install --frozen-lockfile && pnpm run build:quiet)
     else
-      (cd "$ACPX_SRC" && npm install && npm run build)
+      echo "ERROR: pnpm is required for the ACP workspace" >&2
+      exit 1
     fi
   fi
   if [ ! -f "$ACPX_SRC/dist/runtime.js" ]; then
-    echo "ERROR: modules/1acp dist/runtime.js missing after build" >&2
+    echo "ERROR: modules/1acp/packages/runtime dist/runtime.js missing after build" >&2
     exit 1
   fi
   rm -rf "$PKG/acpx/dist" "$PKG/acpx/skills"
@@ -111,9 +112,9 @@ if [ -d "$ACPX_SRC" ] && [ -f "$ACPX_SRC/package.json" ]; then
   # acp-bridge is a checked-in launcher for @1agents/acp-service.
   # Do not overwrite it with the former action/event server.
 elif [ -f "$PKG/acpx/dist/runtime.js" ]; then
-  echo "  + acpx: keeping pre-filled dist (modules/1acp not available)"
+  echo "  + acpx: keeping pre-filled dist (modules/1acp/packages/runtime not available)"
 else
-  echo "WARNING: modules/1acp missing and no pre-filled @1agents/acpx dist — fill the standalone acpx package before publishing"
+  echo "WARNING: modules/1acp/packages/runtime missing and no pre-filled @1agents/acpx dist — fill the standalone acpx package before publishing"
 fi
 
 echo "=== npm-fill-packages done"

@@ -22,7 +22,7 @@ AGENT_LDFLAGS := -s -w \
 
 # Source file declarations for smart incremental builds
 BACKEND_SRCS  := $(shell find backend -type f 2>/dev/null)
-FRONTEND_SRCS := $(shell find frontend/src frontend/packages modules/1acp -type f 2>/dev/null)
+FRONTEND_SRCS := $(shell find frontend/src frontend/packages modules/1acp/packages/runtime -type f 2>/dev/null)
 TTYD_SRCS     := $(shell find modules/ttyd/src -type f 2>/dev/null)
 CONNECT_SRCS  := $(shell find modules/cc-connect -type f ! -name "test_*" ! -path "*/.*" 2>/dev/null)
 HARNESSKIT_SRCS := $(shell find modules/HarnessKit/crates -type f 2>/dev/null) modules/HarnessKit/Cargo.toml modules/HarnessKit/Cargo.lock

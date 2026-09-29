@@ -67,7 +67,7 @@ func countPath(paths []string, target string) int {
 
 func TestResolveAcpBridgeUsesServiceSource(t *testing.T) {
 	root := t.TempDir()
-	entry := filepath.Join(root, "services", "acp-service", "bin", "acp-service.ts")
+	entry := filepath.Join(root, "services", "1acp", "packages", "service", "bin", "acp-service.ts")
 	if err := os.MkdirAll(filepath.Dir(entry), 0700); err != nil {
 		t.Fatal(err)
 	}

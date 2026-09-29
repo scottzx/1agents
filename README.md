@@ -383,3 +383,7 @@ make submodules
 - [robfig/cron](https://github.com/robfig/cron) (MIT)
 
 如需完整第三方依赖说明，请查看 [THIRD_PARTY.md](THIRD_PARTY.md)。
+
+## ACP workspace checkout
+
+ACP runtime development lives in the sibling `../services/1acp` repository. This application pins that repository through `modules/1acp`; its runtime package is `modules/1acp/packages/runtime`. Run `pnpm install --frozen-lockfile` from the submodule root and `pnpm --filter @scottzx/1acp build` before filling npm packages. Development service supervision uses `../services/1acp/packages/service`. Push the referenced ACP repository commit before publishing this application’s updated submodule pointer.
