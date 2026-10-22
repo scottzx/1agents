@@ -18,6 +18,7 @@
     "build": "NODE_ENV=production webpack && gulp",
     "inline": "NODE_ENV=production webpack && gulp inline",
     "test:roundtable": "node --import tsx --test src/components/roundtable/*.test.ts",
+    "test:chat-ui": "node --import tsx --test packages/chat-ui/test/*.test.ts",
     "check": "gts check",
     "fix": "gts fix"
   },
