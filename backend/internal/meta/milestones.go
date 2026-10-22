@@ -562,11 +562,6 @@ func (s *TaskStore) DeleteMilestone(workspacePath, id string, events ...ProjectE
 		timeToStr(time.Now().UTC()), projectID, cur.Name); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`UPDATE feature_nodes SET target_milestone_id = '', updated_at = ?
-		WHERE project_id = ? AND target_milestone_id = ?`,
-		timeToStr(time.Now().UTC()), projectID, id); err != nil {
-		return err
-	}
 	// Reparent any children onto the deleted node's predecessor so the tree
 	// stays connected (splice out, rather than orphaning whole branches).
 	if _, err := tx.Exec(`UPDATE milestones SET predecessor_id = ?, updated_at = ?

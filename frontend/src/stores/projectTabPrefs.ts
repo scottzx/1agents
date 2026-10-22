@@ -5,12 +5,11 @@ import { signal } from '@preact/signals';
  * <workspace>/.1agents/project_config.json (via /api/project/local-config).
  * Config travels with the project directory (works cross-device), and avoids the
  * meta.db project_config plumbing. The file is a generic JSON blob; this store
- * owns `hiddenTabs` and `featureCatalogEnabled`, preserving other keys on write.
+ * owns `hiddenTabs`, preserving other keys on write.
  */
 
 export interface LocalConfig {
     hiddenTabs?: string[];
-    featureCatalogEnabled?: boolean;
     [k: string]: unknown;
 }
 
@@ -41,11 +40,7 @@ async function fetchConfig(workspacePath: string): Promise<LocalConfig> {
         throw new Error(`加载项目配置失败 (HTTP ${res.status})`);
     }
     const raw = (await res.json()) as LocalConfig;
-    return {
-        ...raw,
-        // Missing and malformed values both preserve the upgrade-safe default.
-        featureCatalogEnabled: raw.featureCatalogEnabled === true,
-    };
+    return raw;
 }
 
 function updateStatus(workspaceId: string, patch: Partial<ProjectConfigStatus>): void {
@@ -90,11 +85,6 @@ export function getProjectConfigStatus(workspaceId: string): ProjectConfigStatus
 /** Hidden tab ids for a project. Reactive — reading it in a render subscribes to writes. */
 export function getHiddenTabs(workspaceId: string): Set<string> {
     return new Set<string>(configs.value[workspaceId]?.hiddenTabs ?? []);
-}
-
-/** Feature-catalog capability for a project. Missing fields default to off. */
-export function getFeatureCatalogEnabled(workspaceId: string): boolean {
-    return configs.value[workspaceId]?.featureCatalogEnabled === true;
 }
 
 async function persistOptimistic(
@@ -142,20 +132,4 @@ export async function setTabHidden(
     // PUT only our own key — the backend shallow-merges, so sibling keys written
     // by other features (project config) are preserved.
     return persistOptimistic(workspaceId, workspacePath, cur, { ...cur, hiddenTabs }, { hiddenTabs });
-}
-
-/** Enable or disable the feature catalog without touching its backend data. */
-export async function setFeatureCatalogEnabled(
-    workspaceId: string,
-    workspacePath: string,
-    enabled: boolean
-): Promise<boolean> {
-    const cur = configs.value[workspaceId] ?? {};
-    return persistOptimistic(
-        workspaceId,
-        workspacePath,
-        cur,
-        { ...cur, featureCatalogEnabled: enabled },
-        { featureCatalogEnabled: enabled }
-    );
 }

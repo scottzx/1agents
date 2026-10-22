@@ -6,12 +6,8 @@ import type { Session } from '../../types';
 import * as taskNav from '../../../stores/taskNavStore';
 import * as sessionStore from '../../../stores/sessionStore';
 import * as viewPrefs from '../../../stores/projectViewPrefs';
-import * as projectConfig from '../../../stores/projectTabPrefs';
-import * as workspaceStore from '../../../stores/workspaceStore';
 import { agentService } from '../../../services/agentService';
 import { projectItemService } from '@1agents/core/services/taskService';
-import { featureCatalogService } from '@1agents/core/services/featureCatalogService';
-import type { FeatureCatalog } from '@1agents/core/types/featureCatalog';
 import { Modal } from '../../modal';
 import { MilestoneForm } from './MilestoneForm';
 import type { MilestoneFields } from './MilestoneForm';
@@ -24,14 +20,11 @@ import { RequirementPool } from './RequirementPool';
 import { DiscussionView } from './DiscussionView';
 import { SessionsView } from './SessionsView';
 import { resolveTaskListView, TaskViewSwitcher } from './TaskViewSwitcher';
-import { FeatureCatalogView } from './FeatureCatalogView';
 import { t } from '../../../i18n';
 import * as ui from '../../../stores/uiStore';
 
 const cachedTasks = signal<Record<string, ProjectItem[]>>({});
 const cachedMilestones = signal<Record<string, Milestone[]>>({});
-const EMPTY_FEATURE_CATALOG: FeatureCatalog = { nodes: [], links: [] };
-const cachedFeatureCatalogs = signal<Record<string, FeatureCatalog>>({});
 
 export interface TaskListProps {
     workspaceId: string;
@@ -49,14 +42,9 @@ export function TaskList({
 }: TaskListProps) {
     const [tasks, setTasksState] = useState<ProjectItem[]>(cachedTasks.value[workspaceId] || []);
     const [milestones, setMilestonesState] = useState<Milestone[]>(cachedMilestones.value[workspaceId] || []);
-    const [featureCatalog, setFeatureCatalogState] = useState<FeatureCatalog>(
-        cachedFeatureCatalogs.value[workspaceId] || EMPTY_FEATURE_CATALOG
-    );
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [internalSelectedTaskId, setInternalSelectedTaskId] = useState<string | null>(null);
-    const [milestoneFocusId, setMilestoneFocusId] = useState<string>();
-    const [featureVersionFilterId, setFeatureVersionFilterId] = useState<string>();
 
     const isControlled = onTaskSelect !== undefined;
     const selectedTaskId = isControlled ? externalSelectedTaskId ?? null : internalSelectedTaskId;
@@ -70,38 +58,23 @@ export function TaskList({
     const showMsForm = useSignal(false); // create-milestone modal (small → stays a modal)
     const showSessions = useSignal(false); // sessions popup, opened from the 总览 会话 card
     const [sessionCount, setSessionCount] = useState(0);
-    // Top-level view tab (overview/discussion/requirements/features/tasks/milestone) is
+    // Top-level view tab (overview/discussion/requirements/tasks/milestone) is
     // per-workspace so each project remembers where you left it.
     const view = useSignal<viewPrefs.TaskListView>(
-        (viewPrefs.allPrefs.value[workspaceId]?.activeView as viewPrefs.TaskListView) || 'tasks'
+        resolveTaskListView(viewPrefs.allPrefs.value[workspaceId]?.activeView)
     );
 
     // Re-init the view from the new workspace's stored prefs when switching
     // projects; otherwise we'd carry the prior project's tab across.
     useEffect(() => {
-        view.value = (viewPrefs.allPrefs.value[workspaceId]?.activeView as viewPrefs.TaskListView) || 'tasks';
-        setMilestoneFocusId(undefined);
-        setFeatureVersionFilterId(undefined);
+        view.value = resolveTaskListView(viewPrefs.allPrefs.value[workspaceId]?.activeView);
     }, [workspaceId]);
 
     useEffect(() => {
         viewPrefs.updatePrefs(workspaceId, { activeView: view.value });
     }, [workspaceId, view.value]);
 
-    const workspacePath = workspaceStore.findWorkspaceAnyStatus(workspaceId)?.path ?? '';
-    useEffect(() => {
-        void projectConfig.ensureLoaded(workspaceId, workspacePath);
-    }, [workspaceId, workspacePath]);
-    const featureCatalogEnabled = projectConfig.getFeatureCatalogEnabled(workspaceId);
-    const configStatus = projectConfig.getProjectConfigStatus(workspaceId);
-    const activeView = resolveTaskListView(view.value, featureCatalogEnabled, configStatus.loaded);
-
-    // A persisted `features` view is legal only for projects whose config has
-    // finished loading and has the capability enabled. Waiting for the load
-    // prevents an enabled project from briefly overwriting its saved view.
-    useEffect(() => {
-        if (activeView !== view.value) view.value = activeView;
-    }, [workspaceId, activeView]);
+    const activeView = resolveTaskListView(view.value);
 
     const setTasks = useCallback(
         (newTasks: ProjectItem[]) => {
@@ -118,14 +91,6 @@ export function TaskList({
         (next: Milestone[]) => {
             setMilestonesState(next);
             cachedMilestones.value = { ...cachedMilestones.value, [workspaceId]: next };
-        },
-        [workspaceId]
-    );
-
-    const setFeatureCatalog = useCallback(
-        (next: FeatureCatalog) => {
-            setFeatureCatalogState(next);
-            cachedFeatureCatalogs.value = { ...cachedFeatureCatalogs.value, [workspaceId]: next };
         },
         [workspaceId]
     );
@@ -155,15 +120,6 @@ export function TaskList({
             setLoading(false);
         }
     }, [workspaceId, setTasks]);
-
-    const fetchFeatureCatalog = useCallback(async () => {
-        if (!workspaceId || workspaceId === 'oneshot') return;
-        try {
-            setFeatureCatalog(await featureCatalogService.get(workspaceId));
-        } catch {
-            // Traceability is supplementary; task views continue to render.
-        }
-    }, [workspaceId, setFeatureCatalog]);
 
     const closeTaskDetail = useCallback(() => {
         setSelectedTaskId(null);
@@ -200,29 +156,25 @@ export function TaskList({
             setError('');
             setTasksState([]);
             setMilestonesState([]);
-            setFeatureCatalogState(EMPTY_FEATURE_CATALOG);
             setSessionCount(0);
             return;
         }
         fetchTasks();
         fetchMilestones();
-        fetchFeatureCatalog();
         fetchSessionCount();
         const timer = setInterval(() => {
             fetchTasks();
             fetchMilestones();
-            fetchFeatureCatalog();
             fetchSessionCount();
         }, 5000);
         return () => clearInterval(timer);
-    }, [workspaceId, fetchTasks, fetchMilestones, fetchFeatureCatalog, fetchSessionCount]);
+    }, [workspaceId, fetchTasks, fetchMilestones, fetchSessionCount]);
 
     // Reset detail selection and load cached data when switching workspaces
     useEffect(() => {
         setSelectedTaskId(null);
         setTasksState(cachedTasks.value[workspaceId] || []);
         setMilestonesState(cachedMilestones.value[workspaceId] || []);
-        setFeatureCatalogState(cachedFeatureCatalogs.value[workspaceId] || EMPTY_FEATURE_CATALOG);
     }, [workspaceId]);
 
     // Permalink / autolink navigation: open the requested task once a request
@@ -267,7 +219,7 @@ export function TaskList({
         try {
             await projectItemService.remove(taskId, workspaceId);
             if (selectedTaskId === taskId) setSelectedTaskId(null);
-            await Promise.all([fetchTasks(), fetchFeatureCatalog()]);
+            await fetchTasks();
         } catch (err) {
             alert((err as Error).message);
         }
@@ -375,7 +327,6 @@ export function TaskList({
                 workspaceId={workspaceId}
                 taskId={selectedTaskId}
                 allTasks={tasks}
-                featureCatalog={featureCatalog}
                 onBack={isControlled ? undefined : closeTaskDetail}
                 onDelete={handleDeleteTask}
                 onNavigate={setSelectedTaskId}
@@ -403,7 +354,6 @@ export function TaskList({
             <div class="task-dashboard-header">
                 <TaskViewSwitcher
                     activeView={activeView}
-                    featureCatalogEnabled={featureCatalogEnabled}
                     onSelect={next => (view.value = next)}
                 />
                 {/* Tasks/requirements/bugs are created only by agents (via MCP tools),
@@ -442,7 +392,6 @@ export function TaskList({
                     onDeleteTask={handleDeleteTask}
                     onPatchTask={handlePatchTask}
                     onStatusChange={handleStatusChange}
-                    featureCatalog={featureCatalog}
                 />
             )}
             {activeView === 'overview' && (
@@ -453,21 +402,6 @@ export function TaskList({
                 />
             )}
             {activeView === 'discussion' && <DiscussionView tasks={discussions} onSelectTask={setSelectedTaskId} />}
-            {activeView === 'features' && featureCatalogEnabled && (
-                <FeatureCatalogView
-                    workspaceId={workspaceId}
-                    items={tasks}
-                    milestones={milestones}
-                    versionFilterMilestoneId={featureVersionFilterId}
-                    onClearVersionFilter={() => setFeatureVersionFilterId(undefined)}
-                    onOpenMilestone={milestoneId => {
-                        setMilestoneFocusId(milestoneId);
-                        view.value = 'milestone';
-                    }}
-                    onCatalogChange={setFeatureCatalog}
-                    onItemsChange={fetchTasks}
-                />
-            )}
             {activeView === 'milestone' &&
                 (() => {
                     try {
@@ -476,16 +410,6 @@ export function TaskList({
                                 workspaceId={workspaceId}
                                 tasks={boardTasks}
                                 milestones={milestones}
-                                featureCatalog={featureCatalog}
-                                focusMilestoneId={milestoneFocusId}
-                                onOpenFeatureVersion={
-                                    featureCatalogEnabled
-                                        ? milestoneId => {
-                                              setFeatureVersionFilterId(milestoneId);
-                                              view.value = 'features';
-                                          }
-                                        : undefined
-                                }
                                 onSelectTask={setSelectedTaskId}
                                 onPatchMilestone={patchMilestone}
                                 onDeleteMilestone={deleteMilestone}

@@ -87,7 +87,7 @@ func stripFeatureCatalogSchema(t *testing.T, path string, userVersion int) {
 	}
 }
 
-func TestFeatureCatalogVersionSchemaRejectsUnexpectedExistingColumns(t *testing.T) {
+func TestLegacyFeatureCatalogVersionSchemaRejectsUnexpectedExistingColumns(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "meta.db")
 	db, err := Open(path)
 	if err != nil {
@@ -120,7 +120,7 @@ func TestFeatureCatalogVersionSchemaRejectsUnexpectedExistingColumns(t *testing.
 	}
 }
 
-func TestFeatureCatalogSchemaFreshDatabase(t *testing.T) {
+func TestLegacyFeatureCatalogSchemaFreshDatabase(t *testing.T) {
 	db := newTestDB(t)
 
 	assertTableColumns(t, db, "feature_nodes", []string{
@@ -183,7 +183,7 @@ func TestFeatureCatalogSchemaFreshDatabase(t *testing.T) {
 	}
 }
 
-func TestFeatureCatalogSchemaV27UpgradePreservesLegacyMilestone(t *testing.T) {
+func TestLegacyFeatureCatalogSchemaV27UpgradePreservesLegacyMilestone(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "meta.db")
 	workspace := t.TempDir()
 
@@ -254,7 +254,7 @@ func TestFeatureCatalogSchemaV27UpgradePreservesLegacyMilestone(t *testing.T) {
 	}
 }
 
-func TestFeatureCatalogSchemaReconcilesAboveCurrentUserVersion(t *testing.T) {
+func TestLegacyFeatureCatalogSchemaReconcilesAboveCurrentUserVersion(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "meta.db")
 	db, err := Open(path)
 	if err != nil {

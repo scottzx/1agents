@@ -20,7 +20,7 @@ import { signal, effect } from '@preact/signals';
  * are non-fatal (private mode / quota).
  */
 
-export type TaskListView = 'overview' | 'discussion' | 'requirements' | 'features' | 'tasks' | 'milestone';
+export type TaskListView = 'overview' | 'discussion' | 'requirements' | 'tasks' | 'milestone';
 export type TaskSubView = 'list' | 'board' | 'calendar';
 export type SortDir = 'asc' | 'desc';
 
@@ -56,8 +56,6 @@ export interface ViewPrefs {
     groupBy: string;
     collapsed: string[];
     showHierarchy: boolean;
-    // Feature catalog tree nodes collapsed in this workspace.
-    featureCatalogCollapsed: string[];
     // Per-surface DataGrid prefs. Surface ids are free-form strings; today
     // the two consumers pass 'tasks' and 'sessions'.
     grids?: {
@@ -78,7 +76,6 @@ export const DEFAULT_PREFS: ViewPrefs = {
     groupBy: 'none',
     collapsed: [],
     showHierarchy: true,
-    featureCatalogCollapsed: [],
 };
 
 const STORAGE_KEY = '1agents-project-view-prefs';
@@ -136,7 +133,7 @@ export const getGridPrefs = (workspaceId: string, surface: string): GridPrefs =>
     if (slot) {
         return {
             sort: slot.sort ?? DEFAULT_PREFS.sort,
-            groupBy: slot.groupBy ?? DEFAULT_PREFS.groupBy,
+            groupBy: surface === 'tasks' && slot.groupBy === 'feature' ? 'none' : slot.groupBy ?? DEFAULT_PREFS.groupBy,
             collapsed: Array.isArray(slot.collapsed) ? slot.collapsed : [...DEFAULT_PREFS.collapsed],
             showHierarchy: slot.showHierarchy ?? DEFAULT_PREFS.showHierarchy,
         };
@@ -147,7 +144,7 @@ export const getGridPrefs = (workspaceId: string, surface: string): GridPrefs =>
     // legacy state until it, too, mounts and writes).
     return {
         sort: stored.sort ?? DEFAULT_PREFS.sort,
-        groupBy: stored.groupBy ?? DEFAULT_PREFS.groupBy,
+        groupBy: surface === 'tasks' && stored.groupBy === 'feature' ? 'none' : stored.groupBy ?? DEFAULT_PREFS.groupBy,
         collapsed: Array.isArray(stored.collapsed) ? stored.collapsed : [...DEFAULT_PREFS.collapsed],
         showHierarchy: stored.showHierarchy ?? DEFAULT_PREFS.showHierarchy,
     };

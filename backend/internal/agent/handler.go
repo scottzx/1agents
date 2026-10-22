@@ -30,7 +30,6 @@ type Handler struct {
 	turnStore     *meta.AgentTurnStore
 	activityStore *meta.ProjectActivityStore
 	taskRunStore  *meta.TaskRunStore
-	featureStore  *meta.FeatureCatalogStore
 	workCaseStore *meta.WorkCaseStore
 	eventStore    *meta.ProjectEventStore
 	// commandBus is the unified Command Gateway (#323, §5 D3): every case
@@ -58,7 +57,6 @@ func NewHandler(store *Store, tasksStore *TasksStore, acpxClient *AcpxClient, sc
 	var turnStore *meta.AgentTurnStore
 	var activityStore *meta.ProjectActivityStore
 	var taskRunStore *meta.TaskRunStore
-	var featureStore *meta.FeatureCatalogStore
 	var workCaseStore *meta.WorkCaseStore
 	var eventStore *meta.ProjectEventStore
 	var commandBus *commandbus.Gateway
@@ -69,7 +67,6 @@ func NewHandler(store *Store, tasksStore *TasksStore, acpxClient *AcpxClient, sc
 	if db, err := meta.OpenDefault(); err == nil {
 		activityStore = meta.NewProjectActivityStore(db)
 		taskRunStore = meta.NewTaskRunStore(db)
-		featureStore = meta.NewFeatureCatalogStore(db)
 		workCaseStore = meta.NewWorkCaseStore(db)
 		eventStore = meta.NewProjectEventStore(db)
 		if turnStore == nil {
@@ -103,7 +100,6 @@ func NewHandler(store *Store, tasksStore *TasksStore, acpxClient *AcpxClient, sc
 		turnStore:        turnStore,
 		activityStore:    activityStore,
 		taskRunStore:     taskRunStore,
-		featureStore:     featureStore,
 		workCaseStore:    workCaseStore,
 		eventStore:       eventStore,
 		commandBus:       commandBus,
@@ -459,7 +455,6 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			Labels              []string        `json:"labels"`
 			ParentID            string          `json:"parentId"`
 			Milestone           string          `json:"milestone"`
-			FeatureID           string          `json:"featureId"`
 			Sprint              string          `json:"sprint"`
 			Type                string          `json:"type"`
 			Source              string          `json:"source"`
@@ -535,21 +530,6 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 		}
 		if projectID == "" {
 			projectID = body.WorkspaceID
-		}
-		if body.FeatureID != "" {
-			if h.featureStore == nil {
-				http.Error(w, "feature catalog store is unavailable", http.StatusInternalServerError)
-				return
-			}
-			if body.Type != "" && ItemType(body.Type) != ItemTypeTask {
-				http.Error(w, "only tasks can be created from a feature point", http.StatusBadRequest)
-				return
-			}
-			body.Milestone, err = h.featureStore.TaskMilestone(projectID, body.FeatureID)
-			if err != nil {
-				writeFeatureCatalogError(w, err)
-				return
-			}
 		}
 		mutationCtx, err := h.resolveMutationContext(r, projectID)
 		if err != nil {
@@ -653,26 +633,6 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 		// Save assigns the short number (#N) on the stored row, so re-fetch
 		// rather than returning the pre-save copy.
 		saved, _, _ := h.tasksStore.GetTask(newTask.ID)
-		if body.FeatureID != "" {
-			linkEvent := mutationEvent(
-				mutationCtx,
-				"feature_link",
-				body.FeatureID+":"+saved.ID+":delivery",
-				"link",
-				nil,
-				nil,
-			)
-			if _, _, err := h.featureStore.LinkItem(
-				projectID,
-				body.FeatureID,
-				saved.ID,
-				meta.FeatureItemDelivery,
-				linkEvent,
-			); err != nil {
-				writeFeatureCatalogError(w, err)
-				return
-			}
-		}
 		writeMutationJSON(w, saved, storedEvents[0])
 
 	default:
@@ -909,10 +869,9 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		GithubAssignees *[]string  `json:"githubAssignees,omitempty"`
 		LastSyncedAt    *time.Time `json:"lastSyncedAt,omitempty"`
 		// Task kernel result / summary fields (#318, #324).
-		Result    *string         `json:"result,omitempty"`
-		Summary   *string         `json:"summary,omitempty"`
-		FeatureID *string         `json:"featureId,omitempty"`
-		Target    *TaskTargetSpec `json:"target,omitempty"`
+		Result  *string         `json:"result,omitempty"`
+		Summary *string         `json:"summary,omitempty"`
+		Target  *TaskTargetSpec `json:"target,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -989,18 +948,6 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 	if err != nil {
 		writeMutationContextError(w, err)
 		return
-	}
-
-	var newMilestoneFromFeature *string
-	if body.FeatureID != nil && *body.FeatureID != "" {
-		if h.featureStore == nil {
-			http.Error(w, "feature catalog store is unavailable", http.StatusInternalServerError)
-			return
-		}
-		m, mErr := h.featureStore.TaskMilestone(projectID, *body.FeatureID)
-		if mErr == nil && m != "" {
-			newMilestoneFromFeature = &m
-		}
 	}
 
 	// Pre-validate executor×assignee matrix before Mutate (#198).
@@ -1112,8 +1059,6 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		}
 		if body.Milestone != nil {
 			target.Milestone = *body.Milestone
-		} else if newMilestoneFromFeature != nil {
-			target.Milestone = *newMilestoneFromFeature
 		}
 		if body.Sprint != nil {
 			target.Sprint = *body.Sprint
@@ -1203,26 +1148,6 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 	if !found {
 		http.Error(w, "task not found", http.StatusNotFound)
 		return
-	}
-	if body.FeatureID != nil && *body.FeatureID != "" {
-		linkEvent := mutationEvent(
-			mutationCtx,
-			"feature_link",
-			*body.FeatureID+":"+id+":delivery",
-			"link",
-			nil,
-			nil,
-		)
-		if _, _, err := h.featureStore.LinkItem(
-			projectID,
-			*body.FeatureID,
-			id,
-			meta.FeatureItemDelivery,
-			linkEvent,
-		); err != nil {
-			writeFeatureCatalogError(w, err)
-			return
-		}
 	}
 	if body.Milestone != nil && *body.Milestone != "" {
 		_ = h.tasksStore.EnsureMilestone(existing.WorkspacePath, *body.Milestone)

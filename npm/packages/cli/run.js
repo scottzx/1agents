@@ -81,6 +81,11 @@ async function main() {
   const userArgs = process.argv.slice(2);
   const command = userArgs[0];
 
+  if (command === "feature-catalog") {
+    console.error("feature-catalog has been removed");
+    process.exit(2);
+  }
+
   // `1agents install …` does not need core binaries resolved first.
   if (command === "install") {
     process.exit(runInstall(userArgs.slice(1)));
@@ -101,7 +106,6 @@ async function main() {
       "migrate",
       "project-items",
       "mcp-tasks",
-      "feature-catalog",
     ]);
     const finalArgs = directSubcommands.has(command)
       ? [...userArgs]

@@ -34,7 +34,7 @@ func RegisterKernelLedger(r *Registry) error {
 		"sessions", "agent_turns", "task_runs", "turn_change_reports", "project_events",
 		// WorkCase coordination object (internal/meta, schema v30)
 		"work_cases", "work_case_links",
-		// feature catalog (internal/meta)
+		// Retired feature blueprint tables retained for historical data compatibility.
 		"feature_nodes", "feature_item_links", "feature_catalog_versions",
 		"feature_catalog_restore_requests",
 		// inbox / digest / contacts (internal/meta)

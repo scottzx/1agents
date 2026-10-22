@@ -1,4 +1,5 @@
-import type { GanttData, GanttModule, GanttTaskEntry } from '@1agents/core/types/featureCatalog';
+import type { GanttData, GanttModule, GanttTaskEntry } from '@1agents/core/types/gantt';
+import type { Milestone, ProjectItem } from './types';
 
 export type TimeGranularity = 'day' | 'week' | 'month';
 
@@ -51,6 +52,47 @@ function aggregateFilteredModule(source: GanttModule, tasks: GanttTaskEntry[], c
         aggStart: starts.length > 0 ? starts.sort()[0] : undefined,
         aggEnd: ends.length > 0 ? ends.sort().at(-1) : undefined,
         progress,
+    };
+}
+
+/** Build the schedule directly from project tasks; milestone groups do not
+ * depend on a separate planning tree or feature-to-task links. */
+export function buildGanttData(tasks: ProjectItem[], milestones: Milestone[]): GanttData {
+    const entries: GanttTaskEntry[] = tasks
+        .filter(task => !task.type || task.type === 'task')
+        .map(task => ({
+            id: task.id,
+            number: task.number ?? 0,
+            title: task.title,
+            plannedStart: task.plannedStart,
+            plannedEnd: task.plannedEnd,
+            status: task.status,
+            milestone: task.milestone,
+            dependsOn: task.dependsOn ?? [],
+            progress: task.status === 'completed' ? 100 : 0,
+        }));
+    const groups = new Map<string, GanttModule>();
+    for (const task of entries) {
+        if (!task.plannedStart || !task.plannedEnd) continue;
+        const key = task.milestone || '__ungrouped__';
+        let group = groups.get(key);
+        if (!group) {
+            const milestone = milestones.find(item => item.name === task.milestone);
+            const title = milestone?.name || task.milestone || '未分组';
+            group = { id: milestone?.id || key, title, path: [title], depth: 0, progress: 0, children: [], tasks: [] };
+            groups.set(key, group);
+        }
+        group.tasks.push(task);
+    }
+    return {
+        modules: [...groups.values()].map(group => aggregateFilteredModule(group, group.tasks, [])),
+        unscheduled: entries.filter(task => !task.plannedStart || !task.plannedEnd),
+        milestones: milestones.map(milestone => ({
+            id: milestone.id,
+            name: milestone.name,
+            version: milestone.version || milestone.name,
+            targetDate: milestone.targetDate,
+        })),
     };
 }
 

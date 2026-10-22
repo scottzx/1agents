@@ -1,5 +1,5 @@
 import { h } from 'preact';
-import type { GanttData } from '@1agents/core/types/featureCatalog';
+import type { GanttData } from '@1agents/core/types/gantt';
 
 interface GanttUnscheduledTasksProps {
     tasks: GanttData['unscheduled'];

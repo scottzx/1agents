@@ -1,9 +1,8 @@
 import { h, Fragment } from 'preact';
 import { useSignal } from '@preact/signals';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 
-import { featureCatalogService } from '@1agents/core/services/featureCatalogService';
-import type { FeatureCatalog, GanttData } from '@1agents/core/types/featureCatalog';
+import { buildGanttData } from './ganttModel';
 import { Modal } from '../../modal';
 import { GanttChart } from './GanttChart';
 import { MilestoneForm } from './MilestoneForm';
@@ -16,9 +15,6 @@ interface MilestoneViewProps {
     workspaceId: string;
     tasks: ProjectItem[];
     milestones: Milestone[];
-    featureCatalog?: FeatureCatalog;
-    focusMilestoneId?: string;
-    onOpenFeatureVersion?: (milestoneId: string) => void;
     onSelectTask: (taskId: string) => void;
     onPatchMilestone: (id: string, patch: Record<string, unknown>) => Promise<void>;
     onDeleteMilestone: (id: string) => Promise<void>;
@@ -48,9 +44,6 @@ export function MilestoneView({
     workspaceId,
     tasks,
     milestones,
-    featureCatalog,
-    focusMilestoneId,
-    onOpenFeatureVersion,
     onSelectTask,
     onPatchMilestone,
     onDeleteMilestone,
@@ -58,10 +51,8 @@ export function MilestoneView({
     const expandedId = useSignal<string | null>(null); // null or COLLAPSED = closed, else milestone id
     const editing = useSignal<Milestone | null>(null); // milestone being edited (modal)
     const [viewMode, setViewMode] = useState<'roadmap' | 'gantt'>('roadmap');
-    const [ganttData, setGanttData] = useState<GanttData | null>(null);
-    const [ganttLoading, setGanttLoading] = useState(false);
-    const [ganttError, setGanttError] = useState('');
     const [ganttMilestoneId, setGanttMilestoneId] = useState('');
+    const ganttData = useMemo(() => buildGanttData(tasks, milestones), [tasks, milestones]);
     // The task the user clicked in the milestone drawer. Opens a bottom-up
     // preview drawer first; full task detail only happens if they hit "打开完整".
     const taskPreview = useSignal<ProjectItem | null>(null);
@@ -73,41 +64,8 @@ export function MilestoneView({
     const isDone = (t: ProjectItem) => (isTask ? t.status === 'completed' : t.issueState === 'closed');
 
     useEffect(() => {
-        setGanttData(null);
-        setGanttError('');
         setViewMode('roadmap');
     }, [workspaceId]);
-
-    useEffect(() => {
-        if (viewMode !== 'gantt' || ganttData) return;
-        let active = true;
-        setGanttLoading(true);
-        setGanttError('');
-        featureCatalogService
-            .gantt(workspaceId)
-            .then(data => {
-                if (active) setGanttData(data);
-            })
-            .catch(cause => {
-                if (active) setGanttError(cause instanceof Error ? cause.message : String(cause));
-            })
-            .finally(() => {
-                if (active) setGanttLoading(false);
-            });
-        return () => {
-            active = false;
-        };
-    }, [viewMode, ganttData, workspaceId]);
-
-    const focusedMilestone = focusMilestoneId
-        ? milestones.find(milestone => milestone.id === focusMilestoneId)
-        : undefined;
-    useEffect(() => {
-        if (!focusedMilestone) return;
-        expandedId.value = focusedMilestone.id;
-        setGanttMilestoneId(focusedMilestone.id);
-        setViewMode('roadmap');
-    }, [focusMilestoneId, focusedMilestone?.id, focusedMilestone?.name, focusedMilestone?.version]);
 
     // Group the selected kind by milestone name (kept in sync on rename, so name
     // is a stable key).
@@ -173,9 +131,6 @@ export function MilestoneView({
         m?.predecessorId ? nodeMap.get(m.predecessorId)?.name : undefined;
     const successors = (m: Milestone | null) =>
         m ? allNodes.filter(node => node.milestone?.predecessorId === m.id) : [];
-    const featureCount = (milestoneId: string) =>
-        featureCatalog?.nodes.filter(node => node.kind === 'feature' && node.targetMilestoneId === milestoneId)
-            .length ?? 0;
 
     const openGantt = (milestone?: Milestone | null) => {
         setGanttMilestoneId(milestone?.id || '');
@@ -237,20 +192,12 @@ export function MilestoneView({
             </div>
 
             {viewMode === 'gantt' ? (
-                ganttLoading ? (
-                    <div class="task-loading">正在加载甘特图…</div>
-                ) : ganttError ? (
-                    <div class="task-error">甘特图加载失败：{ganttError}</div>
-                ) : ganttData ? (
-                    <GanttChart
-                        workspaceId={workspaceId}
-                        data={ganttData}
-                        initialMilestoneId={ganttMilestoneId}
-                        onMilestoneChange={setGanttMilestoneId}
-                    />
-                ) : (
-                    <div class="task-loading">暂无可展示的排期数据。</div>
-                )
+                <GanttChart
+                    workspaceId={workspaceId}
+                    data={ganttData}
+                    initialMilestoneId={ganttMilestoneId}
+                    onMilestoneChange={setGanttMilestoneId}
+                />
             ) : (
                 <Fragment>
                     {milestones.length === 0 && ungrouped.length === 0 ? (
@@ -371,19 +318,6 @@ export function MilestoneView({
                                             <strong>
                                                 {expanded.done}/{expanded.total} · {expanded.pct}%
                                             </strong>
-                                        </div>
-                                        <div>
-                                            <span>功能范围</span>
-                                            {onOpenFeatureVersion ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => onOpenFeatureVersion(expanded.milestone!.id)}
-                                                >
-                                                    {featureCount(expanded.milestone.id)} 个功能点 →
-                                                </button>
-                                            ) : (
-                                                <strong>{featureCount(expanded.milestone.id)} 个功能点</strong>
-                                            )}
                                         </div>
                                         <button
                                             type="button"
