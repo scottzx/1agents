@@ -2,6 +2,14 @@
   "extends": "./node_modules/gts/",
   "overrides": [
     {
+      "files": ["packages/chat-ui/build.js"],
+      "extends": ["plugin:n/recommended-module"],
+      "parserOptions": {
+        "ecmaVersion": 2022,
+        "sourceType": "module"
+      }
+    },
+    {
       "files": ["**/*.ts", "**/*.tsx"],
       "parserOptions": {
         "jsxPragma": "h",

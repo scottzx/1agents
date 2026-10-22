@@ -78,6 +78,21 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@1agents/chat-ui@workspace:packages/chat-ui":
+  version: 0.0.0-use.local
+  resolution: "@1agents/chat-ui@workspace:packages/chat-ui"
+  dependencies:
+    "@types/node": ^22.10.2
+    esbuild: ~0.28.0
+    highlight.js: ^11.11.1
+    marked: ^18.0.4
+    preact: ^10.19.6
+    typescript: ^5.3.3
+  peerDependencies:
+    preact: ">=10.0.0"
+  languageName: unknown
+  linkType: soft
+
 "@1agents/core@workspace:*, @1agents/core@workspace:packages/core":
   version: 0.0.0-use.local
   resolution: "@1agents/core@workspace:packages/core"
@@ -4388,6 +4403,15 @@ __metadata:
   dependencies:
     undici-types: ">=7.24.0 <7.24.7"
   checksum: 1a18c731409b14d59cea90ada7f2949ebbd0acf8df5cdfc4e0a981e3fd3f1a9cdc547752b139167989e04c888c61aeac64c4519510b7edbe4d5f456b2975f12c
+  languageName: node
+  linkType: hard
+
+"@types/node@npm:^22.10.2":
+  version: 22.20.5
+  resolution: "@types/node@npm:22.20.5"
+  dependencies:
+    undici-types: ~6.21.0
+  checksum: c9258c97d580c980fe229b8a3598f68c896dd71a9b7cbabe55027842de06a7ecc16101f3f1c22ac35cc01c7636db0c05532e8c1299968ab0d2d2648dab5849e1
   languageName: node
   linkType: hard
 
@@ -20399,6 +20423,13 @@ __metadata:
   version: 7.24.6
   resolution: "undici-types@npm:7.24.6"
   checksum: e79802e37dc472c6324850d938b5df6b9e796f6a1bb5f8ccd24f3a6d17eae94a9cc125506c8b339a3293ffbad81daeba30b843e564c1d237b3c8deafd98b6267
+  languageName: node
+  linkType: hard
+
+"undici-types@npm:~6.21.0":
+  version: 6.21.0
+  resolution: "undici-types@npm:6.21.0"
+  checksum: 46331c7d6016bf85b3e8f20c159d62f5ae471aba1eb3dc52fff35a0259d58dcc7d592d4cc4f00c5f9243fa738a11cfa48bd20203040d4a9e6bc25e807fab7ab3
   languageName: node
   linkType: hard
 
