@@ -1,8 +1,8 @@
 # 1Agents 产品里程碑路线图
 
-> 本文是 1Agents 的**唯一权威产品路线图**。从 2026-08 起，仓库内功能蓝图和项目看板使用严格 SemVer 版本树；当前大迭代为 **v1.0.0 企业工作底座**。
+> 本文是 1Agents 的**唯一权威产品路线图**。项目看板使用严格 SemVer 版本树；当前大迭代为 **v1.0.0 企业工作底座**。
 > 下方历史 1.x→4.x 内容继续保留为早期宏观能力路线和 GitHub issue 归位记录，不再覆盖仓库内 SemVer 里程碑的发布含义。
-> GitHub 用[原生 Milestones](https://github.com/scottzx/1agents/milestones) 承载外部协作，看板见 [Project #3](https://github.com/users/scottzx/projects/3)。仓库内执行状态以 1agents 项目看板、功能蓝图和版本里程碑为准。
+> GitHub 用[原生 Milestones](https://github.com/scottzx/1agents/milestones) 承载外部协作，看板见 [Project #3](https://github.com/users/scottzx/projects/3)。仓库内执行状态以 1agents 项目看板和版本里程碑为准。
 
 ---
 
@@ -17,9 +17,9 @@ C0 企业底座契约与个人工作台兼容基线
   → v1.0.0 发布闸门
 ```
 
-`C0`、`C1`、`C2` 是 `1.0.0` 内部交付阶段，不是三个子版本。功能蓝图中的相关功能点继续统一指向纯 SemVer 里程碑 `1.0.0`；完整边界、退出条件和各阶段“不做范围”见[企业工作底座 v1.0.0 的 §10](../architecture/enterprise-foundation-v1.0.0.md)。
+`C0`、`C1`、`C2` 是 `1.0.0` 内部交付阶段，不是三个子版本。相关交付任务统一归入 SemVer 里程碑 `1.0.0`；完整边界、退出条件和各阶段“不做范围”见[企业工作底座 v1.0.0 的 §10](../architecture/enterprise-foundation-v1.0.0.md)。
 
-| 阶段 | 对应功能蓝图范围 | 阶段结果 |
+| 阶段 | 交付范围 | 阶段结果 |
 |---|---|---|
 | **C0** | WorkCase；Command/Query/Outbox Event；Capability Contract；领域所有权；Product Shell Registry；个人工作台 | 契约和端到端测试证明底座边界成立，现有个人工作台主流程无回归 |
 | **C1** | 售前与交付 Product Shell；线索证据；调研资格；沟通与需求；方案版本；建设、交付绑定与验收 | 一个真实商机从 Evidence 走到 Human Acceptance，关键决定全程可追溯 |
@@ -40,7 +40,7 @@ v1.0.0 发布闸门：
 3. Agent、Function、Human、Web 和外部入口通过统一 Command 改变业务状态；
 4. 售前端到端闭环由真实商机样例跑通；
 5. 电商产品上新无需向内核加入领域字段即可跑通；
-6. 功能蓝图、任务、版本、验收证据和文档保持可追溯。
+6. 需求、任务、版本、验收证据和文档保持可追溯。
 
 明确延后：通用工作流引擎、任意低代码对象、完整 RBAC/多租户、微服务拆分、分布式事务、动态应用市场、第三方代码沙箱、完整 CRM 商务链，以及完整电商交易履约链。
 

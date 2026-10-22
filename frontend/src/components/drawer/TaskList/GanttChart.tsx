@@ -1,6 +1,6 @@
 import { h } from 'preact';
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
-import type { GanttData } from '@1agents/core/types/featureCatalog';
+import type { GanttData } from '@1agents/core/types/gantt';
 import * as taskNav from '../../../stores/taskNavStore';
 import {
     computeTimeAxis,

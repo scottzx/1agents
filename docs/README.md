@@ -130,7 +130,7 @@ docs/
 ## 阅读路径建议
 
 1. **新同学上手**：`product/名称定义表` → `product/1Agents_项目介绍` → `product/frontend-product-features` → `architecture/agentsOS-架构设计` → `design_rules/app-agentic-workbench-design-standard`
-2. **规划 / 实现 v1.0.0 企业底座**：`architecture/enterprise-foundation-v1.0.0` → `product/roadmap` → 对应功能蓝图与 `features/<域>/`
+2. **规划 / 实现 v1.0.0 企业底座**：`architecture/enterprise-foundation-v1.0.0` → `product/roadmap` → 对应项目任务、里程碑与 `features/<域>/`
 3. **做功能 / 改 UI**：`design_rules/*` → 对应 `features/<域>/` → 必要时 `uiux/`
 4. **接 agent / 改传输层**：`architecture/chat-first-agentteams-interaction` → `architecture/agent-convergence-roadmap` → `happy-integration-skeleton` → `happy-cli-fork-sync` → `adapter/README`
 5. **发版 / 部署**：`guides/编译与打包指南` → `architecture/ota-architecture` → `features/npm-package-split/prd`

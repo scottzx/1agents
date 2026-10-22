@@ -1,30 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {
-    ensureLoaded,
-    getFeatureCatalogEnabled,
-    getProjectConfigStatus,
-    setFeatureCatalogEnabled,
-} from './projectTabPrefs';
-
-test('missing featureCatalogEnabled defaults to disabled after loading legacy config', async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = async () => new Response(JSON.stringify({ hiddenTabs: ['plan'] }));
-    try {
-        await ensureLoaded('legacy-project', '/tmp/legacy-project');
-        assert.equal(getFeatureCatalogEnabled('legacy-project'), false);
-        assert.deepEqual(getProjectConfigStatus('legacy-project'), {
-            loading: false,
-            loaded: true,
-            loadError: '',
-            saving: false,
-            saveError: '',
-        });
-    } finally {
-        globalThis.fetch = originalFetch;
-    }
-});
+import { ensureLoaded, getHiddenTabs, getProjectConfigStatus, setTabHidden } from './projectTabPrefs';
 
 test('project config exposes loading state while the request is in flight', async () => {
     const originalFetch = globalThis.fetch;
@@ -37,7 +14,6 @@ test('project config exposes loading state while the request is in flight', asyn
         const loading = ensureLoaded('loading-project', '/tmp/loading-project');
         assert.equal(getProjectConfigStatus('loading-project').loading, true);
         assert.equal(getProjectConfigStatus('loading-project').loaded, false);
-
         resolveLoad?.(new Response('{}'));
         await loading;
         assert.equal(getProjectConfigStatus('loading-project').loading, false);
@@ -47,42 +23,32 @@ test('project config exposes loading state while the request is in flight', asyn
     }
 });
 
-test('feature catalog setting persists as its own shallow-merge patch', async () => {
+test('tab visibility persists only its own shallow-merge patch', async () => {
     const originalFetch = globalThis.fetch;
-    const requests: Array<{ input: string; init: RequestInit }> = [];
-    let persisted: Record<string, unknown> = {};
-    globalThis.fetch = async (input, init) => {
+    const requests: RequestInit[] = [];
+    let persisted: Record<string, unknown> = { otherSetting: 'keep' };
+    globalThis.fetch = async (_input, init) => {
         if (!init?.method) return new Response(JSON.stringify(persisted));
-        requests.push({ input: String(input), init });
+        requests.push(init);
         persisted = { ...persisted, ...JSON.parse(String(init.body)) };
         return new Response('{"ok":true}');
     };
     try {
-        await ensureLoaded('enabled-project', '/tmp/enabled-project');
-        const saved = await setFeatureCatalogEnabled('enabled-project', '/tmp/enabled-project', true);
-        assert.equal(saved, true);
-        assert.equal(getFeatureCatalogEnabled('enabled-project'), true);
-        assert.equal(requests.length, 1);
-        assert.match(requests[0].input, /^\/api\/project\/local-config\?/);
-        assert.deepEqual(JSON.parse(String(requests[0].init.body)), { featureCatalogEnabled: true });
-
-        // A fresh store slot reads the persisted project-local value, matching a
-        // page refresh without relying on this process's optimistic cache.
-        await ensureLoaded('reopened-project', '/tmp/enabled-project');
-        assert.equal(getFeatureCatalogEnabled('reopened-project'), true);
-
-        await setFeatureCatalogEnabled('enabled-project', '/tmp/enabled-project', false);
-        assert.deepEqual(JSON.parse(String(requests[1].init.body)), { featureCatalogEnabled: false });
-        assert.equal(
-            requests.every(request => request.input.startsWith('/api/project/local-config?')),
-            true
-        );
+        await ensureLoaded('tabs-project', '/tmp/tabs-project');
+        assert.equal(await setTabHidden('tabs-project', '/tmp/tabs-project', 'plan', true), true);
+        assert.equal(getHiddenTabs('tabs-project').has('plan'), true);
+        assert.deepEqual(JSON.parse(String(requests[0].body)), { hiddenTabs: ['plan'] });
+        assert.equal(persisted.otherSetting, 'keep');
+        await ensureLoaded('tabs-reopened-project', '/tmp/tabs-project');
+        assert.equal(getHiddenTabs('tabs-reopened-project').has('plan'), true);
+        assert.equal(await setTabHidden('tabs-project', '/tmp/tabs-project', 'plan', false), true);
+        assert.deepEqual(JSON.parse(String(requests[1].body)), { hiddenTabs: [] });
     } finally {
         globalThis.fetch = originalFetch;
     }
 });
 
-test('failed feature catalog save rolls back the optimistic value and exposes the error', async () => {
+test('failed tab save restores the optimistic visibility and exposes the error', async () => {
     const originalFetch = globalThis.fetch;
     let resolveSave: ((response: Response) => void) | undefined;
     globalThis.fetch = async (_input, init) => {
@@ -93,13 +59,12 @@ test('failed feature catalog save rolls back the optimistic value and exposes th
     };
     try {
         await ensureLoaded('rollback-project', '/tmp/rollback-project');
-        const saving = setFeatureCatalogEnabled('rollback-project', '/tmp/rollback-project', true);
-        assert.equal(getFeatureCatalogEnabled('rollback-project'), true);
+        const saving = setTabHidden('rollback-project', '/tmp/rollback-project', 'plan', true);
+        assert.equal(getHiddenTabs('rollback-project').has('plan'), true);
         assert.equal(getProjectConfigStatus('rollback-project').saving, true);
-
         resolveSave?.(new Response('no', { status: 500 }));
         assert.equal(await saving, false);
-        assert.equal(getFeatureCatalogEnabled('rollback-project'), false);
+        assert.equal(getHiddenTabs('rollback-project').has('plan'), false);
         assert.equal(getProjectConfigStatus('rollback-project').saving, false);
         assert.match(getProjectConfigStatus('rollback-project').saveError, /HTTP 500/);
     } finally {

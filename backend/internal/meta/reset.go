@@ -15,6 +15,7 @@ var dataTables = []string{
 	"task_runs",
 	"turn_change_reports",
 	"agent_turns",
+	// Legacy blueprint rows are only removed by an explicit full data reset.
 	"feature_catalog_restore_requests",
 	"feature_catalog_versions",
 	"feature_item_links",

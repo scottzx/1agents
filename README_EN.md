@@ -111,7 +111,6 @@ The goal is to move AI beyond "help me with this step" and into the collaboratio
 ### PMO, Tasks, and Roadmap
 
 - Manage discussions, requirements, tasks, bugs, AI suggestions, and milestones inside each project.
-- The Feature Blueprint connects modules, feature nodes, source requirements, delivery tasks, target versions, and delivery state.
 - The Task Blueprint organizes requirements, feature nodes, delivery tasks, dependencies, execution plans, and milestones into a navigable, traceable, writable work map.
 - Task views include list, kanban, calendar, and milestone roadmap.
 - Task tables support search, filters, sorting, grouping, column visibility, and inline editing.

@@ -362,11 +362,11 @@ func (db *DB) migrateSchema() error {
 	if err := db.ensureTurnChangeReportSchema(); err != nil {
 		return fmt.Errorf("meta: reconcile turn change report schema: %w", err)
 	}
-	// v28 (#290) adds the feature catalog tables and milestones.version.
-	// Reconcile unconditionally so databases whose user_version was advanced by
-	// a sibling branch still heal missing tables, columns, and indexes.
-	if err := db.ensureFeatureCatalogSchema(); err != nil {
-		return fmt.Errorf("meta: reconcile feature catalog schema: %w", err)
+	// v28 (#290) introduced the now-retired feature blueprint tables and
+	// milestones.version. Keep the original idempotent reconciliation for old
+	// databases and the milestone upgrade; no blueprint stores expose these tables.
+	if err := db.ensureLegacyFeatureCatalogSchema(); err != nil {
+		return fmt.Errorf("meta: reconcile legacy feature catalog schema: %w", err)
 	}
 	// v24 (#202 / #204): Workspace Inbox envelope columns + backfill of legacy
 	// unscoped rows onto the builtin default assistant workspace.
@@ -1024,7 +1024,7 @@ const schemaV27 = ``
 const schemaV28 = ``
 
 // schemaV29 adds manual feature-catalog versions and the restore idempotency
-// ledger. The actual DDL is reconciled by ensureFeatureCatalogSchema so a
+// ledger. The actual DDL is reconciled by ensureLegacyFeatureCatalogSchema so a
 // database whose user_version was advanced on another branch also heals.
 const schemaV29 = ``
 
@@ -1039,7 +1039,10 @@ const schemaV30 = ``
 // Open(); see TurnChangeRecipeVersion.
 const schemaV32 = ``
 
-func (db *DB) ensureFeatureCatalogSchema() error {
+// ensureLegacyFeatureCatalogSchema preserves historical tables and upgrade
+// compatibility after retiring the feature blueprint. It never deletes their
+// data, and still owns the active milestones.version upgrade from schema v28.
+func (db *DB) ensureLegacyFeatureCatalogSchema() error {
 	if _, err := db.sql.Exec(`
 		CREATE TABLE IF NOT EXISTS feature_nodes (
 			id                  TEXT PRIMARY KEY,

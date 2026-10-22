@@ -10,29 +10,23 @@ const BASE_VIEWS: ReadonlyArray<readonly [TaskListView, string]> = [
     ['milestone', '里程碑'],
 ];
 
-export function taskListViewOptions(featureCatalogEnabled: boolean): ReadonlyArray<readonly [TaskListView, string]> {
-    if (!featureCatalogEnabled) return BASE_VIEWS;
-    return [...BASE_VIEWS.slice(0, 3), ['features', '功能蓝图'], ...BASE_VIEWS.slice(3)];
+export function taskListViewOptions(): ReadonlyArray<readonly [TaskListView, string]> {
+    return BASE_VIEWS;
 }
 
-export function resolveTaskListView(
-    activeView: TaskListView,
-    featureCatalogEnabled: boolean,
-    configLoaded: boolean
-): TaskListView {
-    return configLoaded && !featureCatalogEnabled && activeView === 'features' ? 'tasks' : activeView;
+export function resolveTaskListView(activeView?: string): TaskListView {
+    return BASE_VIEWS.find(([view]) => view === activeView)?.[0] ?? 'tasks';
 }
 
 interface TaskViewSwitcherProps {
     activeView: TaskListView;
-    featureCatalogEnabled: boolean;
     onSelect: (view: TaskListView) => void;
 }
 
-export function TaskViewSwitcher({ activeView, featureCatalogEnabled, onSelect }: TaskViewSwitcherProps) {
+export function TaskViewSwitcher({ activeView, onSelect }: TaskViewSwitcherProps) {
     return (
         <div class="task-view-switcher">
-            {taskListViewOptions(featureCatalogEnabled).map(([key, label]) => (
+            {taskListViewOptions().map(([key, label]) => (
                 <button key={key} class={activeView === key ? 'active' : ''} onClick={() => onSelect(key)}>
                     {label}
                 </button>

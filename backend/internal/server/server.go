@@ -287,8 +287,6 @@ func NewRouter(cfg *config.Config, harnessKitRuntime ...harnesskit.Runtime) http
 			mux.HandleFunc("/api/agent/personal/aggregate", agentHandler.HandlePersonalAggregate) // GET Personal Shell cross-shell work aggregate (#329)
 			mux.HandleFunc("/api/agent/milestones", agentHandler.HandleMilestonesRoot)            // GET, POST
 			mux.HandleFunc("/api/agent/milestones/", agentHandler.HandleMilestonesItem)           // PATCH, DELETE /{id}, POST /reorder
-			mux.HandleFunc("/api/agent/feature-catalog", agentHandler.HandleFeatureCatalogRoot)   // GET, POST
-			mux.HandleFunc("/api/agent/feature-catalog/", agentHandler.HandleFeatureCatalogItem)  // PATCH, DELETE, item links
 			mux.HandleFunc("/api/agent/discussions", agentHandler.HandleDiscussionsRoot)          // POST — create a discussion thread (#189)
 			mux.HandleFunc("/api/agent/discussions/", agentHandler.HandleDiscussionItem)          // POST /{id}/cards, /{id}/conclude (#189)
 			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)                       // WebSocket upgrade & bridge

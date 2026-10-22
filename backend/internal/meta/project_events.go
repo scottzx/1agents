@@ -19,18 +19,14 @@ var (
 )
 
 var projectEventRegistry = map[string]map[string]bool{
-	"project_item":            {"create": true, "update": true, "close": true, "reopen": true, "complete": true, "cancel": true, "delete": true},
-	"work_case":               {"create": true, "update": true, "transition": true, "link": true, "unlink": true, "delete": true},
-	"milestone":               {"create": true, "update": true, "delete": true},
-	"feature_node":            {"create": true, "update": true, "move": true, "delete": true},
-	"feature_link":            {"link": true, "unlink": true},
-	"feature_milestone":       {"sync": true},
-	"feature_catalog_version": {"create": true, "rename": true, "delete": true, "restore": true},
-	"dependency":              {"link": true, "unlink": true},
-	"session":                 {"create": true, "update": true, "archive": true, "reopen": true},
-	"turn":                    {"queue": true, "start": true, "complete": true, "fail": true, "cancel": true},
-	"task_run":                {"create": true, "start": true, "complete": true, "fail": true, "cancel": true},
-	"verification":            {"create": true, "complete": true, "fail": true},
+	"project_item": {"create": true, "update": true, "close": true, "reopen": true, "complete": true, "cancel": true, "delete": true},
+	"work_case":    {"create": true, "update": true, "transition": true, "link": true, "unlink": true, "delete": true},
+	"milestone":    {"create": true, "update": true, "delete": true},
+	"dependency":   {"link": true, "unlink": true},
+	"session":      {"create": true, "update": true, "archive": true, "reopen": true},
+	"turn":         {"queue": true, "start": true, "complete": true, "fail": true, "cancel": true},
+	"task_run":     {"create": true, "start": true, "complete": true, "fail": true, "cancel": true},
+	"verification": {"create": true, "complete": true, "fail": true},
 }
 
 type ProjectEventStore struct {

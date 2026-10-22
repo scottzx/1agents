@@ -89,7 +89,8 @@ func main() {
 	}
 
 	if len(os.Args) > 1 && os.Args[1] == "feature-catalog" {
-		os.Exit(projectitems.RunFeatureCatalogCLI(os.Args[2:]))
+		fmt.Fprintln(os.Stderr, "feature-catalog has been removed")
+		os.Exit(2)
 	}
 
 	// ── `1agents project-items` MCP subcommand ─────────────────────────────────

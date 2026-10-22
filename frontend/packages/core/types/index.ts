@@ -8,7 +8,7 @@
 
 export * from '../protocol/session';
 export * from '../protocol/permission';
-export * from './featureCatalog';
+export * from './gantt';
 export * from './task';
 export * from './workcase';
 

@@ -38,16 +38,12 @@ $BIN project-items create --title "登录后端接口" --type task \
 - 嵌套字段使用 `--json`：`links`、`dependsOn`、`checklist`。不要用项目项的 `assignee`、`recurrence` 或 `status=running` 取代 ExecutionJob/Trigger。
 - ProjectItem `status` 与 requirement/bug 的 `issueState` 不同：前者仅在实际完成/取消时更新；后者使用 `close` / `reopen`。
 
-功能蓝图仅当 `.1agents/project_config.json` 的 `featureCatalogEnabled` 为 `true` 时可写：
+目标版本使用项目里程碑管理：
 
 | 命令 | 说明 |
 | --- | --- |
-| `$BIN feature-catalog list` | 读取节点树及 source/delivery 关系 |
-| `$BIN feature-catalog batch --json '<operations>'` | 事务化 create/update/move/link/unlink |
 | `$BIN project-items milestones list` | 读取版本 |
 | `$BIN project-items milestones create --bump patch\|minor\|major` | 创建下一个 SemVer 版本 |
-
-已有蓝图先展示拟议差异并取得明确确认；禁止未经确认的整体覆盖、重建、删除、重命名或移动。
 
 ## ExecutionJob：执行定义
 

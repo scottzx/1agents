@@ -5,7 +5,6 @@ import { useSignal } from '@preact/signals';
 import { t } from '../../../i18n';
 import { agentService } from '../../../services/agentService';
 import { projectItemService } from '@1agents/core/services/taskService';
-import type { FeatureCatalog } from '@1agents/core/types/featureCatalog';
 import type { AgentType, ChatSession, Session } from '../../types';
 import { AGENT_OPTIONS, getLinkRelLabels, getPriorityLabels, getStatusLabels } from './constants';
 import type { ChecklistItem, Reply, SessionMetadata, ProjectItem, TaskLink } from './types';
@@ -19,7 +18,6 @@ import * as sessionStore from '../../../stores/sessionStore';
 import * as ui from '../../../stores/uiStore';
 import { ProjectActivityTimeline } from '../../activity/ProjectActivityTimeline';
 import { TaskRunAuditTrail } from '../../activity/TaskRunAuditTrail';
-import { linkedFeatureEntries } from './featureCatalogModel';
 import { AgentProfilePicker } from '../../chat/AgentProfilePicker';
 
 // Tab / control icons — feather-style outline, inherit color via currentColor
@@ -119,7 +117,6 @@ interface TaskDetailProps {
     workspaceId: string;
     taskId: string;
     allTasks: ProjectItem[];
-    featureCatalog: FeatureCatalog;
     onBack?: () => void;
     onDelete: (taskId: string) => void;
     onNavigate?: (taskId: string) => void;
@@ -162,7 +159,6 @@ export function TaskDetail({
     workspaceId,
     taskId,
     allTasks,
-    featureCatalog,
     onBack,
     onDelete,
     onNavigate,
@@ -897,9 +893,6 @@ export function TaskDetail({
                 : '任务';
     const statusLabel = statusLabels[task.status] || task.status;
     const issueStateLabel = closed ? t('task.detail.statusClosed', lang) : t('task.detail.statusOpen', lang);
-    const featureRelation = isIssueItem ? 'source' : !isDiscussion ? 'delivery' : null;
-    const associatedFeatures = featureRelation ? linkedFeatureEntries(featureCatalog, task.id, featureRelation) : [];
-    const featurePanelTitle = isIssueItem ? '影响功能' : '所属功能';
 
     return (
         <div class="task-dashboard-container task-detail-view" ref={containerRef}>
@@ -1509,31 +1502,6 @@ export function TaskDetail({
                             )}
                         </div>
                     </div>
-
-                    {!isDiscussion && (
-                        <div class="gh-sidebar-panel">
-                            <div class="gh-sidebar-head">
-                                <span>{featurePanelTitle}</span>
-                                <span>{associatedFeatures.length}</span>
-                            </div>
-                            <div class="gh-sidebar-body">
-                                {associatedFeatures.length === 0 ? (
-                                    <span class="gh-no-item">
-                                        {isIssueItem ? '尚未关联影响功能' : '未归入功能蓝图'}
-                                    </span>
-                                ) : (
-                                    <div class="task-feature-trace-list">
-                                        {associatedFeatures.map(entry => (
-                                            <div key={entry.node.id} class="task-feature-trace">
-                                                <strong>{entry.node.title}</strong>
-                                                <span>{entry.path.slice(0, -1).join(' / ')}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
 
                     {/* Priority */}
                     <div class="gh-sidebar-panel">

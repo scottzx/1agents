@@ -23,7 +23,6 @@ v1.0.0 把 1Agents 从以项目、ProjectItem 和 Agent 会话为中心的个人
 | 当前能力 | 已实现事实 | v1.0.0 如何处理 |
 |---|---|---|
 | 项目与工作项 | `Workspace`（产品称“项目”）、`ProjectItem`、依赖、状态、计划、严格 SemVer 里程碑已经存在；仅 `ProjectItem(type=task)` 可调度 | 保留并兼容；v1.0.0 的 Task 首先沿用 `ProjectItem(type=task)`，不复制第二套任务系统 |
-| 功能蓝图 | 模块/功能点树、`source` 需求、`delivery` 任务、目标里程碑、覆盖率、历史版本和导出已经存在 | 继续作为功能范围与追溯索引；不承载领域业务状态，也不新增第二套排期事实 |
 | 执行与审计 | `Session`、`AgentTurn`、`TaskRun`、`ProjectEvent`，以及 agent/function/human 三类执行通道已经存在 | 作为运行时内核基线；补齐 WorkCase 关联和统一跨域契约 |
 | 工作环境 | Chat、终端、文件、项目目录、Inbox、日程、Agent 与远程访问入口已经存在 | 收敛为“个人工作台” Product Shell 的原生能力，不重做一个缩水版工作台 |
 | 应用基础设施 | 编译期 App Registry、Manifest 查询/启停、前端视图注册，以及 `project-tab` / `l1-page` / `lens` 挂载点已经存在 | 演进为带 `provides` / `requires` 的 Capability Contract 和 Shell 声明；仍从进程内注册起步 |
@@ -331,7 +330,7 @@ Product Shell 只定义产品入口、导航、首页、术语、默认视图和
   → SolutionVersion v1 / v2 / ...
   → Human：批准方案与建设基线
   → DeliveryBinding + 建设 WorkCase / Tasks
-  → Feature Catalog source/delivery 追溯
+  → 项目需求、任务与里程碑追溯
   → TaskRun / Artifact / Verification / Human Acceptance
 ```
 
@@ -387,7 +386,7 @@ ProductCandidate 调研
 - 可拖拽任意流程的通用 BPM/工作流引擎；
 - 独立数据库起步、微服务拆分或分布式事务；
 - 运行时热安装第三方代码、应用市场和第三方代码沙箱；
-- 一次性重写 ProjectItem、Feature Catalog、Session、TaskRun 或 ProjectEvent；
+- 一次性重写 ProjectItem、Session、TaskRun 或 ProjectEvent；
 - 让 Agent 静默代替业务负责人完成跟进、方案、建设、上架或最终验收决定；
 - 完整 CRM、ERP 或电商交易履约套件。
 
@@ -409,7 +408,7 @@ ProductCandidate 调研
 
 ---
 
-## 12. 功能蓝图、里程碑、任务与文档命名
+## 12. 里程碑、任务与文档命名
 
 ### 12.1 权威名称
 
@@ -421,11 +420,10 @@ ProductCandidate 调研
 | 路线图 | `docs/product/roadmap.md` |
 | 顶层需求 | `#319 v1.0.0：建设通用企业工作底座与三产品壳` |
 | 架构交付任务 | `#320 冻结 v1.0.0 企业底座架构、术语与升级闸门` |
-| 功能蓝图架构功能点 | `AI-native 组织平台架构与多应用框架` |
 
-### 12.2 功能蓝图追溯
+### 12.2 交付范围与历史追溯
 
-当前功能蓝图已将 `#319` 作为以下 21 个 `1.0.0` 功能点的 `source`，并将 `#320` 作为“AI-native 组织平台架构与多应用框架”的 `delivery`：
+顶层需求 `#319` 和架构交付任务 `#320` 对应以下 `1.0.0` 交付范围。功能蓝图已弃用，后续通过需求、任务依赖和里程碑维护追溯；原有蓝图数据保留为历史记录：
 
 - 架构总纲：AI-native 组织平台架构与多应用框架；
 - 底座：WorkCase 长期业务事项；Command 状态变更、幂等与并发控制；DomainRef 与权威 Query；Outbox Event 与因果审计；Capability Contract 与进程内注册；领域所有权与应用依赖门禁；
@@ -433,7 +431,7 @@ ProductCandidate 调研
 - 售前与交付：售前与交付 Product Shell；线索证据与商机规范化；调研、资格评估与人工跟进决策；沟通纪要与需求快照；方案版本与基线审批；建设清单、交付绑定与验收；
 - 电商运营：电商运营 Product Shell；选品调研与人工立项；ProductLaunch WorkCase 与商品域；拍摄 Brief、素材生产与商品上架；双领域泛化验证与共享能力晋升。
 
-文档中的 C0/C1/C2 只对这些 `1.0.0` 功能点分批验收，不创建 `C0`、`C1`、`C2` 三个伪版本。甘特图继续由 delivery Task 的计划日期和依赖派生，功能蓝图不维护第二套日期。
+文档中的 C0/C1/C2 只对这些 `1.0.0` 交付范围分批验收，不创建 `C0`、`C1`、`C2` 三个伪版本。甘特图由任务的计划日期和依赖派生。
 
 ---
 
@@ -448,7 +446,7 @@ v1.0.0 只有同时满足以下条件才能发布：
 5. 售前真实样例从线索证据走到建设验收，关键人工决策均可审计；
 6. 电商产品上新薄切片不需要向内核增加领域字段；
 7. 能力晋升逐项提供证据；不满足条件的候选能力保留在领域层；
-8. 功能蓝图的 `source`、`delivery`、目标 `1.0.0`、任务状态和验收证据可以双向追溯；
+8. 来源需求、交付任务、目标 `1.0.0`、任务状态和验收证据可以双向追溯；
 9. 本文、[产品路线图](../product/roadmap.md)、[文档索引](../README.md)和现行术语没有冲突；
 10. 现有个人工作台、项目、任务、会话、终端、文件和 Agent 主流程完成回归。
 
@@ -470,6 +468,6 @@ v1.0.0 只有同时满足以下条件才能发布：
 - [产品里程碑路线图](../product/roadmap.md)：v1.0.0 的产品阶段、发布闸门与历史路线关系。
 - [agentsOS 架构设计](./agentsOS-架构设计.md)：当前工作 Graph、任务内核、项目外壳和 App Registry 基线。
 - [名称定义表](../product/名称定义表.md)：Workspace、ProjectItem、Session、AgentTurn、executor/assignee 等现行实体名。
-- [功能蓝图 PRD](../features/feature-catalog/prd.md)：模块、功能点、source/delivery、SemVer 里程碑和派生进度。
+- [功能蓝图历史 PRD（已弃用）](../features/feature-catalog/prd.md)：保留原有设计记录，不作为当前产品能力。
 - [Agent Turn PRD](../features/turn-model/prd.md)：Session、AgentTurn、TaskRun、ProjectEvent 与审计边界。
 - [外部应用 SDK 契约草案](./app-sdk-contract.md)：现有 App SDK 方向；后续应按本文 Capability Contract 和 Product Shell 边界收敛。

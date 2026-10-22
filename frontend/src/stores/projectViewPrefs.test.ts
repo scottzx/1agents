@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-test('persists feature catalog collapse ids independently for each project', async () => {
+test('persists task filters independently for each project', async () => {
     const values = new Map<string, string>([
         [
             '1agents-project-view-prefs',
             JSON.stringify({
                 'project-a': {
-                    featureCatalogCollapsed: ['module-a'],
+                    search: 'task-a',
+                    groupBy: 'feature',
+                    grids: { tasks: { groupBy: 'feature', collapsed: ['old-module'] } },
                 },
             }),
         ],
@@ -29,14 +31,15 @@ test('persists feature catalog collapse ids independently for each project', asy
 
     try {
         const prefs = await import('./projectViewPrefs');
-        assert.deepEqual(prefs.getPrefs('project-a').featureCatalogCollapsed, ['module-a']);
-        assert.deepEqual(prefs.getPrefs('project-b').featureCatalogCollapsed, []);
+        assert.equal(prefs.getPrefs('project-a').search, 'task-a');
+        assert.equal(prefs.getPrefs('project-b').search, '');
+        assert.equal(prefs.getGridPrefs('project-a', 'tasks').groupBy, 'none');
 
-        prefs.updatePrefs('project-b', { featureCatalogCollapsed: ['module-b'] });
+        prefs.updatePrefs('project-b', { search: 'task-b' });
 
         const stored = JSON.parse(values.get('1agents-project-view-prefs') ?? '{}');
-        assert.deepEqual(stored['project-a'].featureCatalogCollapsed, ['module-a']);
-        assert.deepEqual(stored['project-b'].featureCatalogCollapsed, ['module-b']);
+        assert.equal(stored['project-a'].search, 'task-a');
+        assert.equal(stored['project-b'].search, 'task-b');
     } finally {
         Object.defineProperty(globalThis, 'localStorage', {
             configurable: true,
