@@ -110,11 +110,7 @@ export function getGroupOptions(lang: Lang): Array<[GroupKey, string]> {
 }
 
 /** Stable, human-readable group bucket for a task under the active group key. */
-export function groupValue(
-    task: ProjectItem,
-    key: GroupKey,
-    lang?: Lang
-): string | string[] {
+export function groupValue(task: ProjectItem, key: GroupKey, lang?: Lang): string | string[] {
     const statusLabels = lang
         ? {
               pending: t('task.status.pending', lang),

@@ -6,7 +6,10 @@ import { ensureLoaded, getHiddenTabs, getProjectConfigStatus, setTabHidden } fro
 test('project config exposes loading state while the request is in flight', async () => {
     const originalFetch = globalThis.fetch;
     let resolveLoad: ((response: Response) => void) | undefined;
-    globalThis.fetch = async () => new Promise<Response>(resolve => { resolveLoad = resolve; });
+    globalThis.fetch = async () =>
+        new Promise<Response>(resolve => {
+            resolveLoad = resolve;
+        });
     try {
         const loading = ensureLoaded('loading-project', '/tmp/loading-project');
         assert.equal(getProjectConfigStatus('loading-project').loading, true);
@@ -15,7 +18,9 @@ test('project config exposes loading state while the request is in flight', asyn
         await loading;
         assert.equal(getProjectConfigStatus('loading-project').loading, false);
         assert.equal(getProjectConfigStatus('loading-project').loaded, true);
-    } finally { globalThis.fetch = originalFetch; }
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
 });
 
 test('tab visibility persists only its own shallow-merge patch', async () => {
@@ -38,7 +43,9 @@ test('tab visibility persists only its own shallow-merge patch', async () => {
         assert.equal(getHiddenTabs('tabs-reopened-project').has('plan'), true);
         assert.equal(await setTabHidden('tabs-project', '/tmp/tabs-project', 'plan', false), true);
         assert.deepEqual(JSON.parse(String(requests[1].body)), { hiddenTabs: [] });
-    } finally { globalThis.fetch = originalFetch; }
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
 });
 
 test('failed tab save restores the optimistic visibility and exposes the error', async () => {
@@ -46,7 +53,9 @@ test('failed tab save restores the optimistic visibility and exposes the error',
     let resolveSave: ((response: Response) => void) | undefined;
     globalThis.fetch = async (_input, init) => {
         if (!init?.method) return new Response('{}');
-        return new Promise<Response>(resolve => { resolveSave = resolve; });
+        return new Promise<Response>(resolve => {
+            resolveSave = resolve;
+        });
     };
     try {
         await ensureLoaded('rollback-project', '/tmp/rollback-project');
@@ -58,5 +67,7 @@ test('failed tab save restores the optimistic visibility and exposes the error',
         assert.equal(getHiddenTabs('rollback-project').has('plan'), false);
         assert.equal(getProjectConfigStatus('rollback-project').saving, false);
         assert.match(getProjectConfigStatus('rollback-project').saveError, /HTTP 500/);
-    } finally { globalThis.fetch = originalFetch; }
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
 });

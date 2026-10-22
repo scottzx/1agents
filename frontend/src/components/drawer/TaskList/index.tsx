@@ -352,10 +352,7 @@ export function TaskList({
     return (
         <div class="task-dashboard-container">
             <div class="task-dashboard-header">
-                <TaskViewSwitcher
-                    activeView={activeView}
-                    onSelect={next => (view.value = next)}
-                />
+                <TaskViewSwitcher activeView={activeView} onSelect={next => (view.value = next)} />
                 {/* Tasks/requirements/bugs are created only by agents (via MCP tools),
                     never through a human form; AI 建议 likewise comes from agents.
                     Discussions and milestones are the two user-creatable items. When
